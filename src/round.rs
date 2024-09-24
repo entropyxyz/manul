@@ -1,0 +1,70 @@
+use alloc::collections::{BTreeMap, BTreeSet};
+use core::any::Any;
+
+use crate::error::LocalError;
+
+pub enum VerificationError<P: Protocol> {
+    InvalidMessage,
+    Protocol(P::ProtocolError),
+}
+
+pub enum FinalizeOutcome<I, P: Protocol> {
+    Round(Box<dyn Round<I, Protocol = P>>),
+    Result(P::Success),
+}
+
+pub enum FinalizeError {}
+
+pub type RoundId = u8;
+
+pub trait Protocol {
+    type Success;
+    type ProtocolError: ProtocolError;
+    type CorrectnessProof;
+}
+
+pub trait ProtocolError {
+    fn required_rounds(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+    fn verify(&self, message: &DirectMessage, messages: &BTreeMap<RoundId, DirectMessage>) -> bool;
+}
+
+#[derive(Debug, Clone)]
+pub struct DirectMessage(pub Box<[u8]>);
+
+#[derive(Debug, Clone)]
+pub struct EchoBroadcast(pub Box<[u8]>);
+
+pub struct Payload(pub Box<dyn Any>);
+
+pub struct Artifact(pub Box<dyn Any>);
+
+pub trait Round<I> {
+    type Protocol: Protocol;
+
+    fn id(&self) -> RoundId;
+    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+
+    fn message_destinations(&self) -> BTreeSet<I>;
+    fn make_direct_message(&self, destination: &I)
+        -> Result<(DirectMessage, Artifact), LocalError>;
+    fn make_echo_broadcast(&self) -> Result<Option<EchoBroadcast>, LocalError> {
+        Ok(None)
+    }
+
+    fn verify_message(
+        &self,
+        from: &I,
+        echo_broadcast: &Option<EchoBroadcast>,
+        direct_message: &DirectMessage,
+    ) -> Result<Payload, VerificationError<Self::Protocol>>;
+
+    fn finalize(
+        self: Box<Self>,
+        payloads: BTreeMap<I, Payload>,
+        artifacts: BTreeMap<I, Artifact>,
+    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError>;
+}
