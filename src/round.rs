@@ -1,5 +1,6 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::any::Any;
+use core::fmt::Debug;
 
 use crate::error::LocalError;
 
@@ -10,20 +11,20 @@ pub enum VerificationError<P: Protocol> {
 
 pub enum FinalizeOutcome<I, P: Protocol> {
     Round(Box<dyn Round<I, Protocol = P>>),
-    Result(P::Success),
+    Result(P::Result),
 }
 
 pub enum FinalizeError {}
 
 pub type RoundId = u8;
 
-pub trait Protocol {
-    type Success;
+pub trait Protocol: Debug {
+    type Result;
     type ProtocolError: ProtocolError;
     type CorrectnessProof;
 }
 
-pub trait ProtocolError {
+pub trait ProtocolError: Debug + Clone {
     fn required_rounds(&self) -> BTreeSet<RoundId> {
         BTreeSet::new()
     }
@@ -40,6 +41,11 @@ pub struct Payload(pub Box<dyn Any>);
 
 pub struct Artifact(pub Box<dyn Any>);
 
+pub trait FirstRound<I>: Round<I> + Sized {
+    type Inputs;
+    fn new(inputs: Self::Inputs) -> Result<Self, LocalError>;
+}
+
 pub trait Round<I> {
     type Protocol: Protocol;
 
@@ -55,10 +61,10 @@ pub trait Round<I> {
         Ok(None)
     }
 
-    fn verify_message(
+    fn receive_message(
         &self,
         from: &I,
-        echo_broadcast: &Option<EchoBroadcast>,
+        echo_broadcast: Option<&EchoBroadcast>,
         direct_message: &DirectMessage,
     ) -> Result<Payload, VerificationError<Self::Protocol>>;
 

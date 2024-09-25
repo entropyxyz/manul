@@ -3,14 +3,20 @@ use alloc::collections::BTreeMap;
 use crate::message::SignedDirectMessage;
 use crate::round::{Protocol, ProtocolError, RoundId};
 
+#[derive(Debug, Clone)]
 pub struct LocalError;
 
+#[derive(Debug, Clone)]
+pub struct RemoteError;
+
+#[derive(Debug, Clone)]
 pub enum Error<I, P: Protocol> {
     Local,
     Remote,
     Protocol(Evidence<I, P>),
 }
 
+#[derive(Debug, Clone)]
 pub struct Evidence<I, P: Protocol> {
     pub party: I,
     pub error: P::ProtocolError,
