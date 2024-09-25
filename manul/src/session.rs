@@ -3,7 +3,8 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use crate::error::{Evidence, LocalError, RemoteError};
 use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
 use crate::round::{
-    Artifact, DirectMessage, FirstRound, Payload, ProtocolError, ReceiveError, RoundId,
+    Artifact, DirectMessage, FinalizeOutcome, FirstRound, Payload, ProtocolError, ReceiveError,
+    RoundId,
 };
 use crate::{Error, Protocol, Round};
 
@@ -32,7 +33,7 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     }
 
     pub fn party_id(&self) -> I {
-        unimplemented!()
+        self.my_id.clone()
     }
 
     pub fn message_destinations(&self) -> BTreeSet<I> {
@@ -42,14 +43,20 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     pub fn make_message(
         &self,
         destination: &I,
-    ) -> Result<(MessageBundle<I>, Artifact), LocalError> {
+    ) -> Result<(MessageBundle<I>, ProcessedArtifact<I>), LocalError> {
         let (direct_message, artifact) = self.round.make_direct_message(destination)?;
         let echo_broadcast = self.round.make_echo_broadcast()?;
 
         let bundle =
             MessageBundle::new(&self.my_id, self.round.id(), direct_message, echo_broadcast);
 
-        Ok((bundle, artifact))
+        Ok((
+            bundle,
+            ProcessedArtifact {
+                destination: destination.clone(),
+                artifact,
+            },
+        ))
     }
 
     pub fn verify_message(
@@ -63,13 +70,16 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     pub fn process_message(
         &self,
         message: VerifiedMessageBundle<I>,
-    ) -> Result<ProcessedMessage, Error<I, P>> {
+    ) -> Result<ProcessedMessage<I>, Error<I, P>> {
         match self.round.receive_message(
             message.from(),
             message.echo_broadcast().cloned(),
             message.direct_message().clone(),
         ) {
-            Ok(payload) => Ok(ProcessedMessage { payload }),
+            Ok(payload) => Ok(ProcessedMessage {
+                from: message.from().clone(),
+                payload,
+            }),
             Err(error) => match error {
                 ReceiveError::InvalidMessage => unimplemented!(),
                 ReceiveError::Protocol(error) => {
@@ -81,15 +91,27 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
         }
     }
 
-    pub fn make_accumulator(&self) -> RoundAccumulator {
-        unimplemented!()
+    pub fn make_accumulator(&self) -> RoundAccumulator<I> {
+        RoundAccumulator::new()
     }
 
     pub fn finalize_round(
         self,
-        accum: RoundAccumulator,
+        accum: RoundAccumulator<I>,
     ) -> Result<RoundOutcome<I, P>, Error<I, P>> {
-        unimplemented!()
+        match self.round.finalize(accum.payloads, accum.artifacts) {
+            Ok(result) => Ok(match result {
+                FinalizeOutcome::Result(result) => RoundOutcome::Result(result),
+                FinalizeOutcome::AnotherRound(round) => RoundOutcome::AnotherRound {
+                    session: Session {
+                        my_id: self.my_id,
+                        round,
+                        messages: BTreeMap::new(),
+                    },
+                },
+            }),
+            Err(error) => unimplemented!(),
+        }
     }
 
     fn prepare_evidence(
@@ -114,15 +136,26 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     }
 }
 
-pub struct RoundAccumulator;
+pub struct RoundAccumulator<I> {
+    payloads: BTreeMap<I, Payload>,
+    artifacts: BTreeMap<I, Artifact>,
+}
 
-impl RoundAccumulator {
-    pub fn add_artifact(&mut self, artifact: Artifact) {
-        unimplemented!()
+impl<I: Clone + Ord> RoundAccumulator<I> {
+    pub fn new() -> Self {
+        Self {
+            payloads: BTreeMap::new(),
+            artifacts: BTreeMap::new(),
+        }
     }
 
-    pub fn add_processed_message(&mut self, processed: ProcessedMessage) {
-        unimplemented!()
+    pub fn add_artifact(&mut self, processed: ProcessedArtifact<I>) {
+        self.artifacts
+            .insert(processed.destination, processed.artifact);
+    }
+
+    pub fn add_processed_message(&mut self, processed: ProcessedMessage<I>) {
+        self.payloads.insert(processed.from, processed.payload);
     }
 }
 
@@ -130,6 +163,12 @@ pub struct VerifiedMessage<I> {
     from: I,
 }
 
-pub struct ProcessedMessage {
+pub struct ProcessedArtifact<I> {
+    destination: I,
+    artifact: Artifact,
+}
+
+pub struct ProcessedMessage<I> {
+    from: I,
     payload: Payload,
 }

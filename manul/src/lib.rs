@@ -7,7 +7,7 @@ mod error;
 mod message;
 mod round;
 mod session;
-mod test_utils;
+pub mod test_utils;
 
 pub use error::{Error, LocalError};
 pub use round::{

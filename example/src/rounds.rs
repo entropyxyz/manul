@@ -29,6 +29,13 @@ impl Protocol for MyProto {
     type CorrectnessProof = ();
 }
 
+impl FirstRound<Id> for Round1 {
+    type Inputs = ();
+    fn new(_inputs: Self::Inputs) -> Result<Self, LocalError> {
+        Ok(Self)
+    }
+}
+
 impl Round<Id> for Round1 {
     type Protocol = MyProto;
 
@@ -67,10 +74,18 @@ impl Round<Id> for Round1 {
     }
 }
 
-#[test]
-fn round() {
-    let r1 = Round1;
+#[cfg(test)]
+mod tests {
+    use alloc::collections::BTreeMap;
+    use manul::test_utils::{run_sync, RunOutcome};
 
-    let boxed_r1: Box<dyn Round<Id, Protocol = MyProto>> = Box::new(r1);
-    let _result = boxed_r1.finalize(BTreeMap::new(), BTreeMap::new());
+    use super::{Id, Round1};
+
+    #[test]
+    fn round() {
+        let results = run_sync::<Id, Round1>(BTreeMap::from([(Id(1), ()), (Id(2), ())])).unwrap();
+        for (_id, result) in results {
+            assert!(matches!(result, RunOutcome::Result(_)));
+        }
+    }
 }

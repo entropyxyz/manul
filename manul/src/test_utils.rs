@@ -1,19 +1,23 @@
 use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 
-use crate::{Error, FirstRound, Protocol, Round, RoundOutcome, Session};
+use crate::{Error, FirstRound, Protocol, RoundOutcome, Session};
 
-pub fn run_sync<I, R, P>(
+pub enum RunOutcome<I, P: Protocol> {
+    Result(P::Result),
+    Error(Error<I, P>),
+}
+
+pub fn run_sync<I, R>(
     inputs: BTreeMap<I, R::Inputs>,
-) -> BTreeMap<I, Result<P::Result, Error<I, P>>>
+) -> Result<BTreeMap<I, RunOutcome<I, R::Protocol>>, String>
 where
     I: Debug + Clone + Eq + Ord,
-    R: FirstRound<I> + Round<I, Protocol = P> + 'static,
-    P: Protocol,
+    R: FirstRound<I> + 'static,
 {
     let mut sessions = inputs
         .into_iter()
-        .map(|(id, inputs)| (id.clone(), Session::<I, P>::new::<R>(id, inputs)))
+        .map(|(id, inputs)| (id.clone(), Session::<I, R::Protocol>::new::<R>(id, inputs)))
         .collect::<BTreeMap<_, _>>();
 
     let mut results = BTreeMap::new();
@@ -60,20 +64,20 @@ where
             match result {
                 Ok(result) => match result {
                     RoundOutcome::Result(result) => {
-                        results.insert(id.clone(), Ok(result));
+                        results.insert(id.clone(), RunOutcome::Result(result));
                     }
                     RoundOutcome::AnotherRound { session } => {
                         sessions.insert(id.clone(), session);
                     }
                 },
                 Err(result) => {
-                    results.insert(id.clone(), Err(result));
+                    results.insert(id.clone(), RunOutcome::Error(result));
                 }
             }
         }
 
         if sessions.is_empty() {
-            return results;
+            return Ok(results);
         }
     }
 }
