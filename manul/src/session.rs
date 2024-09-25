@@ -3,7 +3,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use crate::error::{Evidence, LocalError, RemoteError};
 use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
 use crate::round::{
-    Artifact, DirectMessage, FirstRound, Payload, ProtocolError, RoundId, VerificationError,
+    Artifact, DirectMessage, FirstRound, Payload, ProtocolError, ReceiveError, RoundId,
 };
 use crate::{Error, Protocol, Round};
 
@@ -13,7 +13,7 @@ pub struct Session<I, P> {
     messages: BTreeMap<RoundId, BTreeMap<I, SignedMessage<I, DirectMessage>>>,
 }
 
-pub enum FinalizeOutcome<I, P: Protocol> {
+pub enum RoundOutcome<I, P: Protocol> {
     Result(P::Result),
     AnotherRound { session: Session<I, P> },
 }
@@ -66,13 +66,13 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     ) -> Result<ProcessedMessage, Error<I, P>> {
         match self.round.receive_message(
             message.from(),
-            message.echo_broadcast(),
-            message.direct_message(),
+            message.echo_broadcast().cloned(),
+            message.direct_message().clone(),
         ) {
             Ok(payload) => Ok(ProcessedMessage { payload }),
             Err(error) => match error {
-                VerificationError::InvalidMessage => unimplemented!(),
-                VerificationError::Protocol(error) => {
+                ReceiveError::InvalidMessage => unimplemented!(),
+                ReceiveError::Protocol(error) => {
                     let from = message.from().clone();
                     let (echo, dm) = message.into_unverified();
                     Err(Error::Protocol(self.prepare_evidence(&from, &dm, error)))
@@ -88,7 +88,7 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     pub fn finalize_round(
         self,
         accum: RoundAccumulator,
-    ) -> Result<FinalizeOutcome<I, P>, Error<I, P>> {
+    ) -> Result<RoundOutcome<I, P>, Error<I, P>> {
         unimplemented!()
     }
 

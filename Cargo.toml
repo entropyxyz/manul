@@ -1,6 +1,6 @@
-[package]
-name = "manul"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
+[workspace]
+members = [
+    "example",
+    "manul",
+]
+resolver = "2"

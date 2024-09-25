@@ -4,13 +4,13 @@ use core::fmt::Debug;
 
 use crate::error::LocalError;
 
-pub enum VerificationError<P: Protocol> {
+pub enum ReceiveError<P: Protocol> {
     InvalidMessage,
     Protocol(P::ProtocolError),
 }
 
 pub enum FinalizeOutcome<I, P: Protocol> {
-    Round(Box<dyn Round<I, Protocol = P>>),
+    AnotherRound(Box<dyn Round<I, Protocol = P>>),
     Result(P::Result),
 }
 
@@ -41,6 +41,16 @@ pub struct Payload(pub Box<dyn Any>);
 
 pub struct Artifact(pub Box<dyn Any>);
 
+impl Artifact {
+    pub fn new<T: 'static>(artifact: T) -> Self {
+        Self(Box::new(artifact))
+    }
+
+    pub fn empty() -> Self {
+        Self::new(())
+    }
+}
+
 pub trait FirstRound<I>: Round<I> + Sized {
     type Inputs;
     fn new(inputs: Self::Inputs) -> Result<Self, LocalError>;
@@ -64,9 +74,9 @@ pub trait Round<I> {
     fn receive_message(
         &self,
         from: &I,
-        echo_broadcast: Option<&EchoBroadcast>,
-        direct_message: &DirectMessage,
-    ) -> Result<Payload, VerificationError<Self::Protocol>>;
+        echo_broadcast: Option<EchoBroadcast>,
+        direct_message: DirectMessage,
+    ) -> Result<Payload, ReceiveError<Self::Protocol>>;
 
     fn finalize(
         self: Box<Self>,

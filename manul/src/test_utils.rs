@@ -1,7 +1,7 @@
 use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 
-use crate::{Error, FinalizeOutcome, FirstRound, Protocol, Round, Session};
+use crate::{Error, FirstRound, Protocol, Round, RoundOutcome, Session};
 
 pub fn run_sync<I, R, P>(
     inputs: BTreeMap<I, R::Inputs>,
@@ -59,10 +59,10 @@ where
 
             match result {
                 Ok(result) => match result {
-                    FinalizeOutcome::Result(result) => {
+                    RoundOutcome::Result(result) => {
                         results.insert(id.clone(), Ok(result));
                     }
-                    FinalizeOutcome::AnotherRound { session } => {
+                    RoundOutcome::AnotherRound { session } => {
                         sessions.insert(id.clone(), session);
                     }
                 },
