@@ -95,7 +95,7 @@ impl Round<VerifyingKey> for Round1 {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
-        1
+        RoundId::new(1)
     }
 
     fn message_destinations(&self) -> &BTreeSet<VerifyingKey> {

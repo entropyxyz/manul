@@ -20,7 +20,27 @@ pub enum FinalizeOutcome<I, P: Protocol> {
 
 pub enum FinalizeError {}
 
-pub type RoundId = u8;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct RoundId {
+    round_num: u8,
+    is_echo: bool,
+}
+
+impl RoundId {
+    pub fn new(round_num: u8) -> Self {
+        Self {
+            round_num,
+            is_echo: false,
+        }
+    }
+
+    pub(crate) fn echo(&self) -> Self {
+        Self {
+            round_num: self.round_num,
+            is_echo: true,
+        }
+    }
+}
 
 pub trait Protocol: Debug {
     type Result;
