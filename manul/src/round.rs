@@ -76,6 +76,23 @@ impl EchoBroadcast {
 
 pub struct Payload(pub Box<dyn Any>);
 
+impl Payload {
+    pub fn new<T: 'static>(payload: T) -> Self {
+        Self(Box::new(payload))
+    }
+
+    pub fn empty() -> Self {
+        Self::new(())
+    }
+
+    pub fn try_to_typed<T: 'static>(self) -> Result<T, String> {
+        Ok(*(self
+            .0
+            .downcast::<T>()
+            .map_err(|_| format!("Failed to downcast into {}", core::any::type_name::<T>()))?))
+    }
+}
+
 pub struct Artifact(pub Box<dyn Any>);
 
 impl Artifact {
@@ -86,11 +103,18 @@ impl Artifact {
     pub fn empty() -> Self {
         Self::new(())
     }
+
+    pub fn try_to_typed<T: 'static>(self) -> Result<T, String> {
+        Ok(*(self
+            .0
+            .downcast::<T>()
+            .map_err(|_| format!("Failed to downcast into {}", core::any::type_name::<T>()))?))
+    }
 }
 
 pub trait FirstRound<I>: Round<I> + Sized {
     type Inputs;
-    fn new(inputs: Self::Inputs) -> Result<Self, LocalError>;
+    fn new(id: I, inputs: Self::Inputs) -> Result<Self, LocalError>;
 }
 
 pub trait Round<I> {
@@ -101,7 +125,7 @@ pub trait Round<I> {
         BTreeSet::new()
     }
 
-    fn message_destinations(&self) -> BTreeSet<I>;
+    fn message_destinations(&self) -> &BTreeSet<I>;
     fn make_direct_message(&self, destination: &I)
         -> Result<(DirectMessage, Artifact), LocalError>;
     fn make_echo_broadcast(&self) -> Result<Option<EchoBroadcast>, LocalError> {
@@ -120,4 +144,11 @@ pub trait Round<I> {
         payloads: BTreeMap<I, Payload>,
         artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError>;
+
+    // Do we need to take `artifacts` here? Can we just judge by payloads?
+    fn can_finalize(
+        &self,
+        payloads: &BTreeMap<I, Payload>,
+        artifacts: &BTreeMap<I, Artifact>,
+    ) -> bool;
 }

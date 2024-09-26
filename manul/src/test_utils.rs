@@ -4,6 +4,7 @@ use core::fmt::Debug;
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::{Error, FirstRound, Protocol, RoundOutcome, Session};
 
+#[derive(Debug, Clone)]
 pub enum RunOutcome<P: Protocol, Verifier, S> {
     Result(P::Result),
     Error(Error<P, Verifier, S>),

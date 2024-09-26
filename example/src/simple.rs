@@ -5,8 +5,6 @@ use manul::*;
 use serde::{Deserialize, Serialize};
 use sha3::Sha3_256;
 
-struct Round1;
-
 #[derive(Debug)]
 struct SimpleProtocol;
 
@@ -44,10 +42,52 @@ impl Protocol for SimpleProtocol {
     }
 }
 
+struct Inputs {
+    all_ids: BTreeSet<VerifyingKey>,
+}
+
+struct Context {
+    id: VerifyingKey,
+    other_ids: BTreeSet<VerifyingKey>,
+    ids_to_positions: BTreeMap<VerifyingKey, u8>,
+}
+
+struct Round1 {
+    context: Context,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Round1Message {
+    my_position: u8,
+    your_position: u8,
+}
+
+struct Round1Payload {
+    x: u8,
+}
+
 impl FirstRound<VerifyingKey> for Round1 {
-    type Inputs = ();
-    fn new(_inputs: Self::Inputs) -> Result<Self, LocalError> {
-        Ok(Self)
+    type Inputs = Inputs;
+    fn new(id: VerifyingKey, inputs: Self::Inputs) -> Result<Self, LocalError> {
+        // Just some numbers associated with IDs to use in the dummy protocol.
+        // They will be the same on each node since IDs are ordered.
+        let ids_to_positions = inputs
+            .all_ids
+            .iter()
+            .enumerate()
+            .map(|(idx, id)| (id.clone(), idx as u8))
+            .collect::<BTreeMap<_, _>>();
+
+        let mut ids = inputs.all_ids;
+        ids.remove(&id);
+
+        Ok(Self {
+            context: Context {
+                id,
+                other_ids: ids,
+                ids_to_positions,
+            },
+        })
     }
 }
 
@@ -58,15 +98,19 @@ impl Round<VerifyingKey> for Round1 {
         1
     }
 
-    fn message_destinations(&self) -> BTreeSet<VerifyingKey> {
-        BTreeSet::from([])
+    fn message_destinations(&self) -> &BTreeSet<VerifyingKey> {
+        &self.context.other_ids
     }
 
     fn make_direct_message(
         &self,
-        _destination: &VerifyingKey,
+        destination: &VerifyingKey,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
-        let dm = DirectMessage::new::<SimpleProtocol, _>(&[1u8, 2, 3]).unwrap();
+        let message = Round1Message {
+            my_position: self.context.ids_to_positions[&self.context.id],
+            your_position: self.context.ids_to_positions[destination],
+        };
+        let dm = DirectMessage::new::<SimpleProtocol, _>(&message).unwrap();
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }
@@ -75,41 +119,83 @@ impl Round<VerifyingKey> for Round1 {
         &self,
         _from: &VerifyingKey,
         _echo_broadcast: Option<EchoBroadcast>,
-        _direct_message: DirectMessage,
+        direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Self::Protocol>> {
-        Ok(Payload(Box::new(1)))
+        let message = direct_message
+            .try_deserialize::<SimpleProtocol, Round1Message>()
+            .map_err(|_| ReceiveError::InvalidMessage)?;
+
+        if self.context.ids_to_positions[&self.context.id] != message.your_position {
+            return Err(ReceiveError::Protocol(SimpleProtocolError));
+        }
+
+        Ok(Payload::new(Round1Payload {
+            x: message.my_position,
+        }))
     }
 
     fn finalize(
         self: Box<Self>,
-        _payloads: BTreeMap<VerifyingKey, Payload>,
+        payloads: BTreeMap<VerifyingKey, Payload>,
         _artifacts: BTreeMap<VerifyingKey, Artifact>,
     ) -> Result<FinalizeOutcome<VerifyingKey, Self::Protocol>, FinalizeError> {
-        Ok(FinalizeOutcome::Result(1))
+        let typed_payloads = payloads
+            .into_values()
+            .map(|payload| payload.try_to_typed::<Round1Payload>().unwrap())
+            .collect::<Vec<_>>();
+        let sum = self.context.ids_to_positions[&self.context.id]
+            + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
+        Ok(FinalizeOutcome::Result(sum))
+    }
+
+    fn can_finalize(
+        &self,
+        payloads: &BTreeMap<VerifyingKey, Payload>,
+        _artifacts: &BTreeMap<VerifyingKey, Artifact>,
+    ) -> bool {
+        payloads
+            .keys()
+            .all(|from| self.context.other_ids.contains(from))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloc::collections::BTreeSet;
+
     use k256::ecdsa::{Signature, SigningKey, VerifyingKey};
     use manul::test_utils::{run_sync, RunOutcome};
     use rand_core::OsRng;
 
-    use super::Round1;
+    use super::{Inputs, Round1};
 
     #[test]
     fn round() {
         let signers = (0..3)
             .map(|_| SigningKey::random(&mut OsRng))
             .collect::<Vec<_>>();
+        let all_ids = signers
+            .iter()
+            .map(|signer| signer.verifying_key().clone())
+            .collect::<BTreeSet<_>>();
         let inputs = signers
             .into_iter()
-            .map(|signer| (signer, ()))
+            .map(|signer| {
+                (
+                    signer,
+                    Inputs {
+                        all_ids: all_ids.clone(),
+                    },
+                )
+            })
             .collect::<Vec<_>>();
 
         let results = run_sync::<Round1, SigningKey, VerifyingKey, Signature>(inputs).unwrap();
         for (_id, result) in results {
             assert!(matches!(result, RunOutcome::Result(_)));
+            if let RunOutcome::Result(x) = result {
+                assert_eq!(x, 0 + 1 + 2);
+            }
         }
     }
 }

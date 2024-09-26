@@ -36,8 +36,8 @@ where
     where
         R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
-        let round = R::new(inputs).unwrap();
         let verifier = signer.verifying_key();
+        let round = R::new(verifier.clone(), inputs).unwrap();
         Self {
             signer,
             verifier,
@@ -51,7 +51,7 @@ where
         self.verifier.clone()
     }
 
-    pub fn message_destinations(&self) -> BTreeSet<Verifier> {
+    pub fn message_destinations(&self) -> &BTreeSet<Verifier> {
         self.round.message_destinations()
     }
 
@@ -133,6 +133,10 @@ where
             }),
             Err(error) => unimplemented!(),
         }
+    }
+
+    pub fn can_finalize(&self, accum: &RoundAccumulator<Verifier>) -> bool {
+        self.round.can_finalize(&accum.payloads, &accum.artifacts)
     }
 
     fn prepare_evidence(
