@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "example",
+    "manul",
+]
+resolver = "2"

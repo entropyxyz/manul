@@ -1,0 +1,15 @@
+[package]
+name = "manul"
+version = "0.1.0"
+edition = "2021"
+authors = ['Entropy Cryptography <engineering@entropy.xyz>']
+license = "AGPL-3.0-or-later"
+description = "Generic library for round-based protocols"
+repository = "https://github.com/entropyxyz/manul"
+readme = "../README.md"
+categories = ["cryptography", "no-std"]
+
+[dependencies]
+serde = { version = "1", default-features = false, features = ["serde_derive"] }
+digest = "0.10"
+signature = { version = "2", features = ["digest"] }
