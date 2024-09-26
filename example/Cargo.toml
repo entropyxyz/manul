@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 manul = { path = "../manul" }
+bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
+serde = "1"

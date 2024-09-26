@@ -1,5 +1,6 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 
+use serde::{Deserialize, Serialize};
 use manul::*;
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
@@ -8,12 +9,12 @@ struct Id(u8);
 struct Round1;
 
 #[derive(Debug)]
-struct MyProto;
+struct SimpleProtocol;
 
 #[derive(Debug, Clone)]
-struct MyProtoError;
+struct SimpleProtocolError;
 
-impl ProtocolError for MyProtoError {
+impl ProtocolError for SimpleProtocolError {
     fn verify(
         &self,
         _message: &DirectMessage,
@@ -23,10 +24,21 @@ impl ProtocolError for MyProtoError {
     }
 }
 
-impl Protocol for MyProto {
+impl Protocol for SimpleProtocol {
     type Result = u8;
-    type ProtocolError = MyProtoError;
+    type ProtocolError = SimpleProtocolError;
     type CorrectnessProof = ();
+
+    type SerializationError = bincode::error::EncodeError;
+    type DeserializationError = bincode::error::DecodeError;
+
+    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, Self::SerializationError> {
+        bincode::serde::encode_to_vec(value, bincode::config::standard()).map(|vec| vec.into())
+    }
+
+    fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Self::DeserializationError> {
+        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
+    }
 }
 
 impl FirstRound<Id> for Round1 {
@@ -37,7 +49,7 @@ impl FirstRound<Id> for Round1 {
 }
 
 impl Round<Id> for Round1 {
-    type Protocol = MyProto;
+    type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
         1
@@ -51,7 +63,7 @@ impl Round<Id> for Round1 {
         &self,
         _destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
-        let dm = DirectMessage(vec![1, 2, 3].into());
+        let dm = DirectMessage::new::<SimpleProtocol, _>(&[1u8, 2, 3]).unwrap();
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }

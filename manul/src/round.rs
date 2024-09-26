@@ -2,6 +2,8 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::any::Any;
 use core::fmt::Debug;
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::LocalError;
 
 pub enum ReceiveError<P: Protocol> {
@@ -22,6 +24,12 @@ pub trait Protocol: Debug {
     type Result;
     type ProtocolError: ProtocolError;
     type CorrectnessProof;
+    type SerializationError: serde::ser::Error;
+    type DeserializationError: serde::de::Error;
+
+    // TODO: should we take inputs by value?
+    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, Self::SerializationError>;
+    fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Self::DeserializationError>;
 }
 
 pub trait ProtocolError: Debug + Clone {
@@ -32,7 +40,17 @@ pub trait ProtocolError: Debug + Clone {
 }
 
 #[derive(Debug, Clone)]
-pub struct DirectMessage(pub Box<[u8]>);
+pub struct DirectMessage(Box<[u8]>);
+
+impl DirectMessage {
+    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, P::SerializationError> {
+        P::serialize(message).map(Self)
+    }
+
+    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, P::DeserializationError> {
+        P::deserialize(&self.0)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EchoBroadcast(pub Box<[u8]>);
