@@ -1,30 +1,50 @@
+use serde::Serialize;
+
 use crate::error::RemoteError;
 use crate::round::{DirectMessage, EchoBroadcast, RoundId};
+use crate::signing::{Digest, DigestSigner, DigestVerifier};
+use crate::Protocol;
 
 #[derive(Debug, Clone)]
-pub struct SignedMessage<I, M> {
-    signature: I,
+pub struct SignedMessage<S, M> {
+    signature: S,
     message: MessageWithMetadata<M>,
 }
 
-impl<I: Clone, M> SignedMessage<I, M> {
-    pub fn new(signer: &I, round_id: RoundId, message: M) -> Self {
-        Self {
-            signature: signer.clone(),
-            message: MessageWithMetadata { round_id, message },
-        }
+impl<S, M> SignedMessage<S, M> {
+    pub fn new<P: Protocol, Signer>(signer: &Signer, round_id: RoundId, message: M) -> Self
+    where
+        M: Serialize,
+        Signer: DigestSigner<P::Digest, S>,
+    {
+        let message = MessageWithMetadata { round_id, message };
+        let message_bytes = P::serialize(&message).unwrap();
+        let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        let signature = signer.try_sign_digest(digest).unwrap();
+        Self { signature, message }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MessageWithMetadata<M> {
     round_id: RoundId,
     message: M,
 }
 
-impl<I: PartialEq, M> SignedMessage<I, M> {
-    pub fn verify(self, id: &I) -> Result<VerifiedMessage<I, M>, RemoteError> {
-        if &self.signature == id {
+impl<S, M> SignedMessage<S, M>
+where
+    M: Serialize,
+{
+    pub fn verify<P: Protocol, Verifier>(
+        self,
+        verifier: &Verifier,
+    ) -> Result<VerifiedMessage<S, M>, RemoteError>
+    where
+        Verifier: DigestVerifier<P::Digest, S>,
+    {
+        let message_bytes = P::serialize(&self.message).unwrap();
+        let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        if verifier.verify_digest(digest, &self.signature).is_ok() {
             Ok(VerifiedMessage {
                 signature: self.signature,
                 message: self.message,
@@ -36,12 +56,12 @@ impl<I: PartialEq, M> SignedMessage<I, M> {
 }
 
 #[derive(Debug, Clone)]
-pub struct VerifiedMessage<I, M> {
-    signature: I,
+pub struct VerifiedMessage<S, M> {
+    signature: S,
     message: MessageWithMetadata<M>,
 }
 
-impl<I, M> VerifiedMessage<I, M> {
+impl<S, M> VerifiedMessage<S, M> {
     pub fn round_id(&self) -> RoundId {
         self.message.round_id
     }
@@ -50,7 +70,7 @@ impl<I, M> VerifiedMessage<I, M> {
         &self.message.message
     }
 
-    pub fn into_unverified(self) -> SignedMessage<I, M> {
+    pub fn into_unverified(self) -> SignedMessage<S, M> {
         SignedMessage {
             signature: self.signature,
             message: self.message,
@@ -59,31 +79,42 @@ impl<I, M> VerifiedMessage<I, M> {
 }
 
 #[derive(Clone, Debug)]
-pub struct MessageBundle<I> {
-    direct_message: SignedMessage<I, DirectMessage>,
-    echo_broadcast: Option<SignedMessage<I, EchoBroadcast>>,
+pub struct MessageBundle<S> {
+    direct_message: SignedMessage<S, DirectMessage>,
+    echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
 }
 
-impl<I: PartialEq + Clone> MessageBundle<I> {
-    pub fn new(
-        signer: &I,
+impl<S: PartialEq + Clone> MessageBundle<S> {
+    pub fn new<P, Signer>(
+        signer: &Signer,
         round_id: RoundId,
         direct_message: DirectMessage,
         echo_broadcast: Option<EchoBroadcast>,
-    ) -> Self {
-        let direct_message = SignedMessage::new(signer, round_id, direct_message);
-        let echo_broadcast = echo_broadcast.map(|echo| SignedMessage::new(signer, round_id, echo));
+    ) -> Self
+    where
+        P: Protocol,
+        Signer: DigestSigner<P::Digest, S>,
+    {
+        let direct_message = SignedMessage::new::<P, _>(signer, round_id, direct_message);
+        let echo_broadcast =
+            echo_broadcast.map(|echo| SignedMessage::new::<P, _>(signer, round_id, echo));
         Self {
             direct_message,
             echo_broadcast,
         }
     }
 
-    pub fn verify(self, id: &I) -> Result<VerifiedMessageBundle<I>, RemoteError> {
-        let direct_message = self.direct_message.verify(id)?;
+    pub fn verify<P: Protocol, Verifier>(
+        self,
+        verifier: &Verifier,
+    ) -> Result<VerifiedMessageBundle<Verifier, S>, RemoteError>
+    where
+        Verifier: Clone + DigestVerifier<P::Digest, S>,
+    {
+        let direct_message = self.direct_message.verify::<P, _>(verifier)?;
         let echo_broadcast = self
             .echo_broadcast
-            .map(|echo| echo.verify(id))
+            .map(|echo| echo.verify::<P, _>(verifier))
             .transpose()?;
         if !echo_broadcast
             .as_ref()
@@ -93,7 +124,7 @@ impl<I: PartialEq + Clone> MessageBundle<I> {
             return Err(RemoteError);
         }
         Ok(VerifiedMessageBundle {
-            from: id.clone(),
+            from: verifier.clone(),
             direct_message,
             echo_broadcast,
         })
@@ -101,18 +132,18 @@ impl<I: PartialEq + Clone> MessageBundle<I> {
 }
 
 #[derive(Clone, Debug)]
-pub struct VerifiedMessageBundle<I> {
-    from: I,
-    direct_message: VerifiedMessage<I, DirectMessage>,
-    echo_broadcast: Option<VerifiedMessage<I, EchoBroadcast>>,
+pub struct VerifiedMessageBundle<Verifier, S> {
+    from: Verifier,
+    direct_message: VerifiedMessage<S, DirectMessage>,
+    echo_broadcast: Option<VerifiedMessage<S, EchoBroadcast>>,
 }
 
-impl<I> VerifiedMessageBundle<I> {
+impl<Verifier, S> VerifiedMessageBundle<Verifier, S> {
     pub fn round_id(&self) -> RoundId {
         self.direct_message.round_id()
     }
 
-    pub fn from(&self) -> &I {
+    pub fn from(&self) -> &Verifier {
         &self.from
     }
 
@@ -123,8 +154,8 @@ impl<I> VerifiedMessageBundle<I> {
     pub fn into_unverified(
         self,
     ) -> (
-        Option<SignedMessage<I, EchoBroadcast>>,
-        SignedMessage<I, DirectMessage>,
+        Option<SignedMessage<S, EchoBroadcast>>,
+        SignedMessage<S, DirectMessage>,
     ) {
         let direct_message = self.direct_message.into_unverified();
         let echo_broadcast = self.echo_broadcast.map(|echo| echo.into_unverified());

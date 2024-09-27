@@ -1,4 +1,5 @@
 use alloc::collections::{BTreeMap, BTreeSet};
+use core::marker::PhantomData;
 
 use crate::error::{Evidence, LocalError, RemoteError};
 use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
@@ -6,49 +7,67 @@ use crate::round::{
     Artifact, DirectMessage, FinalizeOutcome, FirstRound, Payload, ProtocolError, ReceiveError,
     RoundId,
 };
+use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::{Error, Protocol, Round};
 
-pub struct Session<I, P> {
-    my_id: I,
-    round: Box<dyn Round<I, Protocol = P>>,
-    messages: BTreeMap<RoundId, BTreeMap<I, SignedMessage<I, DirectMessage>>>,
+pub struct Session<P, Signer, Verifier, S> {
+    signer: Signer,
+    verifier: Verifier,
+    round: Box<dyn Round<Verifier, Protocol = P>>,
+    messages: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, DirectMessage>>>,
+    phantom: PhantomData<S>,
 }
 
-pub enum RoundOutcome<I, P: Protocol> {
+pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
     Result(P::Result),
-    AnotherRound { session: Session<I, P> },
+    AnotherRound {
+        session: Session<P, Signer, Verifier, S>,
+    },
 }
 
-impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
-    pub fn new<R>(my_id: I, inputs: R::Inputs) -> Self
+impl<P, Signer, Verifier, S> Session<P, Signer, Verifier, S>
+where
+    P: Protocol,
+    Signer: DigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
+    Verifier: Clone + Eq + Ord + DigestVerifier<P::Digest, S>,
+    S: Clone + Eq,
+{
+    pub fn new<R>(signer: Signer, inputs: R::Inputs) -> Self
     where
-        R: FirstRound<I> + Round<I, Protocol = P> + 'static,
+        R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
-        let round = R::new(inputs).unwrap();
+        let verifier = signer.verifying_key();
+        let round = R::new(verifier.clone(), inputs).unwrap();
         Self {
-            my_id,
+            signer,
+            verifier,
             round: Box::new(round),
             messages: BTreeMap::new(),
+            phantom: PhantomData,
         }
     }
 
-    pub fn party_id(&self) -> I {
-        self.my_id.clone()
+    pub fn verifier(&self) -> Verifier {
+        self.verifier.clone()
     }
 
-    pub fn message_destinations(&self) -> BTreeSet<I> {
+    pub fn message_destinations(&self) -> &BTreeSet<Verifier> {
         self.round.message_destinations()
     }
 
     pub fn make_message(
         &self,
-        destination: &I,
-    ) -> Result<(MessageBundle<I>, ProcessedArtifact<I>), LocalError> {
+        destination: &Verifier,
+    ) -> Result<(MessageBundle<S>, ProcessedArtifact<Verifier>), LocalError> {
         let (direct_message, artifact) = self.round.make_direct_message(destination)?;
         let echo_broadcast = self.round.make_echo_broadcast()?;
 
-        let bundle =
-            MessageBundle::new(&self.my_id, self.round.id(), direct_message, echo_broadcast);
+        let bundle = MessageBundle::new::<P, _>(
+            &self.signer,
+            self.round.id(),
+            direct_message,
+            echo_broadcast,
+        );
 
         Ok((
             bundle,
@@ -61,16 +80,16 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
 
     pub fn verify_message(
         &self,
-        from: &I,
-        message: MessageBundle<I>,
-    ) -> Result<VerifiedMessageBundle<I>, RemoteError> {
-        message.verify(from)
+        from: &Verifier,
+        message: MessageBundle<S>,
+    ) -> Result<VerifiedMessageBundle<Verifier, S>, RemoteError> {
+        message.verify::<P, _>(from)
     }
 
     pub fn process_message(
         &self,
-        message: VerifiedMessageBundle<I>,
-    ) -> Result<ProcessedMessage<I>, Error<I, P>> {
+        message: VerifiedMessageBundle<Verifier, S>,
+    ) -> Result<ProcessedMessage<Verifier>, Error<P, Verifier, S>> {
         match self.round.receive_message(
             message.from(),
             message.echo_broadcast().cloned(),
@@ -91,22 +110,24 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
         }
     }
 
-    pub fn make_accumulator(&self) -> RoundAccumulator<I> {
+    pub fn make_accumulator(&self) -> RoundAccumulator<Verifier> {
         RoundAccumulator::new()
     }
 
     pub fn finalize_round(
         self,
-        accum: RoundAccumulator<I>,
-    ) -> Result<RoundOutcome<I, P>, Error<I, P>> {
+        accum: RoundAccumulator<Verifier>,
+    ) -> Result<RoundOutcome<P, Signer, Verifier, S>, Error<P, Verifier, S>> {
         match self.round.finalize(accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
                 FinalizeOutcome::Result(result) => RoundOutcome::Result(result),
                 FinalizeOutcome::AnotherRound(round) => RoundOutcome::AnotherRound {
                     session: Session {
-                        my_id: self.my_id,
+                        signer: self.signer,
+                        verifier: self.verifier,
                         round,
                         messages: BTreeMap::new(),
+                        phantom: PhantomData,
                     },
                 },
             }),
@@ -114,12 +135,16 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
         }
     }
 
+    pub fn can_finalize(&self, accum: &RoundAccumulator<Verifier>) -> bool {
+        self.round.can_finalize(&accum.payloads, &accum.artifacts)
+    }
+
     fn prepare_evidence(
         &self,
-        from: &I,
-        message: &SignedMessage<I, DirectMessage>,
+        from: &Verifier,
+        message: &SignedMessage<S, DirectMessage>,
         error: P::ProtocolError,
-    ) -> Evidence<I, P> {
+    ) -> Evidence<P, Verifier, S> {
         let rounds = error.required_rounds();
 
         let messages = rounds
@@ -136,12 +161,12 @@ impl<I: Clone + Eq + Ord, P: Protocol> Session<I, P> {
     }
 }
 
-pub struct RoundAccumulator<I> {
-    payloads: BTreeMap<I, Payload>,
-    artifacts: BTreeMap<I, Artifact>,
+pub struct RoundAccumulator<Verifier> {
+    payloads: BTreeMap<Verifier, Payload>,
+    artifacts: BTreeMap<Verifier, Artifact>,
 }
 
-impl<I: Clone + Ord> RoundAccumulator<I> {
+impl<Verifier: Clone + Ord> RoundAccumulator<Verifier> {
     pub fn new() -> Self {
         Self {
             payloads: BTreeMap::new(),
@@ -149,26 +174,26 @@ impl<I: Clone + Ord> RoundAccumulator<I> {
         }
     }
 
-    pub fn add_artifact(&mut self, processed: ProcessedArtifact<I>) {
+    pub fn add_artifact(&mut self, processed: ProcessedArtifact<Verifier>) {
         self.artifacts
             .insert(processed.destination, processed.artifact);
     }
 
-    pub fn add_processed_message(&mut self, processed: ProcessedMessage<I>) {
+    pub fn add_processed_message(&mut self, processed: ProcessedMessage<Verifier>) {
         self.payloads.insert(processed.from, processed.payload);
     }
 }
 
-pub struct VerifiedMessage<I> {
-    from: I,
+pub struct VerifiedMessage<Verifier> {
+    from: Verifier,
 }
 
-pub struct ProcessedArtifact<I> {
-    destination: I,
+pub struct ProcessedArtifact<Verifier> {
+    destination: Verifier,
     artifact: Artifact,
 }
 
-pub struct ProcessedMessage<I> {
-    from: I,
+pub struct ProcessedMessage<Verifier> {
+    from: Verifier,
     payload: Payload,
 }

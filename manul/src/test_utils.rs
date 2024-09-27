@@ -1,23 +1,33 @@
 use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 
+use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::{Error, FirstRound, Protocol, RoundOutcome, Session};
 
-pub enum RunOutcome<I, P: Protocol> {
+#[derive(Debug, Clone)]
+pub enum RunOutcome<P: Protocol, Verifier, S> {
     Result(P::Result),
-    Error(Error<I, P>),
+    Error(Error<P, Verifier, S>),
 }
 
-pub fn run_sync<I, R>(
-    inputs: BTreeMap<I, R::Inputs>,
-) -> Result<BTreeMap<I, RunOutcome<I, R::Protocol>>, String>
+pub fn run_sync<R, Signer, Verifier, S>(
+    inputs: Vec<(Signer, R::Inputs)>,
+) -> Result<BTreeMap<Verifier, RunOutcome<R::Protocol, Verifier, S>>, String>
 where
-    I: Debug + Clone + Eq + Ord,
-    R: FirstRound<I> + 'static,
+    R: FirstRound<Verifier> + 'static,
+    Signer: DigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
+    Verifier: Debug + Clone + Eq + Ord + DigestVerifier<<R::Protocol as Protocol>::Digest, S>,
+    S: Debug + Clone + Eq,
 {
     let mut sessions = inputs
         .into_iter()
-        .map(|(id, inputs)| (id.clone(), Session::<I, R::Protocol>::new::<R>(id, inputs)))
+        .map(|(signer, inputs)| {
+            let verifier = signer.verifying_key();
+            (
+                verifier,
+                Session::<R::Protocol, Signer, Verifier, S>::new::<R>(signer, inputs),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
 
     let mut results = BTreeMap::new();

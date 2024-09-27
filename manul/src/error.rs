@@ -2,6 +2,7 @@ use alloc::collections::BTreeMap;
 
 use crate::message::SignedMessage;
 use crate::round::{DirectMessage, Protocol, ProtocolError, RoundId};
+use crate::signing::DigestVerifier;
 
 #[derive(Debug, Clone)]
 pub struct LocalError;
@@ -10,21 +11,26 @@ pub struct LocalError;
 pub struct RemoteError;
 
 #[derive(Debug, Clone)]
-pub enum Error<I, P: Protocol> {
+pub enum Error<P: Protocol, Verifier, S> {
     Local,
     Remote,
-    Protocol(Evidence<I, P>),
+    Protocol(Evidence<P, Verifier, S>),
 }
 
 #[derive(Debug, Clone)]
-pub struct Evidence<I, P: Protocol> {
-    pub party: I,
+pub struct Evidence<P: Protocol, Verifier, S> {
+    pub party: Verifier,
     pub error: P::ProtocolError,
-    pub message: SignedMessage<I, DirectMessage>,
-    pub previous_messages: BTreeMap<RoundId, SignedMessage<I, DirectMessage>>,
+    pub message: SignedMessage<S, DirectMessage>,
+    pub previous_messages: BTreeMap<RoundId, SignedMessage<S, DirectMessage>>,
 }
 
-impl<I: PartialEq + Clone, P: Protocol> Evidence<I, P> {
+impl<P, Verifier, S> Evidence<P, Verifier, S>
+where
+    P: Protocol,
+    Verifier: PartialEq + Clone + DigestVerifier<P::Digest, S>,
+    S: Clone,
+{
     pub fn verify(&self) -> bool {
         let verified_messages = self
             .previous_messages
@@ -34,7 +40,7 @@ impl<I: PartialEq + Clone, P: Protocol> Evidence<I, P> {
                     *round,
                     message
                         .clone()
-                        .verify(&self.party)
+                        .verify::<P, _>(&self.party)
                         .unwrap()
                         .payload()
                         .clone(),
@@ -44,7 +50,7 @@ impl<I: PartialEq + Clone, P: Protocol> Evidence<I, P> {
         let message = self
             .message
             .clone()
-            .verify(&self.party)
+            .verify::<P, _>(&self.party)
             .unwrap()
             .payload()
             .clone();
