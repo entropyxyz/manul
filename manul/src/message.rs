@@ -1,11 +1,11 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::RemoteError;
 use crate::round::{DirectMessage, EchoBroadcast, RoundId};
 use crate::signing::{Digest, DigestSigner, DigestVerifier};
 use crate::Protocol;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedMessage<S, M> {
     signature: S,
     message: MessageWithMetadata<M>,
@@ -25,7 +25,7 @@ impl<S, M> SignedMessage<S, M> {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageWithMetadata<M> {
     round_id: RoundId,
     message: M,
@@ -89,15 +89,13 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
         signer: &Signer,
         round_id: RoundId,
         direct_message: DirectMessage,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
     ) -> Self
     where
         P: Protocol,
         Signer: DigestSigner<P::Digest, S>,
     {
         let direct_message = SignedMessage::new::<P, _>(signer, round_id, direct_message);
-        let echo_broadcast =
-            echo_broadcast.map(|echo| SignedMessage::new::<P, _>(signer, round_id, echo));
         Self {
             direct_message,
             echo_broadcast,

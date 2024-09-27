@@ -1,6 +1,8 @@
 use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 
+use serde::{Deserialize, Serialize};
+
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::{Error, FirstRound, Protocol, RoundOutcome, Session};
 
@@ -16,8 +18,15 @@ pub fn run_sync<R, Signer, Verifier, S>(
 where
     R: FirstRound<Verifier> + 'static,
     Signer: DigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
-    Verifier: Debug + Clone + Eq + Ord + DigestVerifier<<R::Protocol as Protocol>::Digest, S>,
-    S: Debug + Clone + Eq,
+    Verifier: Debug
+        + Clone
+        + Eq
+        + Ord
+        + DigestVerifier<<R::Protocol as Protocol>::Digest, S>
+        + 'static
+        + Serialize
+        + for<'de> Deserialize<'de>,
+    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
 {
     let mut sessions = inputs
         .into_iter()

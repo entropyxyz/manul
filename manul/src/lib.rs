@@ -3,6 +3,7 @@
 
 extern crate alloc;
 
+mod echo;
 mod error;
 mod message;
 mod round;

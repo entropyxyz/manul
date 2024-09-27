@@ -79,7 +79,7 @@ impl DirectMessage {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EchoBroadcast(#[serde(with = "serde_bytes")] Box<[u8]>);
 
 impl EchoBroadcast {
@@ -148,8 +148,8 @@ pub trait Round<I> {
     fn message_destinations(&self) -> &BTreeSet<I>;
     fn make_direct_message(&self, destination: &I)
         -> Result<(DirectMessage, Artifact), LocalError>;
-    fn make_echo_broadcast(&self) -> Result<Option<EchoBroadcast>, LocalError> {
-        Ok(None)
+    fn make_echo_broadcast(&self) -> Option<Result<EchoBroadcast, LocalError>> {
+        None
     }
 
     fn receive_message(

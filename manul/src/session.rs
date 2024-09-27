@@ -1,11 +1,14 @@
 use alloc::collections::{BTreeMap, BTreeSet};
-use core::marker::PhantomData;
+use core::fmt::Debug;
 
+use serde::{Deserialize, Serialize};
+
+use crate::echo::EchoRound;
 use crate::error::{Evidence, LocalError, RemoteError};
 use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
 use crate::round::{
-    Artifact, DirectMessage, FinalizeOutcome, FirstRound, Payload, ProtocolError, ReceiveError,
-    RoundId,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, FirstRound, Payload, ProtocolError,
+    ReceiveError, RoundId,
 };
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::{Error, Protocol, Round};
@@ -14,8 +17,9 @@ pub struct Session<P, Signer, Verifier, S> {
     signer: Signer,
     verifier: Verifier,
     round: Box<dyn Round<Verifier, Protocol = P>>,
+    message_destinations: BTreeSet<Verifier>,
+    echo_message: Option<SignedMessage<S, EchoBroadcast>>,
     messages: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, DirectMessage>>>,
-    phantom: PhantomData<S>,
 }
 
 pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
@@ -27,23 +31,41 @@ pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
 
 impl<P, Signer, Verifier, S> Session<P, Signer, Verifier, S>
 where
-    P: Protocol,
+    P: Protocol + 'static,
     Signer: DigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
-    Verifier: Clone + Eq + Ord + DigestVerifier<P::Digest, S>,
-    S: Clone + Eq,
+    Verifier: Debug
+        + Clone
+        + Eq
+        + Ord
+        + DigestVerifier<P::Digest, S>
+        + 'static
+        + Serialize
+        + for<'de> Deserialize<'de>,
+    S: Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
 {
     pub fn new<R>(signer: Signer, inputs: R::Inputs) -> Self
     where
         R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
         let verifier = signer.verifying_key();
-        let round = R::new(verifier.clone(), inputs).unwrap();
+        let first_round = Box::new(R::new(verifier.clone(), inputs).unwrap());
+        Self::new_for_next_round(signer, first_round)
+    }
+
+    fn new_for_next_round(signer: Signer, round: Box<dyn Round<Verifier, Protocol = P>>) -> Self {
+        let verifier = signer.verifying_key();
+        let echo_message = round
+            .make_echo_broadcast()
+            .map(|echo| SignedMessage::new::<P, _>(&signer, round.id(), echo.unwrap()));
+        let message_destinations = round.message_destinations().clone();
+
         Self {
             signer,
             verifier,
-            round: Box::new(round),
+            round,
+            echo_message,
+            message_destinations,
             messages: BTreeMap::new(),
-            phantom: PhantomData,
         }
     }
 
@@ -52,7 +74,7 @@ where
     }
 
     pub fn message_destinations(&self) -> &BTreeSet<Verifier> {
-        self.round.message_destinations()
+        &self.message_destinations
     }
 
     pub fn make_message(
@@ -60,13 +82,12 @@ where
         destination: &Verifier,
     ) -> Result<(MessageBundle<S>, ProcessedArtifact<Verifier>), LocalError> {
         let (direct_message, artifact) = self.round.make_direct_message(destination)?;
-        let echo_broadcast = self.round.make_echo_broadcast()?;
 
         let bundle = MessageBundle::new::<P, _>(
             &self.signer,
             self.round.id(),
             direct_message,
-            echo_broadcast,
+            self.echo_message.clone(),
         );
 
         Ok((
@@ -89,7 +110,7 @@ where
     pub fn process_message(
         &self,
         message: VerifiedMessageBundle<Verifier, S>,
-    ) -> Result<ProcessedMessage<Verifier>, Error<P, Verifier, S>> {
+    ) -> Result<ProcessedMessage<Verifier, S>, Error<P, Verifier, S>> {
         match self.round.receive_message(
             message.from(),
             message.echo_broadcast().cloned(),
@@ -97,6 +118,7 @@ where
         ) {
             Ok(payload) => Ok(ProcessedMessage {
                 from: message.from().clone(),
+                message,
                 payload,
             }),
             Err(error) => match error {
@@ -110,32 +132,38 @@ where
         }
     }
 
-    pub fn make_accumulator(&self) -> RoundAccumulator<Verifier> {
+    pub fn make_accumulator(&self) -> RoundAccumulator<Verifier, S> {
         RoundAccumulator::new()
     }
 
     pub fn finalize_round(
         self,
-        accum: RoundAccumulator<Verifier>,
+        accum: RoundAccumulator<Verifier, S>,
     ) -> Result<RoundOutcome<P, Signer, Verifier, S>, Error<P, Verifier, S>> {
+        if let Some(echo_message) = self.echo_message {
+            let echo_messages = accum.echo_messages.clone();
+            let round = Box::new(EchoRound::new(
+                echo_messages,
+                self.round,
+                accum.payloads,
+                accum.artifacts,
+            ));
+            let session = Session::new_for_next_round(self.signer, round);
+            return Ok(RoundOutcome::AnotherRound { session });
+        }
+
         match self.round.finalize(accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
                 FinalizeOutcome::Result(result) => RoundOutcome::Result(result),
                 FinalizeOutcome::AnotherRound(round) => RoundOutcome::AnotherRound {
-                    session: Session {
-                        signer: self.signer,
-                        verifier: self.verifier,
-                        round,
-                        messages: BTreeMap::new(),
-                        phantom: PhantomData,
-                    },
+                    session: Session::new_for_next_round(self.signer, round),
                 },
             }),
             Err(error) => unimplemented!(),
         }
     }
 
-    pub fn can_finalize(&self, accum: &RoundAccumulator<Verifier>) -> bool {
+    pub fn can_finalize(&self, accum: &RoundAccumulator<Verifier, S>) -> bool {
         self.round.can_finalize(&accum.payloads, &accum.artifacts)
     }
 
@@ -161,14 +189,16 @@ where
     }
 }
 
-pub struct RoundAccumulator<Verifier> {
+pub struct RoundAccumulator<Verifier, S> {
+    echo_messages: BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>,
     payloads: BTreeMap<Verifier, Payload>,
     artifacts: BTreeMap<Verifier, Artifact>,
 }
 
-impl<Verifier: Clone + Ord> RoundAccumulator<Verifier> {
+impl<Verifier: Clone + Ord, S> RoundAccumulator<Verifier, S> {
     pub fn new() -> Self {
         Self {
+            echo_messages: BTreeMap::new(),
             payloads: BTreeMap::new(),
             artifacts: BTreeMap::new(),
         }
@@ -179,7 +209,7 @@ impl<Verifier: Clone + Ord> RoundAccumulator<Verifier> {
             .insert(processed.destination, processed.artifact);
     }
 
-    pub fn add_processed_message(&mut self, processed: ProcessedMessage<Verifier>) {
+    pub fn add_processed_message(&mut self, processed: ProcessedMessage<Verifier, S>) {
         self.payloads.insert(processed.from, processed.payload);
     }
 }
@@ -193,7 +223,8 @@ pub struct ProcessedArtifact<Verifier> {
     artifact: Artifact,
 }
 
-pub struct ProcessedMessage<Verifier> {
+pub struct ProcessedMessage<Verifier, S> {
     from: Verifier,
+    message: VerifiedMessageBundle<Verifier, S>,
     payload: Payload,
 }

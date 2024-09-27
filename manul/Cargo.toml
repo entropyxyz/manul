@@ -10,6 +10,6 @@ readme = "../README.md"
 categories = ["cryptography", "no-std"]
 
 [dependencies]
-serde = { version = "1", default-features = false, features = ["serde_derive"] }
+serde = { version = "1", default-features = false, features = ["alloc", "serde_derive"] }
 digest = "0.10"
 signature = { version = "2", features = ["digest"] }

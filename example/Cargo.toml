@@ -13,5 +13,5 @@ manul = { path = "../manul" }
 bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
 serde = "1"
 sha3 = "0.10"
-k256 = "0.13"
+k256 = { version = "0.13", features = ["pem", "serde"] }
 rand_core = "0.6"

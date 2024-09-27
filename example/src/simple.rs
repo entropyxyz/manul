@@ -62,6 +62,11 @@ struct Round1Message {
     your_position: u8,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Round1Echo {
+    my_position: u8,
+}
+
 struct Round1Payload {
     x: u8,
 }
@@ -100,6 +105,14 @@ impl Round<VerifyingKey> for Round1 {
 
     fn message_destinations(&self) -> &BTreeSet<VerifyingKey> {
         &self.context.other_ids
+    }
+
+    fn make_echo_broadcast(&self) -> Option<Result<EchoBroadcast, LocalError>> {
+        let message = Round1Echo {
+            my_position: self.context.ids_to_positions[&self.context.id],
+        };
+        let echo = EchoBroadcast::new::<SimpleProtocol, _>(&message).unwrap();
+        Some(Ok(echo))
     }
 
     fn make_direct_message(
