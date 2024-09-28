@@ -19,6 +19,7 @@ pub struct Session<P, Signer, Verifier, S> {
     round: Box<dyn Round<Verifier, Protocol = P>>,
     message_destinations: BTreeSet<Verifier>,
     echo_message: Option<SignedMessage<S, EchoBroadcast>>,
+    possible_next_rounds: BTreeSet<RoundId>,
     messages: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, DirectMessage>>>,
 }
 
@@ -26,6 +27,7 @@ pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
     Result(P::Result),
     AnotherRound {
         session: Session<P, Signer, Verifier, S>,
+        cached_messages: Vec<VerifiedMessageBundle<Verifier, S>>,
     },
 }
 
@@ -59,11 +61,18 @@ where
             .map(|echo| SignedMessage::new::<P, _>(&signer, round.id(), echo.unwrap()));
         let message_destinations = round.message_destinations().clone();
 
+        let possible_next_rounds = if echo_message.is_none() {
+            round.possible_next_rounds()
+        } else {
+            BTreeSet::from([round.id().echo()])
+        };
+
         Self {
             signer,
             verifier,
             round,
             echo_message,
+            possible_next_rounds,
             message_destinations,
             messages: BTreeMap::new(),
         }
@@ -99,12 +108,20 @@ where
         ))
     }
 
-    pub fn verify_message(
+    pub fn preprocess_message(
         &self,
+        accum: &mut RoundAccumulator<Verifier, S>,
         from: &Verifier,
         message: MessageBundle<S>,
-    ) -> Result<VerifiedMessageBundle<Verifier, S>, RemoteError> {
-        message.verify::<P, _>(from)
+    ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, RemoteError> {
+        let message = message.verify::<P, _>(from)?;
+
+        if self.possible_next_rounds.contains(&message.round_id()) {
+            accum.cache_message(message);
+            Ok(None)
+        } else {
+            Ok(Some(message))
+        }
     }
 
     pub fn process_message(
@@ -141,23 +158,31 @@ where
         accum: RoundAccumulator<Verifier, S>,
     ) -> Result<RoundOutcome<P, Signer, Verifier, S>, Error<P, Verifier, S>> {
         if let Some(echo_message) = self.echo_message {
-            let echo_messages = accum.echo_messages.clone();
             let round = Box::new(EchoRound::new(
-                echo_messages,
+                accum.echo_messages,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
             ));
+            let cached_messages = filter_messages(accum.cached, round.id());
             let session = Session::new_for_next_round(self.signer, round);
-            return Ok(RoundOutcome::AnotherRound { session });
+            return Ok(RoundOutcome::AnotherRound {
+                session,
+                cached_messages,
+            });
         }
 
         match self.round.finalize(accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
                 FinalizeOutcome::Result(result) => RoundOutcome::Result(result),
-                FinalizeOutcome::AnotherRound(round) => RoundOutcome::AnotherRound {
-                    session: Session::new_for_next_round(self.signer, round),
-                },
+                FinalizeOutcome::AnotherRound(round) => {
+                    let cached_messages = filter_messages(accum.cached, round.id());
+                    let session = Session::new_for_next_round(self.signer, round);
+                    RoundOutcome::AnotherRound {
+                        cached_messages,
+                        session,
+                    }
+                }
             }),
             Err(error) => unimplemented!(),
         }
@@ -193,6 +218,7 @@ pub struct RoundAccumulator<Verifier, S> {
     echo_messages: BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>,
     payloads: BTreeMap<Verifier, Payload>,
     artifacts: BTreeMap<Verifier, Artifact>,
+    cached: BTreeMap<Verifier, BTreeMap<RoundId, VerifiedMessageBundle<Verifier, S>>>,
 }
 
 impl<Verifier: Clone + Ord, S> RoundAccumulator<Verifier, S> {
@@ -201,6 +227,7 @@ impl<Verifier: Clone + Ord, S> RoundAccumulator<Verifier, S> {
             echo_messages: BTreeMap::new(),
             payloads: BTreeMap::new(),
             artifacts: BTreeMap::new(),
+            cached: BTreeMap::new(),
         }
     }
 
@@ -211,6 +238,17 @@ impl<Verifier: Clone + Ord, S> RoundAccumulator<Verifier, S> {
 
     pub fn add_processed_message(&mut self, processed: ProcessedMessage<Verifier, S>) {
         self.payloads.insert(processed.from, processed.payload);
+    }
+
+    fn cache_message(&mut self, message: VerifiedMessageBundle<Verifier, S>) {
+        if !self.cached.contains_key(message.from()) {
+            self.cached.insert(message.from().clone(), BTreeMap::new());
+        }
+        self.cached
+            .get_mut(message.from())
+            .unwrap()
+            .insert(message.round_id(), message)
+            .unwrap();
     }
 }
 
@@ -227,4 +265,14 @@ pub struct ProcessedMessage<Verifier, S> {
     from: Verifier,
     message: VerifiedMessageBundle<Verifier, S>,
     payload: Payload,
+}
+
+fn filter_messages<Verifier, S>(
+    messages: BTreeMap<Verifier, BTreeMap<RoundId, VerifiedMessageBundle<Verifier, S>>>,
+    round_id: RoundId,
+) -> Vec<VerifiedMessageBundle<Verifier, S>> {
+    messages
+        .into_values()
+        .filter_map(|mut messages| messages.remove(&round_id))
+        .collect()
 }

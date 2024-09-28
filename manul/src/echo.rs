@@ -53,6 +53,10 @@ where
         self.main_round.id().echo()
     }
 
+    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+        self.main_round.possible_next_rounds()
+    }
+
     fn message_destinations(&self) -> &BTreeSet<I> {
         &self.destinations
     }

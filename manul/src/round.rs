@@ -35,6 +35,11 @@ impl RoundId {
     }
 
     pub(crate) fn echo(&self) -> Self {
+        // If this panic happens, there is something wrong with the internal logic
+        // of managing echo-broadcast rounds.
+        if self.is_echo {
+            panic!("This is already an echo round ID");
+        }
         Self {
             round_num: self.round_num,
             is_echo: true,
@@ -141,9 +146,7 @@ pub trait Round<I> {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
+    fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
     fn message_destinations(&self) -> &BTreeSet<I>;
     fn make_direct_message(&self, destination: &I)

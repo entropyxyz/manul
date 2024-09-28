@@ -103,6 +103,10 @@ impl Round<VerifyingKey> for Round1 {
         RoundId::new(1)
     }
 
+    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+
     fn message_destinations(&self) -> &BTreeSet<VerifyingKey> {
         &self.context.other_ids
     }
@@ -203,7 +207,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let results = run_sync::<Round1, SigningKey, VerifyingKey, Signature>(inputs).unwrap();
+        let results = run_sync::<Round1, SigningKey, VerifyingKey, Signature>(&mut OsRng, inputs).unwrap();
         for (_id, result) in results {
             assert!(matches!(result, RunOutcome::Result(_)));
             if let RunOutcome::Result(x) = result {
