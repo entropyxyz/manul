@@ -1,6 +1,8 @@
 use alloc::collections::{BTreeMap, BTreeSet};
+use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::error::LocalError;
 use crate::message::SignedMessage;
@@ -16,6 +18,7 @@ pub struct EchoRoundMessage<I: Ord, S> {
 }
 
 pub struct EchoRound<P, I, S> {
+    verifier: I,
     echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
     destinations: BTreeSet<I>,
     main_round: Box<dyn Round<I, Protocol = P>>,
@@ -23,15 +26,27 @@ pub struct EchoRound<P, I, S> {
     artifacts: BTreeMap<I, Artifact>,
 }
 
-impl<P: Protocol, I: Clone + Ord, S> EchoRound<P, I, S> {
+impl<P: Protocol, I: Debug + Clone + Ord, S> EchoRound<P, I, S> {
     pub fn new(
+        verifier: I,
+        my_echo_message: SignedMessage<S, EchoBroadcast>,
         echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
         main_round: Box<dyn Round<I, Protocol = P>>,
         payloads: BTreeMap<I, Payload>,
         artifacts: BTreeMap<I, Artifact>,
     ) -> Self {
         let destinations = echo_messages.keys().cloned().collect();
+
+        // Add our own echo message because we expect it to be sent back from other nodes.
+        let mut echo_messages = echo_messages;
+        echo_messages.insert(verifier.clone(), my_echo_message);
+
+        debug!(
+            "{:?}: initialized echo round with {:?}",
+            verifier, destinations
+        );
         Self {
+            verifier,
             echo_messages,
             destinations,
             main_round,
@@ -44,8 +59,8 @@ impl<P: Protocol, I: Clone + Ord, S> EchoRound<P, I, S> {
 impl<P, I, S> Round<I> for EchoRound<P, I, S>
 where
     P: Protocol,
-    I: Clone + Ord + Serialize + for<'de> Deserialize<'de> + Eq,
-    S: Clone + Serialize + for<'de> Deserialize<'de> + Eq,
+    I: Debug + Clone + Ord + Serialize + for<'de> Deserialize<'de> + Eq,
+    S: Debug + Clone + Serialize + for<'de> Deserialize<'de> + Eq,
 {
     type Protocol = P;
 
@@ -65,6 +80,10 @@ where
         &self,
         destination: &I,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
+        debug!(
+            "{:?}: making echo round message for {:?}",
+            self.verifier, destination
+        );
         let message = EchoRoundMessage {
             echo_messages: self.echo_messages.clone(),
         };
@@ -78,9 +97,20 @@ where
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Self::Protocol>> {
+        debug!(
+            "{:?}: received an echo message from {:?}",
+            self.verifier, from
+        );
+
         let message = direct_message
             .try_deserialize::<P, EchoRoundMessage<I, S>>()
             .unwrap();
+
+        // Insert the `from`'s echo message to what we received.
+        // It would be pointless to send it the second time,
+        // But we need it included to compare with the full set of echo messages that we have.
+        let mut echo_messages = message.echo_messages;
+        echo_messages.insert(from.clone(), self.echo_messages[from].clone());
 
         /*
            TODO: better checks. Also, which failures would be provable?
@@ -95,7 +125,11 @@ where
            - invalid signature in an entry in the received message
            - difference between messages or metadata in the entries for some verifier
         */
-        if message.echo_messages != self.echo_messages {
+        if echo_messages != self.echo_messages {
+            debug!(
+                "{:?}: echo messages mismatch: {:?}, {:?}",
+                self.verifier, echo_messages, self.echo_messages
+            );
             return Err(ReceiveError::InvalidMessage);
         }
 
@@ -115,8 +149,8 @@ where
         payloads: &BTreeMap<I, Payload>,
         _artifacts: &BTreeMap<I, Artifact>,
     ) -> bool {
-        payloads
-            .keys()
-            .all(|from| self.message_destinations().contains(from))
+        self.message_destinations()
+            .iter()
+            .all(|id| payloads.contains_key(id))
     }
 }

@@ -56,12 +56,37 @@ where
 
     let mut session = session;
     let mut accum = accum;
-    let mut cached_messages = Vec::new();
 
     let state = loop {
-        for message in cached_messages.drain(..) {
-            let processed = session.process_message(message).unwrap();
-            accum.add_processed_message(processed);
+        if session.can_finalize(&accum) {
+            debug!(
+                "{:?}: finalizing {:?}",
+                session.verifier(),
+                session.round_id(),
+            );
+            match session.finalize_round(accum) {
+                Ok(RoundOutcome::Result(result)) => break State::Result(result),
+                Err(error) => break State::Error(error),
+                Ok(RoundOutcome::AnotherRound {
+                    session: new_session,
+                    cached_messages,
+                }) => {
+                    session = new_session;
+                    accum = session.make_accumulator();
+
+                    for message in cached_messages {
+                        debug!(
+                            "Delivering cached message from {:?} to {:?}",
+                            message.from(),
+                            session.verifier()
+                        );
+                        let processed = session.process_message(message).unwrap();
+                        accum.add_processed_message(processed);
+                    }
+                }
+            }
+        } else {
+            break State::InProgress { session, accum };
         }
 
         let destinations = session.message_destinations();
@@ -73,23 +98,6 @@ where
                 message,
             });
             accum.add_artifact(artifact);
-        }
-
-        if session.can_finalize(&accum) {
-            match session.finalize_round(accum) {
-                Ok(RoundOutcome::Result(result)) => break State::Result(result),
-                Err(error) => break State::Error(error),
-                Ok(RoundOutcome::AnotherRound {
-                    session: new_session,
-                    cached_messages: new_cached_messages,
-                }) => {
-                    session = new_session;
-                    cached_messages = new_cached_messages;
-                    accum = session.make_accumulator();
-                }
-            }
-        } else {
-            break State::InProgress { session, accum };
         }
     };
 
@@ -120,7 +128,19 @@ where
         .map(|(signer, inputs)| {
             let verifier = signer.verifying_key();
             let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(signer, inputs);
-            let accum = session.make_accumulator();
+            let mut accum = session.make_accumulator();
+
+            let destinations = session.message_destinations();
+            for destination in destinations {
+                let (message, artifact) = session.make_message(destination).unwrap();
+                messages.push(Message {
+                    from: session.verifier().clone(),
+                    to: destination.clone(),
+                    message,
+                });
+                accum.add_artifact(artifact);
+            }
+
             let (state, new_messages) = propagate(session, accum);
             messages.extend(new_messages);
             (verifier, state)

@@ -126,7 +126,10 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
         &self,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
-        debug!("{:?}: making direct message", self.context.id);
+        debug!(
+            "{:?}: making direct message for {:?}",
+            self.context.id, destination
+        );
 
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
