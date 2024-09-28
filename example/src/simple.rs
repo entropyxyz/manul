@@ -1,8 +1,10 @@
 use alloc::collections::{BTreeMap, BTreeSet};
+use core::fmt::Debug;
 
 use manul::*;
 use serde::{Deserialize, Serialize};
 use sha3::Sha3_256;
+use tracing::debug;
 
 #[derive(Debug)]
 struct SimpleProtocol;
@@ -70,7 +72,7 @@ struct Round1Payload {
     x: u8,
 }
 
-impl<Id: Clone + Ord> FirstRound<Id> for Round1<Id> {
+impl<Id: Debug + Clone + Ord> FirstRound<Id> for Round1<Id> {
     type Inputs = Inputs<Id>;
     fn new(id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
         // Just some numbers associated with IDs to use in the dummy protocol.
@@ -95,7 +97,7 @@ impl<Id: Clone + Ord> FirstRound<Id> for Round1<Id> {
     }
 }
 
-impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
+impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
@@ -111,6 +113,8 @@ impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
     }
 
     fn make_echo_broadcast(&self) -> Option<Result<EchoBroadcast, LocalError>> {
+        debug!("{:?}: making echo broadcast", self.context.id);
+
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
@@ -122,6 +126,8 @@ impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
         &self,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
+        debug!("{:?}: making direct message", self.context.id);
+
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
@@ -133,10 +139,12 @@ impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
 
     fn receive_message(
         &self,
-        _from: &Id,
+        from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Self::Protocol>> {
+        debug!("{:?}: receiving message from {:?}", self.context.id, from);
+
         let message = direct_message
             .try_deserialize::<SimpleProtocol, Round1Message>()
             .map_err(|_| ReceiveError::InvalidMessage)?;
@@ -155,6 +163,12 @@ impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError> {
+        debug!(
+            "{:?}: finalizing with messages from {:?}",
+            self.context.id,
+            payloads.keys().cloned().collect::<Vec<_>>()
+        );
+
         let typed_payloads = payloads
             .into_values()
             .map(|payload| payload.try_to_typed::<Round1Payload>().unwrap())
@@ -169,9 +183,10 @@ impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
         payloads: &BTreeMap<Id, Payload>,
         _artifacts: &BTreeMap<Id, Artifact>,
     ) -> bool {
-        payloads
-            .keys()
-            .all(|from| self.context.other_ids.contains(from))
+        self.context
+            .other_ids
+            .iter()
+            .all(|id| payloads.contains_key(id))
     }
 }
 
@@ -182,6 +197,7 @@ mod tests {
     use manul::testing::{run_sync, RunOutcome, Signature, Signer, Verifier};
     use manul::Keypair;
     use rand_core::OsRng;
+    use tracing_subscriber::EnvFilter;
 
     use super::{Inputs, Round1};
 
@@ -204,8 +220,13 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let results =
-            run_sync::<Round1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs).unwrap();
+        let my_subscriber = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .finish();
+        let results = tracing::subscriber::with_default(my_subscriber, || {
+            run_sync::<Round1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs).unwrap()
+        });
+
         for (_id, result) in results {
             assert!(matches!(result, RunOutcome::Result(_)));
             if let RunOutcome::Result(x) = result {

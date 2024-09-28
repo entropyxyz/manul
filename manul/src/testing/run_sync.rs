@@ -4,6 +4,7 @@ use core::fmt::Debug;
 use rand::Rng;
 use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::message::MessageBundle;
 use crate::session::RoundAccumulator;
@@ -34,13 +35,10 @@ struct Message<Verifier, S> {
     message: MessageBundle<S>,
 }
 
-fn try_finalize<P, Signer, Verifier, S>(
-    state: State<P, Signer, Verifier, S>,
-) -> (
-    bool,
-    State<P, Signer, Verifier, S>,
-    Vec<Message<Verifier, S>>,
-)
+fn propagate<P, Signer, Verifier, S>(
+    session: Session<P, Signer, Verifier, S>,
+    accum: RoundAccumulator<Verifier, S>,
+) -> (State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>)
 where
     P: Protocol + 'static,
     Signer: DigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
@@ -54,53 +52,48 @@ where
         + for<'de> Deserialize<'de>,
     S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
 {
-    let (mut session, mut accum) = match state {
-        State::InProgress { session, accum } => (session, accum),
-        state => return (false, state, Vec::new()),
-    };
-
-    let mut state_changed = false;
     let mut messages = Vec::new();
 
-    loop {
-        (session, accum) = {
-            if !session.can_finalize(&accum) {
-                break;
-            }
+    let mut session = session;
+    let mut accum = accum;
+    let mut cached_messages = Vec::new();
 
-            let (session, cached_messages) = match session.finalize_round(accum) {
-                Ok(RoundOutcome::Result(result)) => return (true, State::Result(result), messages),
-                Err(error) => return (true, State::Error(error), messages),
-                Ok(RoundOutcome::AnotherRound {
-                    session,
-                    cached_messages,
-                }) => (session, cached_messages),
-            };
-
-            state_changed = true;
-            let mut accum = session.make_accumulator();
-
-            for message in cached_messages {
-                let processed = session.process_message(message).unwrap();
-            }
-
-            let destinations = session.message_destinations();
-            for destination in destinations.iter() {
-                let (message, artifact) = session.make_message(destination).unwrap();
-                messages.push(Message {
-                    from: session.verifier().clone(),
-                    to: destination.clone(),
-                    message,
-                });
-                accum.add_artifact(artifact);
-            }
-
-            (session, accum)
+    let state = loop {
+        for message in cached_messages.drain(..) {
+            let processed = session.process_message(message).unwrap();
+            accum.add_processed_message(processed);
         }
-    }
 
-    let new_state = State::InProgress { session, accum };
-    (state_changed, new_state, messages)
+        let destinations = session.message_destinations();
+        for destination in destinations {
+            let (message, artifact) = session.make_message(destination).unwrap();
+            messages.push(Message {
+                from: session.verifier().clone(),
+                to: destination.clone(),
+                message,
+            });
+            accum.add_artifact(artifact);
+        }
+
+        if session.can_finalize(&accum) {
+            match session.finalize_round(accum) {
+                Ok(RoundOutcome::Result(result)) => break State::Result(result),
+                Err(error) => break State::Error(error),
+                Ok(RoundOutcome::AnotherRound {
+                    session: new_session,
+                    cached_messages: new_cached_messages,
+                }) => {
+                    session = new_session;
+                    cached_messages = new_cached_messages;
+                    accum = session.make_accumulator();
+                }
+            }
+        } else {
+            break State::InProgress { session, accum };
+        }
+    };
+
+    (state, messages)
 }
 
 pub fn run_sync<R, Signer, Verifier, S>(
@@ -127,20 +120,9 @@ where
         .map(|(signer, inputs)| {
             let verifier = signer.verifying_key();
             let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(signer, inputs);
-            let mut accum = session.make_accumulator();
-
-            let destinations = session.message_destinations();
-            for destination in destinations.iter() {
-                let (message, artifact) = session.make_message(destination).unwrap();
-                messages.push(Message {
-                    from: verifier.clone(),
-                    to: destination.clone(),
-                    message,
-                });
-                accum.add_artifact(artifact);
-            }
-
-            let state = State::InProgress { session, accum };
+            let accum = session.make_accumulator();
+            let (state, new_messages) = propagate(session, accum);
+            messages.extend(new_messages);
             (verifier, state)
         })
         .collect::<BTreeMap<_, _>>();
@@ -148,41 +130,37 @@ where
     let ids = states.keys().cloned().collect::<Vec<_>>();
 
     loop {
-        // If there are no messages to deliver, check if any states can be finalized
-        let mut states_changed = false;
-        for id in ids.iter() {
-            let state = states.remove(id).unwrap();
-            let (state_changed, new_state, new_messages) = try_finalize(state);
-            messages.extend(new_messages);
-            states.insert(id.clone(), new_state);
-            states_changed |= state_changed;
-        }
-
-        // If there were no changes of state, time to return results
-        if !states_changed {
-            break;
-        }
-
         // Pick a random message and deliver it
         let message_idx = rng.gen_range(0..messages.len());
         let message = messages.swap_remove(message_idx);
 
-        let state = states.get_mut(&message.to).unwrap();
-        match state {
-            State::InProgress {
-                session,
-                ref mut accum,
-            } => {
-                let preprocessed = session
-                    .preprocess_message(accum, &message.from, message.message)
-                    .unwrap();
+        debug!(
+            "Delivering message from {:?} to {:?}",
+            message.from, message.to
+        );
 
-                if let Some(verified) = preprocessed {
-                    let processed = session.process_message(verified).unwrap();
-                    accum.add_processed_message(processed);
-                }
+        let state = states.remove(&message.to).unwrap();
+        let new_state = if let State::InProgress { session, accum } = state {
+            let mut accum = accum;
+            let preprocessed = session
+                .preprocess_message(&mut accum, &message.from, message.message)
+                .unwrap();
+
+            if let Some(verified) = preprocessed {
+                let processed = session.process_message(verified).unwrap();
+                accum.add_processed_message(processed);
             }
-            _ => (),
+
+            let (new_state, new_messages) = propagate(session, accum);
+            messages.extend(new_messages);
+            new_state
+        } else {
+            state
+        };
+        states.insert(message.to.clone(), new_state);
+
+        if messages.is_empty() {
+            break;
         }
     }
 
