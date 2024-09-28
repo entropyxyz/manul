@@ -10,7 +10,7 @@ mod round;
 mod serde_bytes;
 mod session;
 mod signing;
-pub mod test_utils;
+pub mod testing;
 
 pub use error::{Error, LocalError};
 pub use round::{

@@ -1,6 +1,5 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 
-use k256::ecdsa::VerifyingKey;
 use manul::*;
 use serde::{Deserialize, Serialize};
 use sha3::Sha3_256;
@@ -42,18 +41,18 @@ impl Protocol for SimpleProtocol {
     }
 }
 
-struct Inputs {
-    all_ids: BTreeSet<VerifyingKey>,
+struct Inputs<Id> {
+    all_ids: BTreeSet<Id>,
 }
 
-struct Context {
-    id: VerifyingKey,
-    other_ids: BTreeSet<VerifyingKey>,
-    ids_to_positions: BTreeMap<VerifyingKey, u8>,
+struct Context<Id> {
+    id: Id,
+    other_ids: BTreeSet<Id>,
+    ids_to_positions: BTreeMap<Id, u8>,
 }
 
-struct Round1 {
-    context: Context,
+struct Round1<Id> {
+    context: Context<Id>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,9 +70,9 @@ struct Round1Payload {
     x: u8,
 }
 
-impl FirstRound<VerifyingKey> for Round1 {
-    type Inputs = Inputs;
-    fn new(id: VerifyingKey, inputs: Self::Inputs) -> Result<Self, LocalError> {
+impl<Id: Clone + Ord> FirstRound<Id> for Round1<Id> {
+    type Inputs = Inputs<Id>;
+    fn new(id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
         // Just some numbers associated with IDs to use in the dummy protocol.
         // They will be the same on each node since IDs are ordered.
         let ids_to_positions = inputs
@@ -96,7 +95,7 @@ impl FirstRound<VerifyingKey> for Round1 {
     }
 }
 
-impl Round<VerifyingKey> for Round1 {
+impl<Id: Clone + Ord> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
@@ -107,7 +106,7 @@ impl Round<VerifyingKey> for Round1 {
         BTreeSet::new()
     }
 
-    fn message_destinations(&self) -> &BTreeSet<VerifyingKey> {
+    fn message_destinations(&self) -> &BTreeSet<Id> {
         &self.context.other_ids
     }
 
@@ -121,7 +120,7 @@ impl Round<VerifyingKey> for Round1 {
 
     fn make_direct_message(
         &self,
-        destination: &VerifyingKey,
+        destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
@@ -134,7 +133,7 @@ impl Round<VerifyingKey> for Round1 {
 
     fn receive_message(
         &self,
-        _from: &VerifyingKey,
+        _from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Self::Protocol>> {
@@ -153,9 +152,9 @@ impl Round<VerifyingKey> for Round1 {
 
     fn finalize(
         self: Box<Self>,
-        payloads: BTreeMap<VerifyingKey, Payload>,
-        _artifacts: BTreeMap<VerifyingKey, Artifact>,
-    ) -> Result<FinalizeOutcome<VerifyingKey, Self::Protocol>, FinalizeError> {
+        payloads: BTreeMap<Id, Payload>,
+        _artifacts: BTreeMap<Id, Artifact>,
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError> {
         let typed_payloads = payloads
             .into_values()
             .map(|payload| payload.try_to_typed::<Round1Payload>().unwrap())
@@ -167,8 +166,8 @@ impl Round<VerifyingKey> for Round1 {
 
     fn can_finalize(
         &self,
-        payloads: &BTreeMap<VerifyingKey, Payload>,
-        _artifacts: &BTreeMap<VerifyingKey, Artifact>,
+        payloads: &BTreeMap<Id, Payload>,
+        _artifacts: &BTreeMap<Id, Artifact>,
     ) -> bool {
         payloads
             .keys()
@@ -180,17 +179,15 @@ impl Round<VerifyingKey> for Round1 {
 mod tests {
     use alloc::collections::BTreeSet;
 
-    use k256::ecdsa::{Signature, SigningKey, VerifyingKey};
-    use manul::test_utils::{run_sync, RunOutcome};
+    use manul::testing::{run_sync, RunOutcome, Signature, Signer, Verifier};
+    use manul::Keypair;
     use rand_core::OsRng;
 
     use super::{Inputs, Round1};
 
     #[test]
     fn round() {
-        let signers = (0..3)
-            .map(|_| SigningKey::random(&mut OsRng))
-            .collect::<Vec<_>>();
+        let signers = (0..3).map(|id| Signer::new(id)).collect::<Vec<_>>();
         let all_ids = signers
             .iter()
             .map(|signer| signer.verifying_key().clone())
@@ -207,7 +204,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        let results = run_sync::<Round1, SigningKey, VerifyingKey, Signature>(&mut OsRng, inputs).unwrap();
+        let results =
+            run_sync::<Round1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs).unwrap();
         for (_id, result) in results {
             assert!(matches!(result, RunOutcome::Result(_)));
             if let RunOutcome::Result(x) = result {
