@@ -8,12 +8,28 @@ use crate::Protocol;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedMessage<S, M> {
     signature: S,
-    message: MessageWithMetadata<M>,
+    message_with_metadata: MessageWithMetadata<M>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct MessageMetadata {
+    round_id: RoundId,
+    // TODO: session ID
+}
+
+impl MessageMetadata {
+    pub fn new(round_id: RoundId) -> Self {
+        Self { round_id }
+    }
+
+    pub fn round_id(&self) -> RoundId {
+        self.round_id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageWithMetadata<M> {
-    round_id: RoundId,
+    metadata: MessageMetadata,
     message: M,
 }
 
@@ -44,13 +60,21 @@ where
     where
         Signer: DigestSigner<P::Digest, S>,
     {
-        let message = MessageWithMetadata { round_id, message };
-        let message_bytes = P::serialize(&message)?;
+        let metadata = MessageMetadata::new(round_id);
+        let message_with_metadata = MessageWithMetadata { metadata, message };
+        let message_bytes = P::serialize(&message_with_metadata)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = signer
             .try_sign_digest(digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
-        Ok(Self { signature, message })
+        Ok(Self {
+            signature,
+            message_with_metadata,
+        })
+    }
+
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.message_with_metadata.metadata
     }
 
     pub fn verify<P: Protocol, Verifier>(
@@ -60,12 +84,13 @@ where
     where
         Verifier: Clone + DigestVerifier<P::Digest, S>,
     {
-        let message_bytes = P::serialize(&self.message).map_err(VerificationError::Local)?;
+        let message_bytes =
+            P::serialize(&self.message_with_metadata).map_err(VerificationError::Local)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         if verifier.verify_digest(digest, &self.signature).is_ok() {
             Ok(VerifiedMessage {
                 signature: self.signature,
-                message: self.message,
+                message_with_metadata: self.message_with_metadata,
             })
         } else {
             Err(VerificationError::Remote(RemoteError::new(
@@ -79,22 +104,22 @@ where
 #[derive(Debug, Clone)]
 pub struct VerifiedMessage<S, M> {
     signature: S,
-    message: MessageWithMetadata<M>,
+    message_with_metadata: MessageWithMetadata<M>,
 }
 
 impl<S, M> VerifiedMessage<S, M> {
     pub fn round_id(&self) -> RoundId {
-        self.message.round_id
+        self.message_with_metadata.metadata.round_id
     }
 
     pub fn payload(&self) -> &M {
-        &self.message.message
+        &self.message_with_metadata.message
     }
 
     pub fn into_unverified(self) -> SignedMessage<S, M> {
         SignedMessage {
             signature: self.signature,
-            message: self.message,
+            message_with_metadata: self.message_with_metadata,
         }
     }
 }
@@ -123,6 +148,37 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
         })
     }
 
+    pub(crate) fn unify_metadata(self) -> Option<CheckedMessageBundle<S>> {
+        let metadata = self.direct_message.message_with_metadata.metadata.clone();
+        if !self
+            .echo_broadcast
+            .as_ref()
+            .map(|echo| echo.metadata() == self.direct_message.metadata())
+            .unwrap_or(true)
+        {
+            return None;
+        }
+
+        Some(CheckedMessageBundle {
+            metadata,
+            direct_message: self.direct_message,
+            echo_broadcast: self.echo_broadcast,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CheckedMessageBundle<S> {
+    metadata: MessageMetadata,
+    direct_message: SignedMessage<S, DirectMessage>,
+    echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
+}
+
+impl<S> CheckedMessageBundle<S> {
+    pub fn metadata(&self) -> &MessageMetadata {
+        &self.metadata
+    }
+
     pub fn verify<P: Protocol, Verifier>(
         self,
         verifier: &Verifier,
@@ -135,18 +191,9 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
             .echo_broadcast
             .map(|echo| echo.verify::<P, _>(verifier))
             .transpose()?;
-        if !echo_broadcast
-            .as_ref()
-            .map(|echo| echo.round_id() == direct_message.round_id())
-            .unwrap_or(true)
-        {
-            return Err(VerificationError::Remote(RemoteError::new(
-                verifier.clone(),
-                "Mismatched round IDs".into(),
-            )));
-        }
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),
+            metadata: self.metadata,
             direct_message,
             echo_broadcast,
         })
@@ -156,13 +203,14 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
 #[derive(Clone, Debug)]
 pub struct VerifiedMessageBundle<Verifier, S> {
     from: Verifier,
+    metadata: MessageMetadata,
     direct_message: VerifiedMessage<S, DirectMessage>,
     echo_broadcast: Option<VerifiedMessage<S, EchoBroadcast>>,
 }
 
 impl<Verifier, S> VerifiedMessageBundle<Verifier, S> {
-    pub fn round_id(&self) -> RoundId {
-        self.direct_message.round_id()
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.metadata
     }
 
     pub fn from(&self) -> &Verifier {

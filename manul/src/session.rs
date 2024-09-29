@@ -124,26 +124,73 @@ where
         from: &Verifier,
         message: MessageBundle<S>,
     ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, Error<P, Verifier, S>> {
-        let message = message
+        // Quick preliminary checks, before we proceed with more expensive verification
+
+        let checked_message = message.unify_metadata().ok_or_else(|| {
+            Error::Remote(RemoteError::new(
+                from.clone(),
+                "Mismatched metadata in bundled messages".into(),
+            ))
+        })?;
+        let message_round_id = checked_message.metadata().round_id();
+
+        // TODO: check session ID here
+
+        if message_round_id == self.round_id() {
+            if accum.message_is_being_processed(from) {
+                return Err(Error::Remote(RemoteError::new(
+                    from.clone(),
+                    format!("Message from {:?} is already being processed", from),
+                )));
+            }
+        } else if self.possible_next_rounds.contains(&message_round_id) {
+            if accum.message_is_cached(from, message_round_id) {
+                return Err(Error::Remote(RemoteError::new(
+                    from.clone(),
+                    format!(
+                        "Message from {:?} for {:?} is already cached",
+                        from, message_round_id
+                    ),
+                )));
+            }
+        } else {
+            return Err(Error::Remote(RemoteError::new(
+                from.clone(),
+                format!("Unexpected message round ID: {:?}", message_round_id),
+            )));
+        }
+
+        // Verify the signature now
+
+        let verified_message = checked_message
             .verify::<P, _>(from)
             .map_err(|err| err.into_error())?;
         debug!(
             "{:?}: received {:?} message from {:?}",
             self.verifier(),
-            message.round_id(),
+            verified_message.metadata().round_id(),
             from
         );
-        if self.possible_next_rounds.contains(&message.round_id()) {
+
+        if message_round_id == self.round_id() {
+            accum
+                .mark_processing(&verified_message)
+                .map_err(Error::Local)?;
+            Ok(Some(verified_message))
+        } else if self.possible_next_rounds.contains(&message_round_id) {
             debug!(
                 "{:?}: caching message from {:?} for {:?}",
                 self.verifier(),
-                message.from(),
-                message.round_id()
+                verified_message.from(),
+                verified_message.metadata().round_id()
             );
-            accum.cache_message(message).map_err(Error::Local)?;
+            accum
+                .cache_message(verified_message)
+                .map_err(Error::Local)?;
             Ok(None)
         } else {
-            Ok(Some(message))
+            // TODO: can we enforce it through types?
+            unreachable!()
         }
     }
 
@@ -265,6 +312,32 @@ impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
         }
     }
 
+    fn message_is_being_processed(&self, from: &Verifier) -> bool {
+        self.processing.contains(from)
+    }
+
+    fn message_is_cached(&self, from: &Verifier, round_id: RoundId) -> bool {
+        if let Some(entry) = self.cached.get(from) {
+            entry.contains_key(&round_id)
+        } else {
+            false
+        }
+    }
+
+    fn mark_processing(
+        &mut self,
+        message: &VerifiedMessageBundle<Verifier, S>,
+    ) -> Result<(), LocalError> {
+        if !self.processing.insert(message.from().clone()) {
+            Err(LocalError::new(format!(
+                "A message from {:?} is already marked as being processed",
+                message.from()
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn add_artifact(
         &mut self,
         processed: ProcessedArtifact<Verifier>,
@@ -305,20 +378,16 @@ impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
         message: VerifiedMessageBundle<Verifier, S>,
     ) -> Result<(), LocalError> {
         let from = message.from().clone();
-        let round_id = message.round_id();
+        let round_id = message.metadata().round_id();
         let cached = self.cached.entry(from.clone()).or_insert(BTreeMap::new());
         if cached.insert(round_id, message).is_some() {
             return Err(LocalError::new(format!(
-                "A message from {:?} for {:?} has already been cached",
-                from, round_id
+                "A message from for {:?} has already been cached",
+                round_id
             )));
         }
         Ok(())
     }
-}
-
-pub struct VerifiedMessage<Verifier> {
-    from: Verifier,
 }
 
 pub struct ProcessedArtifact<Verifier> {
