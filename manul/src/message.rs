@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::RemoteError;
+use crate::error::{Error, LocalError, RemoteError};
 use crate::round::{DirectMessage, EchoBroadcast, RoundId};
 use crate::signing::{Digest, DigestSigner, DigestVerifier};
 use crate::Protocol;
@@ -11,38 +11,56 @@ pub struct SignedMessage<S, M> {
     message: MessageWithMetadata<M>,
 }
 
-impl<S, M> SignedMessage<S, M> {
-    pub fn new<P: Protocol, Signer>(signer: &Signer, round_id: RoundId, message: M) -> Self
-    where
-        M: Serialize,
-        Signer: DigestSigner<P::Digest, S>,
-    {
-        let message = MessageWithMetadata { round_id, message };
-        let message_bytes = P::serialize(&message).unwrap();
-        let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
-        let signature = signer.try_sign_digest(digest).unwrap();
-        Self { signature, message }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageWithMetadata<M> {
     round_id: RoundId,
     message: M,
 }
 
+#[derive(Debug, Clone)]
+pub enum VerificationError<Verifier> {
+    Local(LocalError),
+    Remote(RemoteError<Verifier>),
+}
+
+impl<Verifier> VerificationError<Verifier> {
+    pub fn into_error<P: Protocol, S>(self) -> Error<P, Verifier, S> {
+        match self {
+            Self::Local(error) => Error::Local(error),
+            Self::Remote(error) => Error::Remote(error),
+        }
+    }
+}
+
 impl<S, M> SignedMessage<S, M>
 where
     M: Serialize,
 {
+    pub fn new<P: Protocol, Signer>(
+        signer: &Signer,
+        round_id: RoundId,
+        message: M,
+    ) -> Result<Self, LocalError>
+    where
+        Signer: DigestSigner<P::Digest, S>,
+    {
+        let message = MessageWithMetadata { round_id, message };
+        let message_bytes = P::serialize(&message)?;
+        let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        let signature = signer
+            .try_sign_digest(digest)
+            .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
+        Ok(Self { signature, message })
+    }
+
     pub fn verify<P: Protocol, Verifier>(
         self,
         verifier: &Verifier,
-    ) -> Result<VerifiedMessage<S, M>, RemoteError>
+    ) -> Result<VerifiedMessage<S, M>, VerificationError<Verifier>>
     where
-        Verifier: DigestVerifier<P::Digest, S>,
+        Verifier: Clone + DigestVerifier<P::Digest, S>,
     {
-        let message_bytes = P::serialize(&self.message).unwrap();
+        let message_bytes = P::serialize(&self.message).map_err(VerificationError::Local)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         if verifier.verify_digest(digest, &self.signature).is_ok() {
             Ok(VerifiedMessage {
@@ -50,7 +68,10 @@ where
                 message: self.message,
             })
         } else {
-            Err(RemoteError)
+            Err(VerificationError::Remote(RemoteError::new(
+                verifier.clone(),
+                "Invalid signature".into(),
+            )))
         }
     }
 }
@@ -90,22 +111,22 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
         round_id: RoundId,
         direct_message: DirectMessage,
         echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
-    ) -> Self
+    ) -> Result<Self, LocalError>
     where
         P: Protocol,
         Signer: DigestSigner<P::Digest, S>,
     {
-        let direct_message = SignedMessage::new::<P, _>(signer, round_id, direct_message);
-        Self {
+        let direct_message = SignedMessage::new::<P, _>(signer, round_id, direct_message)?;
+        Ok(Self {
             direct_message,
             echo_broadcast,
-        }
+        })
     }
 
     pub fn verify<P: Protocol, Verifier>(
         self,
         verifier: &Verifier,
-    ) -> Result<VerifiedMessageBundle<Verifier, S>, RemoteError>
+    ) -> Result<VerifiedMessageBundle<Verifier, S>, VerificationError<Verifier>>
     where
         Verifier: Clone + DigestVerifier<P::Digest, S>,
     {
@@ -119,7 +140,10 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
             .map(|echo| echo.round_id() == direct_message.round_id())
             .unwrap_or(true)
         {
-            return Err(RemoteError);
+            return Err(VerificationError::Remote(RemoteError::new(
+                verifier.clone(),
+                "Mismatched round IDs".into(),
+            )));
         }
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),

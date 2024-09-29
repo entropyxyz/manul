@@ -46,35 +46,34 @@ where
         + for<'de> Deserialize<'de>,
     S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
 {
-    pub fn new<R>(signer: Signer, inputs: R::Inputs) -> Self
+    pub fn new<R>(signer: Signer, inputs: R::Inputs) -> Result<Self, LocalError>
     where
         R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
         let verifier = signer.verifying_key();
-        let first_round = Box::new(R::new(verifier.clone(), inputs).unwrap());
+        let first_round = Box::new(R::new(verifier.clone(), inputs)?);
         Self::new_for_next_round(signer, first_round)
     }
 
-    fn new_for_next_round(signer: Signer, round: Box<dyn Round<Verifier, Protocol = P>>) -> Self {
+    fn new_for_next_round(
+        signer: Signer,
+        round: Box<dyn Round<Verifier, Protocol = P>>,
+    ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
         let echo_message = round
             .make_echo_broadcast()
-            .map(|echo| SignedMessage::new::<P, _>(&signer, round.id(), echo.unwrap()));
+            .transpose()?
+            .map(|echo| SignedMessage::new::<P, _>(&signer, round.id(), echo))
+            .transpose()?;
         let message_destinations = round.message_destinations().clone();
 
         let possible_next_rounds = if echo_message.is_none() {
-            debug!(
-                "{:?}: no echo messages, possible next rounds: {:?}",
-                verifier,
-                round.possible_next_rounds()
-            );
             round.possible_next_rounds()
         } else {
-            debug!("{:?}: there are echo messages", verifier);
             BTreeSet::from([round.id().echo()])
         };
 
-        Self {
+        Ok(Self {
             signer,
             verifier,
             round,
@@ -82,7 +81,7 @@ where
             possible_next_rounds,
             message_destinations,
             messages: BTreeMap::new(),
-        }
+        })
     }
 
     pub fn verifier(&self) -> Verifier {
@@ -104,7 +103,7 @@ where
             self.round.id(),
             direct_message,
             self.echo_message.clone(),
-        );
+        )?;
 
         Ok((
             bundle,
@@ -124,8 +123,10 @@ where
         accum: &mut RoundAccumulator<Verifier, S>,
         from: &Verifier,
         message: MessageBundle<S>,
-    ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, RemoteError> {
-        let message = message.verify::<P, _>(from)?;
+    ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, Error<P, Verifier, S>> {
+        let message = message
+            .verify::<P, _>(from)
+            .map_err(|err| err.into_error())?;
         debug!(
             "{:?}: received {:?} message from {:?}",
             self.verifier(),
@@ -134,16 +135,12 @@ where
         );
         if self.possible_next_rounds.contains(&message.round_id()) {
             debug!(
-                "{:?}: possible next rounds: {:?}",
-                self.verifier, self.possible_next_rounds
-            );
-            debug!(
                 "{:?}: caching message from {:?} for {:?}",
                 self.verifier(),
                 message.from(),
                 message.round_id()
             );
-            accum.cache_message(message);
+            accum.cache_message(message).map_err(Error::Local)?;
             Ok(None)
         } else {
             Ok(Some(message))
@@ -165,12 +162,17 @@ where
                 payload,
             }),
             Err(error) => match error {
-                ReceiveError::InvalidMessage => unimplemented!(),
+                ReceiveError::InvalidMessage(error) => unimplemented!(),
                 ReceiveError::Protocol(error) => {
                     let from = message.from().clone();
                     let (echo, dm) = message.into_unverified();
                     Err(Error::Protocol(self.prepare_evidence(&from, &dm, error)))
                 }
+                ReceiveError::Local(error) => Err(Error::Local(error)),
+                ReceiveError::Unprovable(error) => Err(Error::Remote(RemoteError::new(
+                    message.from().clone(),
+                    error,
+                ))),
             },
         }
     }
@@ -194,7 +196,7 @@ where
                 accum.artifacts,
             ));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(self.signer, round);
+            let session = Session::new_for_next_round(self.signer, round).map_err(Error::Local)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -206,7 +208,8 @@ where
                 FinalizeOutcome::Result(result) => RoundOutcome::Result(result),
                 FinalizeOutcome::AnotherRound(round) => {
                     let cached_messages = filter_messages(accum.cached, round.id());
-                    let session = Session::new_for_next_round(self.signer, round);
+                    let session =
+                        Session::new_for_next_round(self.signer, round).map_err(Error::Local)?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,
@@ -244,6 +247,7 @@ where
 }
 
 pub struct RoundAccumulator<Verifier, S> {
+    processing: BTreeSet<Verifier>,
     echo_messages: BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>,
     payloads: BTreeMap<Verifier, Payload>,
     artifacts: BTreeMap<Verifier, Artifact>,
@@ -253,6 +257,7 @@ pub struct RoundAccumulator<Verifier, S> {
 impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
     pub fn new() -> Self {
         Self {
+            processing: BTreeSet::new(),
             echo_messages: BTreeMap::new(),
             payloads: BTreeMap::new(),
             artifacts: BTreeMap::new(),
@@ -260,27 +265,55 @@ impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
         }
     }
 
-    pub fn add_artifact(&mut self, processed: ProcessedArtifact<Verifier>) {
-        self.artifacts
-            .insert(processed.destination, processed.artifact);
+    pub fn add_artifact(
+        &mut self,
+        processed: ProcessedArtifact<Verifier>,
+    ) -> Result<(), LocalError> {
+        if self
+            .artifacts
+            .insert(processed.destination.clone(), processed.artifact)
+            .is_some()
+        {
+            return Err(LocalError::new(format!(
+                "Artifact for destination {:?} has already been recorded",
+                processed.destination
+            )));
+        }
+        Ok(())
     }
 
-    pub fn add_processed_message(&mut self, processed: ProcessedMessage<Verifier, S>) {
+    pub fn add_processed_message(
+        &mut self,
+        processed: ProcessedMessage<Verifier, S>,
+    ) -> Result<(), LocalError> {
         let (echo_broadcast, direct_message) = processed.message.into_unverified();
+        if self.payloads.contains_key(&processed.from) {
+            return Err(LocalError::new(format!(
+                "A processed message from {:?} has already been recorded",
+                processed.from
+            )));
+        }
         if let Some(echo) = echo_broadcast {
             self.echo_messages.insert(processed.from.clone(), echo);
         }
         self.payloads.insert(processed.from, processed.payload);
+        Ok(())
     }
 
-    fn cache_message(&mut self, message: VerifiedMessageBundle<Verifier, S>) {
-        if !self.cached.contains_key(message.from()) {
-            self.cached.insert(message.from().clone(), BTreeMap::new());
+    fn cache_message(
+        &mut self,
+        message: VerifiedMessageBundle<Verifier, S>,
+    ) -> Result<(), LocalError> {
+        let from = message.from().clone();
+        let round_id = message.round_id();
+        let cached = self.cached.entry(from.clone()).or_insert(BTreeMap::new());
+        if cached.insert(round_id, message).is_some() {
+            return Err(LocalError::new(format!(
+                "A message from {:?} for {:?} has already been cached",
+                from, round_id
+            )));
         }
-        self.cached
-            .get_mut(message.from())
-            .unwrap()
-            .insert(message.round_id(), message);
+        Ok(())
     }
 }
 

@@ -1,19 +1,35 @@
 use alloc::collections::BTreeMap;
+use core::fmt::Debug;
 
 use crate::message::SignedMessage;
 use crate::round::{DirectMessage, Protocol, ProtocolError, RoundId};
 use crate::signing::DigestVerifier;
 
 #[derive(Debug, Clone)]
-pub struct LocalError;
+pub struct LocalError(String);
+
+impl LocalError {
+    pub fn new(message: String) -> Self {
+        Self(message)
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct RemoteError;
+pub struct RemoteError<Verifier> {
+    party: Verifier,
+    error: String,
+}
+
+impl<Verifier> RemoteError<Verifier> {
+    pub fn new(party: Verifier, error: String) -> Self {
+        Self { party, error }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Error<P: Protocol, Verifier, S> {
-    Local,
-    Remote,
+    Local(LocalError),
+    Remote(RemoteError<Verifier>),
     Protocol(Evidence<P, Verifier, S>),
 }
 
@@ -28,7 +44,7 @@ pub struct Evidence<P: Protocol, Verifier, S> {
 impl<P, Verifier, S> Evidence<P, Verifier, S>
 where
     P: Protocol,
-    Verifier: PartialEq + Clone + DigestVerifier<P::Digest, S>,
+    Verifier: Debug + PartialEq + Clone + DigestVerifier<P::Digest, S>,
     S: Clone,
 {
     pub fn verify(&self) -> bool {

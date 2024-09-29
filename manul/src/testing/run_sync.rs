@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::message::MessageBundle;
 use crate::session::RoundAccumulator;
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
-use crate::{Error, FirstRound, Protocol, RoundOutcome, Session};
+use crate::{Error, FirstRound, LocalError, Protocol, RoundOutcome, Session};
 
 #[derive(Debug, Clone)]
 pub enum RunOutcome<P: Protocol, Verifier, S> {
@@ -38,7 +38,7 @@ struct Message<Verifier, S> {
 fn propagate<P, Signer, Verifier, S>(
     session: Session<P, Signer, Verifier, S>,
     accum: RoundAccumulator<Verifier, S>,
-) -> (State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>)
+) -> Result<(State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>), LocalError>
 where
     P: Protocol + 'static,
     Signer: DigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
@@ -81,7 +81,7 @@ where
                             session.verifier()
                         );
                         let processed = session.process_message(message).unwrap();
-                        accum.add_processed_message(processed);
+                        accum.add_processed_message(processed)?;
                     }
                 }
             }
@@ -97,17 +97,17 @@ where
                 to: destination.clone(),
                 message,
             });
-            accum.add_artifact(artifact);
+            accum.add_artifact(artifact)?;
         }
     };
 
-    (state, messages)
+    Ok((state, messages))
 }
 
 pub fn run_sync<R, Signer, Verifier, S>(
     rng: &mut impl RngCore,
     inputs: Vec<(Signer, R::Inputs)>,
-) -> Result<BTreeMap<Verifier, RunOutcome<R::Protocol, Verifier, S>>, String>
+) -> Result<BTreeMap<Verifier, RunOutcome<R::Protocol, Verifier, S>>, LocalError>
 where
     R: FirstRound<Verifier> + 'static,
     Signer: DigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
@@ -123,29 +123,28 @@ where
 {
     let mut messages = Vec::new();
 
-    let mut states = inputs
-        .into_iter()
-        .map(|(signer, inputs)| {
-            let verifier = signer.verifying_key();
-            let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(signer, inputs);
-            let mut accum = session.make_accumulator();
+    let mut states = BTreeMap::new();
 
-            let destinations = session.message_destinations();
-            for destination in destinations {
-                let (message, artifact) = session.make_message(destination).unwrap();
-                messages.push(Message {
-                    from: session.verifier().clone(),
-                    to: destination.clone(),
-                    message,
-                });
-                accum.add_artifact(artifact);
-            }
+    for (signer, inputs) in inputs {
+        let verifier = signer.verifying_key();
+        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(signer, inputs)?;
+        let mut accum = session.make_accumulator();
 
-            let (state, new_messages) = propagate(session, accum);
-            messages.extend(new_messages);
-            (verifier, state)
-        })
-        .collect::<BTreeMap<_, _>>();
+        let destinations = session.message_destinations();
+        for destination in destinations {
+            let (message, artifact) = session.make_message(destination).unwrap();
+            messages.push(Message {
+                from: session.verifier().clone(),
+                to: destination.clone(),
+                message,
+            });
+            accum.add_artifact(artifact)?;
+        }
+
+        let (state, new_messages) = propagate(session, accum)?;
+        messages.extend(new_messages);
+        states.insert(verifier, state);
+    }
 
     let ids = states.keys().cloned().collect::<Vec<_>>();
 
@@ -168,10 +167,10 @@ where
 
             if let Some(verified) = preprocessed {
                 let processed = session.process_message(verified).unwrap();
-                accum.add_processed_message(processed);
+                accum.add_processed_message(processed)?;
             }
 
-            let (new_state, new_messages) = propagate(session, accum);
+            let (new_state, new_messages) = propagate(session, accum)?;
             messages.extend(new_messages);
             new_state
         } else {

@@ -9,8 +9,10 @@ use crate::serde_bytes;
 use crate::signing::Digest;
 
 pub enum ReceiveError<P: Protocol> {
-    InvalidMessage,
+    Local(LocalError),
+    InvalidMessage(String),
     Protocol(P::ProtocolError),
+    Unprovable(String),
 }
 
 pub enum FinalizeOutcome<I, P: Protocol> {
@@ -18,7 +20,12 @@ pub enum FinalizeOutcome<I, P: Protocol> {
     Result(P::Result),
 }
 
-pub enum FinalizeError {}
+pub enum FinalizeError<I, P: Protocol> {
+    Local(LocalError),
+    Protocol { party: I, error: P::ProtocolError },
+    Unattributable(P::CorrectnessProof),
+    Unprovable { party: I, error: String },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RoundId {
@@ -51,12 +58,11 @@ pub trait Protocol: Debug {
     type Result;
     type ProtocolError: ProtocolError;
     type CorrectnessProof;
-    type SerializationError: serde::ser::Error;
     type DeserializationError: serde::de::Error;
     type Digest: Digest;
 
     // TODO: should we take inputs by value?
-    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, Self::SerializationError>;
+    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, LocalError>;
     fn deserialize<T: for<'de> Deserialize<'de>>(
         bytes: &[u8],
     ) -> Result<T, Self::DeserializationError>;
@@ -73,7 +79,7 @@ pub trait ProtocolError: Debug + Clone {
 pub struct DirectMessage(#[serde(with = "serde_bytes")] Box<[u8]>);
 
 impl DirectMessage {
-    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, P::SerializationError> {
+    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, LocalError> {
         P::serialize(message).map(Self)
     }
 
@@ -88,7 +94,7 @@ impl DirectMessage {
 pub struct EchoBroadcast(#[serde(with = "serde_bytes")] Box<[u8]>);
 
 impl EchoBroadcast {
-    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, P::SerializationError> {
+    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, LocalError> {
         P::serialize(message).map(Self)
     }
 
@@ -110,11 +116,13 @@ impl Payload {
         Self::new(())
     }
 
-    pub fn try_to_typed<T: 'static>(self) -> Result<T, String> {
-        Ok(*(self
-            .0
-            .downcast::<T>()
-            .map_err(|_| format!("Failed to downcast into {}", core::any::type_name::<T>()))?))
+    pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
+        Ok(*(self.0.downcast::<T>().map_err(|_| {
+            LocalError::new(format!(
+                "Failed to downcast into {}",
+                core::any::type_name::<T>()
+            ))
+        })?))
     }
 }
 
@@ -129,11 +137,13 @@ impl Artifact {
         Self::new(())
     }
 
-    pub fn try_to_typed<T: 'static>(self) -> Result<T, String> {
-        Ok(*(self
-            .0
-            .downcast::<T>()
-            .map_err(|_| format!("Failed to downcast into {}", core::any::type_name::<T>()))?))
+    pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
+        Ok(*(self.0.downcast::<T>().map_err(|_| {
+            LocalError::new(format!(
+                "Failed to downcast into {}",
+                core::any::type_name::<T>()
+            ))
+        })?))
     }
 }
 
@@ -166,7 +176,7 @@ pub trait Round<I> {
         self: Box<Self>,
         payloads: BTreeMap<I, Payload>,
         artifacts: BTreeMap<I, Artifact>,
-    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError>;
+    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>>;
 
     // Do we need to take `artifacts` here? Can we just judge by payloads?
     fn can_finalize(

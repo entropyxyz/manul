@@ -27,13 +27,14 @@ impl Protocol for SimpleProtocol {
     type ProtocolError = SimpleProtocolError;
     type CorrectnessProof = ();
 
-    type SerializationError = bincode::error::EncodeError;
     type DeserializationError = bincode::error::DecodeError;
 
     type Digest = Sha3_256;
 
-    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, Self::SerializationError> {
-        bincode::serde::encode_to_vec(value, bincode::config::standard()).map(|vec| vec.into())
+    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, LocalError> {
+        bincode::serde::encode_to_vec(value, bincode::config::standard())
+            .map(|vec| vec.into())
+            .map_err(|err| LocalError::new(err.to_string()))
     }
 
     fn deserialize<T: for<'de> Deserialize<'de>>(
@@ -118,8 +119,8 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
-        let echo = EchoBroadcast::new::<SimpleProtocol, _>(&message).unwrap();
-        Some(Ok(echo))
+
+        Some(EchoBroadcast::new::<SimpleProtocol, _>(&message))
     }
 
     fn make_direct_message(
@@ -135,7 +136,7 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = DirectMessage::new::<SimpleProtocol, _>(&message).unwrap();
+        let dm = DirectMessage::new::<SimpleProtocol, _>(&message)?;
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }
@@ -150,7 +151,7 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
 
         let message = direct_message
             .try_deserialize::<SimpleProtocol, Round1Message>()
-            .map_err(|_| ReceiveError::InvalidMessage)?;
+            .map_err(|err| ReceiveError::InvalidMessage(err.to_string()))?;
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
             return Err(ReceiveError::Protocol(SimpleProtocolError));
@@ -165,7 +166,7 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
         self: Box<Self>,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
             self.context.id,
@@ -174,8 +175,9 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
 
         let typed_payloads = payloads
             .into_values()
-            .map(|payload| payload.try_to_typed::<Round1Payload>().unwrap())
-            .collect::<Vec<_>>();
+            .map(|payload| payload.try_to_typed::<Round1Payload>())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(FinalizeError::Local)?;
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
         Ok(FinalizeOutcome::Result(sum))

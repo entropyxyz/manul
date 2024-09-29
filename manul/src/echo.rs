@@ -130,7 +130,9 @@ where
                 "{:?}: echo messages mismatch: {:?}, {:?}",
                 self.verifier, echo_messages, self.echo_messages
             );
-            return Err(ReceiveError::InvalidMessage);
+            return Err(ReceiveError::InvalidMessage(
+                "Echo messages mismatch".into(),
+            ));
         }
 
         Ok(Payload::empty())
@@ -140,7 +142,7 @@ where
         self: Box<Self>,
         _payloads: BTreeMap<I, Payload>,
         _artifacts: BTreeMap<I, Artifact>,
-    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError> {
+    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>> {
         self.main_round.finalize(self.payloads, self.artifacts)
     }
 
