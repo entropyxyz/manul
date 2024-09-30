@@ -35,19 +35,37 @@ pub enum Error<P: Protocol, Verifier, S> {
 
 #[derive(Debug, Clone)]
 pub struct Evidence<P: Protocol, Verifier, S> {
-    pub party: Verifier,
+    pub(crate) party: Verifier,
+    pub(crate) evidence: EvidenceEnum<P, S>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum EvidenceEnum<P: Protocol, S> {
+    Protocol(ProtocolEvidence<P, S>),
+    InvalidMessage(InvalidMessageEvidence<S>),
+}
+
+#[derive(Debug, Clone)]
+pub struct InvalidMessageEvidence<S> {
+    pub message: SignedMessage<S, DirectMessage>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProtocolEvidence<P: Protocol, S> {
     pub error: P::ProtocolError,
     pub message: SignedMessage<S, DirectMessage>,
     pub previous_messages: BTreeMap<RoundId, SignedMessage<S, DirectMessage>>,
 }
 
-impl<P, Verifier, S> Evidence<P, Verifier, S>
+impl<P, S> ProtocolEvidence<P, S>
 where
     P: Protocol,
-    Verifier: Debug + PartialEq + Clone + DigestVerifier<P::Digest, S>,
     S: Clone,
 {
-    pub fn verify(&self) -> bool {
+    pub fn verify<Verifier>(&self, verifier: &Verifier) -> bool
+    where
+        Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
+    {
         let verified_messages = self
             .previous_messages
             .iter()
@@ -56,7 +74,7 @@ where
                     *round,
                     message
                         .clone()
-                        .verify::<P, _>(&self.party)
+                        .verify::<P, _>(verifier)
                         .unwrap()
                         .payload()
                         .clone(),
@@ -66,7 +84,7 @@ where
         let message = self
             .message
             .clone()
-            .verify::<P, _>(&self.party)
+            .verify::<P, _>(verifier)
             .unwrap()
             .payload()
             .clone();

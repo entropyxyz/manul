@@ -7,10 +7,12 @@ use sha3::Sha3_256;
 use tracing::debug;
 
 #[derive(Debug)]
-struct SimpleProtocol;
+pub struct SimpleProtocol;
 
 #[derive(Debug, Clone)]
-struct SimpleProtocolError;
+pub enum SimpleProtocolError {
+    Round1InvalidPosition,
+}
 
 impl ProtocolError for SimpleProtocolError {
     fn verify(
@@ -44,24 +46,25 @@ impl Protocol for SimpleProtocol {
     }
 }
 
-struct Inputs<Id> {
-    all_ids: BTreeSet<Id>,
+#[derive(Debug, Clone)]
+pub struct Inputs<Id> {
+    pub all_ids: BTreeSet<Id>,
 }
 
-struct Context<Id> {
-    id: Id,
-    other_ids: BTreeSet<Id>,
-    ids_to_positions: BTreeMap<Id, u8>,
+pub(crate) struct Context<Id> {
+    pub(crate) id: Id,
+    pub(crate) other_ids: BTreeSet<Id>,
+    pub(crate) ids_to_positions: BTreeMap<Id, u8>,
 }
 
-struct Round1<Id> {
-    context: Context<Id>,
+pub struct Round1<Id> {
+    pub(crate) context: Context<Id>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Round1Message {
-    my_position: u8,
-    your_position: u8,
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Round1Message {
+    pub(crate) my_position: u8,
+    pub(crate) your_position: u8,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -153,8 +156,12 @@ impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
             .try_deserialize::<SimpleProtocol, Round1Message>()
             .map_err(|err| ReceiveError::InvalidMessage(err.to_string()))?;
 
+        debug!("{:?}: received message: {:?}", self.context.id, message);
+
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::Protocol(SimpleProtocolError));
+            return Err(ReceiveError::Protocol(
+                SimpleProtocolError::Round1InvalidPosition,
+            ));
         }
 
         Ok(Payload::new(Round1Payload {

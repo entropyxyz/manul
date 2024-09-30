@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::echo::EchoRound;
-use crate::error::{Evidence, LocalError, RemoteError};
+use crate::error::{
+    Evidence, EvidenceEnum, InvalidMessageEvidence, LocalError, ProtocolEvidence, RemoteError,
+};
 use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
 use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, FirstRound, Payload, ProtocolError,
@@ -209,7 +211,13 @@ where
                 payload,
             }),
             Err(error) => match error {
-                ReceiveError::InvalidMessage(error) => unimplemented!(),
+                ReceiveError::InvalidMessage(error) => {
+                    let from = message.from().clone();
+                    let (echo, dm) = message.into_unverified();
+                    Err(Error::Protocol(
+                        self.prepare_invalid_message_evidence(&from, &dm),
+                    ))
+                }
                 ReceiveError::Protocol(error) => {
                     let from = message.from().clone();
                     let (echo, dm) = message.into_unverified();
@@ -271,6 +279,21 @@ where
         self.round.can_finalize(&accum.payloads, &accum.artifacts)
     }
 
+    fn prepare_invalid_message_evidence(
+        &self,
+        from: &Verifier,
+        message: &SignedMessage<S, DirectMessage>,
+    ) -> Evidence<P, Verifier, S> {
+        let evidence = EvidenceEnum::InvalidMessage(InvalidMessageEvidence {
+            message: message.clone(),
+        });
+
+        Evidence {
+            party: from.clone(),
+            evidence,
+        }
+    }
+
     fn prepare_evidence(
         &self,
         from: &Verifier,
@@ -284,11 +307,15 @@ where
             .map(|round| (*round, self.messages[round][from].clone()))
             .collect();
 
-        Evidence {
-            party: from.clone(),
+        let evidence = EvidenceEnum::Protocol(ProtocolEvidence {
             error,
             message: message.clone(),
             previous_messages: messages,
+        });
+
+        Evidence {
+            party: from.clone(),
+            evidence,
         }
     }
 }
