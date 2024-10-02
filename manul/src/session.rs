@@ -45,8 +45,10 @@ where
         + DigestVerifier<P::Digest, S>
         + 'static
         + Serialize
-        + for<'de> Deserialize<'de>,
-    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
+        + for<'de> Deserialize<'de>
+        + Send
+        + Sync,
+    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     pub fn new<R>(signer: Signer, inputs: R::Inputs) -> Result<Self, LocalError>
     where
@@ -286,6 +288,7 @@ where
     ) -> Evidence<P, Verifier, S> {
         let evidence = EvidenceEnum::InvalidMessage(InvalidMessageEvidence {
             message: message.clone(),
+            phantom: core::marker::PhantomData,
         });
 
         Evidence {
@@ -436,4 +439,105 @@ fn filter_messages<Verifier, S>(
         .into_values()
         .filter_map(|mut messages| messages.remove(&round_id))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::collections::BTreeMap;
+
+    use impls::impls;
+    use serde::{Deserialize, Serialize};
+
+    use super::{
+        MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle,
+    };
+    use crate::testing::{Signature, Signer, Verifier};
+    use crate::{Digest, DirectMessage, LocalError, Protocol, ProtocolError, RoundId};
+
+    #[test]
+    fn test_concurrency_bounds() {
+        // In order to support parallel message creation and processing we need that
+        // certain generic types could be Send and/or Sync.
+        //
+        // Since they are generic, this depends on the exact type parameters supplied by the user,
+        // so if the user does not want parallelism, they may not use Send/Sync generic parameters.
+        // But we want to make sure that if the generic parameters are Send/Sync,
+        // our types are too.
+
+        #[derive(Debug)]
+        struct DummyProtocol;
+
+        #[derive(Debug, Clone)]
+        struct DummyProtocolError;
+
+        struct DummyDigest;
+
+        impl Digest for DummyDigest {
+            fn new_with_prefix(data: impl AsRef<[u8]>) -> Self {
+                unimplemented!()
+            }
+            fn chain_update(self, data: impl AsRef<[u8]>) -> Self {
+                unimplemented!()
+            }
+        }
+
+        #[derive(Debug)]
+        struct DummyError;
+
+        impl serde::de::Error for DummyError {
+            fn custom<T>(_: T) -> Self
+            where
+                T: core::fmt::Display,
+            {
+                unimplemented!()
+            }
+        }
+
+        impl core::error::Error for DummyError {}
+
+        impl core::fmt::Display for DummyError {
+            fn fmt(&self, _: &mut core::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                unimplemented!()
+            }
+        }
+
+        impl ProtocolError for DummyProtocolError {
+            fn verify(&self, _: &DirectMessage, _: &BTreeMap<RoundId, DirectMessage>) -> bool {
+                unimplemented!()
+            }
+        }
+
+        impl Protocol for DummyProtocol {
+            type Result = ();
+            type ProtocolError = DummyProtocolError;
+            type CorrectnessProof = ();
+            type DeserializationError = DummyError;
+            type Digest = DummyDigest;
+            fn serialize<T>(_: &T) -> Result<Box<[u8]>, LocalError>
+            where
+                T: Serialize,
+            {
+                unimplemented!()
+            }
+            fn deserialize<T>(_: &[u8]) -> Result<T, <Self as Protocol>::DeserializationError>
+            where
+                T: for<'de> Deserialize<'de>,
+            {
+                unimplemented!()
+            }
+        }
+
+        // We need `Session` to be `Send` so that we send a `Session` object to a task
+        // to run the loop there.
+        assert!(impls!(Session<DummyProtocol, Signer, Verifier, Signature>: Send));
+
+        // This is needed so that message processing offloaded to a task could use `&Session`.
+        assert!(impls!(Session<DummyProtocol, Signer, Verifier, Signature>: Sync));
+
+        // These objects are sent to/from message processing tasks
+        assert!(impls!(MessageBundle<Signature>: Send));
+        assert!(impls!(ProcessedArtifact<Verifier>: Send));
+        assert!(impls!(VerifiedMessageBundle<Verifier, Signature>: Send));
+        assert!(impls!(ProcessedMessage<Verifier, Signature>: Send));
+    }
 }

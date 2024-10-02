@@ -23,6 +23,7 @@ mod signing;
 pub mod testing;
 
 pub use error::{Error, LocalError};
+pub use message::MessageBundle;
 pub use round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     Protocol, ProtocolError, ReceiveError, Round, RoundId,

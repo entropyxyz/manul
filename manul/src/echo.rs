@@ -59,8 +59,8 @@ impl<P: Protocol, I: Debug + Clone + Ord, S> EchoRound<P, I, S> {
 impl<P, I, S> Round<I> for EchoRound<P, I, S>
 where
     P: Protocol,
-    I: Debug + Clone + Ord + Serialize + for<'de> Deserialize<'de> + Eq,
-    S: Debug + Clone + Serialize + for<'de> Deserialize<'de> + Eq,
+    I: Debug + Clone + Ord + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
+    S: Debug + Clone + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
 {
     type Protocol = P;
 

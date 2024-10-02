@@ -39,15 +39,42 @@ pub struct Evidence<P: Protocol, Verifier, S> {
     pub(crate) evidence: EvidenceEnum<P, S>,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum EvidenceEnum<P: Protocol, S> {
-    Protocol(ProtocolEvidence<P, S>),
-    InvalidMessage(InvalidMessageEvidence<S>),
+impl<P, Verifier, S> Evidence<P, Verifier, S>
+where
+    P: Protocol,
+    Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
+    S: Debug + Clone,
+{
+    pub fn verify(&self, party: &Verifier) -> bool {
+        match &self.evidence {
+            EvidenceEnum::Protocol(evidence) => evidence.verify(party),
+            EvidenceEnum::InvalidMessage(evidence) => evidence.verify(party),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidMessageEvidence<S> {
+pub(crate) enum EvidenceEnum<P: Protocol, S> {
+    Protocol(ProtocolEvidence<P, S>),
+    InvalidMessage(InvalidMessageEvidence<P, S>),
+}
+
+#[derive(Debug, Clone)]
+pub struct InvalidMessageEvidence<P: Protocol, S> {
     pub message: SignedMessage<S, DirectMessage>,
+    pub phantom: core::marker::PhantomData<P>,
+}
+
+impl<P, S> InvalidMessageEvidence<P, S>
+where
+    P: Protocol,
+{
+    pub fn verify<Verifier>(&self, verifier: &Verifier) -> bool
+    where
+        Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
+    {
+        true
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -76,7 +76,7 @@ struct Round1Payload {
     x: u8,
 }
 
-impl<Id: Debug + Clone + Ord> FirstRound<Id> for Round1<Id> {
+impl<Id: Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Round1<Id> {
     type Inputs = Inputs<Id>;
     fn new(id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
         // Just some numbers associated with IDs to use in the dummy protocol.
@@ -101,7 +101,7 @@ impl<Id: Debug + Clone + Ord> FirstRound<Id> for Round1<Id> {
     }
 }
 
-impl<Id: Debug + Clone + Ord> Round<Id> for Round1<Id> {
+impl<Id: Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {

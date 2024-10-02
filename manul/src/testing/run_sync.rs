@@ -49,8 +49,10 @@ where
         + DigestVerifier<P::Digest, S>
         + 'static
         + Serialize
-        + for<'de> Deserialize<'de>,
-    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
+        + for<'de> Deserialize<'de>
+        + Send
+        + Sync,
+    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     let mut messages = Vec::new();
 
@@ -91,7 +93,7 @@ where
 
         let destinations = session.message_destinations();
         for destination in destinations {
-            let (message, artifact) = session.make_message(destination).unwrap();
+            let (message, artifact) = session.make_message(destination)?;
             messages.push(Message {
                 from: session.verifier().clone(),
                 to: destination.clone(),
@@ -118,8 +120,10 @@ where
         + DigestVerifier<<R::Protocol as Protocol>::Digest, S>
         + 'static
         + Serialize
-        + for<'de> Deserialize<'de>,
-    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de>,
+        + for<'de> Deserialize<'de>
+        + Send
+        + Sync,
+    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
     let mut messages = Vec::new();
 
@@ -132,7 +136,7 @@ where
 
         let destinations = session.message_destinations();
         for destination in destinations {
-            let (message, artifact) = session.make_message(destination).unwrap();
+            let (message, artifact) = session.make_message(destination)?;
             messages.push(Message {
                 from: session.verifier().clone(),
                 to: destination.clone(),
@@ -158,7 +162,9 @@ where
             message.from, message.to
         );
 
-        let state = states.remove(&message.to).unwrap();
+        let state = states
+            .remove(&message.to)
+            .expect("the message destination is one of the sessions");
         let new_state = if let State::InProgress { session, accum } = state {
             let mut accum = accum;
             let preprocessed = session

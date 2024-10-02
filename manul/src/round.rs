@@ -63,6 +63,7 @@ pub trait Protocol: Debug {
 
     // TODO: should we take inputs by value?
     fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, LocalError>;
+    // TODO: should this be generic on 'de instead?
     fn deserialize<T: for<'de> Deserialize<'de>>(
         bytes: &[u8],
     ) -> Result<T, Self::DeserializationError>;
@@ -105,10 +106,10 @@ impl EchoBroadcast {
     }
 }
 
-pub struct Payload(pub Box<dyn Any>);
+pub struct Payload(pub Box<dyn Any + Send + Sync>);
 
 impl Payload {
-    pub fn new<T: 'static>(payload: T) -> Self {
+    pub fn new<T: 'static + Send + Sync>(payload: T) -> Self {
         Self(Box::new(payload))
     }
 
@@ -126,10 +127,10 @@ impl Payload {
     }
 }
 
-pub struct Artifact(pub Box<dyn Any>);
+pub struct Artifact(pub Box<dyn Any + Send + Sync>);
 
 impl Artifact {
-    pub fn new<T: 'static>(artifact: T) -> Self {
+    pub fn new<T: 'static + Send + Sync>(artifact: T) -> Self {
         Self(Box::new(artifact))
     }
 
@@ -152,7 +153,7 @@ pub trait FirstRound<I>: Round<I> + Sized {
     fn new(id: I, inputs: Self::Inputs) -> Result<Self, LocalError>;
 }
 
-pub trait Round<I> {
+pub trait Round<I>: Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;

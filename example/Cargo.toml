@@ -16,3 +16,8 @@ sha3 = "0.10"
 rand_core = "0.6"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+rand = "0.8"
+digest = "0.10"

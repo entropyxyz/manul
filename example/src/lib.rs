@@ -1,4 +1,4 @@
 extern crate alloc;
 
-mod simple;
+pub mod simple;
 mod simple_malicious;
