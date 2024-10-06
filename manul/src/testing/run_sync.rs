@@ -7,23 +7,10 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::message::MessageBundle;
-use crate::session::{RoundAccumulator, SessionReport};
+use crate::session::RoundAccumulator;
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
+use crate::transcript::SessionReport;
 use crate::{FirstRound, LocalError, Protocol, RoundOutcome, Session};
-
-pub enum RunOutcome<P: Protocol, Verifier, S> {
-    Report(SessionReport<P, Verifier, S>),
-    Stalled, // TODO: save the round ID at which the session stalled
-}
-
-impl<P: Protocol, Verifier, S> RunOutcome<P, Verifier, S> {
-    pub fn unwrap_report(self) -> SessionReport<P, Verifier, S> {
-        match self {
-            Self::Report(report) => report,
-            Self::Stalled => panic!("The run stalled"),
-        }
-    }
-}
 
 enum State<P: Protocol, Signer, Verifier, S> {
     InProgress {
@@ -112,7 +99,7 @@ where
 pub fn run_sync<R, Signer, Verifier, S>(
     rng: &mut impl RngCore,
     inputs: Vec<(Signer, R::Inputs)>,
-) -> Result<BTreeMap<Verifier, RunOutcome<R::Protocol, Verifier, S>>, LocalError>
+) -> Result<BTreeMap<Verifier, SessionReport<R::Protocol, Verifier, S>>, LocalError>
 where
     R: FirstRound<Verifier> + 'static,
     Signer: DigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
@@ -191,16 +178,14 @@ where
         }
     }
 
-    let outcomes = states
-        .into_iter()
-        .map(|(verifier, state)| {
-            let outcome = match state {
-                State::InProgress { .. } => RunOutcome::Stalled,
-                State::Finished(report) => RunOutcome::Report(report),
-            };
-            (verifier, outcome)
-        })
-        .collect();
+    let mut outcomes = BTreeMap::new();
+    for (verifier, state) in states {
+        let outcome = match state {
+            State::InProgress { session, accum } => session.terminate(accum)?,
+            State::Finished(report) => report,
+        };
+        outcomes.insert(verifier, outcome);
+    }
 
     Ok(outcomes)
 }

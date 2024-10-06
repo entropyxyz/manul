@@ -13,34 +13,8 @@ use crate::round::{
     ReceiveError, RoundId,
 };
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
-use crate::transcript::Transcript;
+use crate::transcript::{SessionOutcome, SessionReport, Transcript};
 use crate::{Protocol, Round};
-
-pub enum SessionOutcome<P: Protocol> {
-    Result(P::Result),
-    StalledWithProof(P::CorrectnessProof),
-    NotEnoughMessages,
-    ProvableError,
-    UnprovableError,
-}
-
-pub struct SessionReport<P: Protocol, Verifier, S> {
-    pub outcome: SessionOutcome<P>,
-    pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
-    pub unprovable_errors: BTreeMap<Verifier, RemoteError>,
-    pub missing_messages: BTreeSet<Verifier>,
-}
-
-impl<P: Protocol, Verifier, S> SessionReport<P, Verifier, S> {
-    pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, Verifier, S>) -> Self {
-        Self {
-            outcome,
-            provable_errors: BTreeMap::new(),
-            unprovable_errors: BTreeMap::new(),
-            missing_messages: BTreeSet::new(),
-        }
-    }
-}
 
 pub struct Session<P: Protocol, Signer, Verifier, S> {
     signer: Signer,
@@ -281,11 +255,30 @@ where
         accum: &mut RoundAccumulator<P, Verifier, S>,
         processed: ProcessedMessage<P, Verifier, S>,
     ) -> Result<(), LocalError> {
-        accum.add_processed_message(&self.transcript, processed)
+        accum.add_processed_message(self.round_id(), &self.transcript, processed)
     }
 
     pub fn make_accumulator(&self) -> RoundAccumulator<P, Verifier, S> {
         RoundAccumulator::new()
+    }
+
+    pub fn terminate(
+        self,
+        accum: RoundAccumulator<P, Verifier, S>,
+    ) -> Result<SessionReport<P, Verifier, S>, LocalError> {
+        let round_id = self.round_id();
+        let transcript = self.transcript.update(
+            round_id,
+            accum.echo_broadcasts,
+            accum.direct_messages,
+            accum.provable_errors,
+            accum.unprovable_errors,
+        )?;
+        Ok(SessionReport::new(
+            // TODO: or have a special Outcome entry? "Terminated"?
+            SessionOutcome::NotEnoughMessages,
+            transcript,
+        ))
     }
 
     pub fn finalize_round(
@@ -444,6 +437,7 @@ where
 
     fn add_processed_message(
         &mut self,
+        round_id: RoundId,
         transcript: &Transcript<P, Verifier, S>,
         processed: ProcessedMessage<P, Verifier, S>,
     ) -> Result<(), LocalError> {
@@ -468,7 +462,8 @@ where
             }
             ProcessedMessageEnum::InvalidDirectMessage(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence = Evidence::new_invalid_direct_message(direct_message, error);
+                let evidence =
+                    Evidence::new_invalid_direct_message(&from, round_id, direct_message, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }

@@ -70,6 +70,13 @@ pub trait Protocol: Debug {
     fn deserialize<T: for<'de> Deserialize<'de>>(
         bytes: &[u8],
     ) -> Result<T, Self::DeserializationError>;
+
+    fn validate_direct_message(
+        round_id: RoundId,
+        message: &DirectMessage,
+    ) -> Result<Result<(), Self::DeserializationError>, LocalError> {
+        Ok(Ok(()))
+    }
 }
 
 pub trait ProtocolError: Debug + Clone + Send {

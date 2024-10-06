@@ -59,10 +59,20 @@ where
     }
 
     pub(crate) fn new_invalid_direct_message(
-        message: SignedMessage<S, DirectMessage>,
+        verifier: &Verifier,
+        round_id: RoundId,
+        direct_message: SignedMessage<S, DirectMessage>,
         error: String,
     ) -> Self {
-        unimplemented!()
+        Self {
+            party: verifier.clone(),
+            evidence: EvidenceEnum::InvalidDirectMessage(InvalidDirectMessageEvidence {
+                round_id,
+                direct_message,
+                error,
+                phantom: core::marker::PhantomData,
+            }),
+        }
     }
 
     pub(crate) fn new_invalid_echo_broadcast(
@@ -78,7 +88,7 @@ where
     pub fn verify(&self, party: &Verifier) -> Result<bool, LocalError> {
         match &self.evidence {
             EvidenceEnum::Protocol(evidence) => evidence.verify(party),
-            _ => unimplemented!(),
+            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify(party),
         }
     }
 }
@@ -86,24 +96,31 @@ where
 #[derive(Debug, Clone)]
 enum EvidenceEnum<P: Protocol, S> {
     Protocol(ProtocolEvidence<P, S>),
-    InvalidMessage(InvalidMessageEvidence<P, S>),
+    InvalidDirectMessage(InvalidDirectMessageEvidence<P, S>),
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidMessageEvidence<P: Protocol, S> {
-    pub message: SignedMessage<S, DirectMessage>,
-    pub phantom: core::marker::PhantomData<P>,
+pub struct InvalidDirectMessageEvidence<P: Protocol, S> {
+    round_id: RoundId,
+    direct_message: SignedMessage<S, DirectMessage>,
+    error: String,
+    phantom: core::marker::PhantomData<P>,
 }
 
-impl<P, S> InvalidMessageEvidence<P, S>
+impl<P, S> InvalidDirectMessageEvidence<P, S>
 where
     P: Protocol,
+    S: Clone,
 {
-    fn verify<Verifier>(&self, verifier: &Verifier) -> bool
+    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<bool, LocalError>
     where
         Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
     {
-        true
+        let verified_direct_message = match self.direct_message.clone().verify::<P, _>(verifier)? {
+            Some(message) => message.payload().clone(),
+            None => return Ok(false),
+        };
+        Ok(P::validate_direct_message(self.round_id, &verified_direct_message)?.is_ok())
     }
 }
 

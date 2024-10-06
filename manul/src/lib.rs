@@ -30,5 +30,6 @@ pub use round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     Protocol, ProtocolError, ReceiveError, Round, RoundId,
 };
-pub use session::{RoundOutcome, Session, SessionOutcome, SessionReport};
+pub use session::{RoundOutcome, Session};
 pub use signing::{Digest, DigestSigner, DigestVerifier, Keypair};
+pub use transcript::{SessionOutcome, SessionReport};

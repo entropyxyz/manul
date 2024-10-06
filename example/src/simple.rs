@@ -18,11 +18,22 @@ impl ProtocolError for SimpleProtocolError {
     fn verify(
         &self,
         _echo_broadcast: &Option<EchoBroadcast>,
-        _direct_message: &DirectMessage,
+        direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
     ) -> bool {
-        true
+        // TODO: how can we make it easier for the user to write these?
+        match self {
+            SimpleProtocolError::Round1InvalidPosition => {
+                let _message =
+                    match direct_message.try_deserialize::<SimpleProtocol, Round1Message>() {
+                        Ok(message) => message,
+                        Err(_) => return false,
+                    };
+                // Message contents would be checked here
+                true
+            }
+        }
     }
 }
 
@@ -45,6 +56,20 @@ impl Protocol for SimpleProtocol {
         bytes: &[u8],
     ) -> Result<T, Self::DeserializationError> {
         bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
+    }
+
+    fn validate_direct_message(
+        round_id: RoundId,
+        message: &DirectMessage,
+    ) -> Result<Result<(), Self::DeserializationError>, LocalError> {
+        // TODO: how can we make it easier for the user to write these?
+        if round_id == RoundId::new(1) {
+            match message.try_deserialize::<Self, Round1Message>() {
+                Ok(_) => {}
+                Err(err) => return Ok(Err(err)),
+            }
+        }
+        Err(LocalError::new("Invalid round number".into()))
     }
 }
 
@@ -208,7 +233,7 @@ impl<Id: Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 mod tests {
     use alloc::collections::BTreeSet;
 
-    use manul::testing::{run_sync, RunOutcome, Signature, Signer, Verifier};
+    use manul::testing::{run_sync, Signature, Signer, Verifier};
     use manul::{Keypair, SessionOutcome};
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
@@ -237,16 +262,15 @@ mod tests {
         let my_subscriber = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
-        let results = tracing::subscriber::with_default(my_subscriber, || {
+        let reports = tracing::subscriber::with_default(my_subscriber, || {
             run_sync::<Round1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs).unwrap()
         });
 
-        for (_id, result) in results {
-            assert!(matches!(result, RunOutcome::Report(_)));
-            if let RunOutcome::Report(report) = result {
-                if let SessionOutcome::Result(result) = report.outcome {
-                    assert_eq!(result, 0 + 1 + 2);
-                }
+        for (_id, report) in reports {
+            if let SessionOutcome::Result(result) = report.outcome {
+                assert_eq!(result, 0 + 1 + 2);
+            } else {
+                panic!("Session did not finish successfully");
             }
         }
     }

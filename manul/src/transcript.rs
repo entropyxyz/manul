@@ -1,4 +1,4 @@
-use alloc::collections::{btree_map::Entry, BTreeMap};
+use alloc::collections::{btree_map::Entry, BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use crate::error::{LocalError, RemoteError};
@@ -150,5 +150,32 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
             )));
         }
         Ok(())
+    }
+}
+
+pub enum SessionOutcome<P: Protocol> {
+    Result(P::Result),
+    StalledWithProof(P::CorrectnessProof),
+    NotEnoughMessages,
+    ProvableError,
+    UnprovableError,
+}
+
+// TODO: save the round ID at which the report was generated
+pub struct SessionReport<P: Protocol, Verifier, S> {
+    pub outcome: SessionOutcome<P>,
+    pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
+    pub unprovable_errors: BTreeMap<Verifier, RemoteError>,
+    pub missing_messages: BTreeSet<Verifier>,
+}
+
+impl<P: Protocol, Verifier, S> SessionReport<P, Verifier, S> {
+    pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, Verifier, S>) -> Self {
+        Self {
+            outcome,
+            provable_errors: transcript.provable_errors,
+            unprovable_errors: transcript.unprovable_errors,
+            missing_messages: BTreeSet::new(), // TODO: implement missing messages reporting
+        }
     }
 }
