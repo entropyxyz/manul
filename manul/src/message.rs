@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Error, LocalError, RemoteError};
+use crate::error::LocalError;
 use crate::round::{DirectMessage, EchoBroadcast, RoundId};
 use crate::signing::{Digest, DigestSigner, DigestVerifier};
 use crate::Protocol;
@@ -31,21 +31,6 @@ impl MessageMetadata {
 pub struct MessageWithMetadata<M> {
     metadata: MessageMetadata,
     message: M,
-}
-
-#[derive(Debug, Clone)]
-pub enum VerificationError<Verifier> {
-    Local(LocalError),
-    Remote(RemoteError<Verifier>),
-}
-
-impl<Verifier> VerificationError<Verifier> {
-    pub fn into_error<P: Protocol, S>(self) -> Error<P, Verifier, S> {
-        match self {
-            Self::Local(error) => Error::Local(error),
-            Self::Remote(error) => Error::Remote(error),
-        }
-    }
 }
 
 impl<S, M> SignedMessage<S, M>
@@ -80,23 +65,19 @@ where
     pub fn verify<P: Protocol, Verifier>(
         self,
         verifier: &Verifier,
-    ) -> Result<VerifiedMessage<S, M>, VerificationError<Verifier>>
+    ) -> Result<Option<VerifiedMessage<S, M>>, LocalError>
     where
         Verifier: Clone + DigestVerifier<P::Digest, S>,
     {
-        let message_bytes =
-            P::serialize(&self.message_with_metadata).map_err(VerificationError::Local)?;
+        let message_bytes = P::serialize(&self.message_with_metadata)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         if verifier.verify_digest(digest, &self.signature).is_ok() {
-            Ok(VerifiedMessage {
+            Ok(Some(VerifiedMessage {
                 signature: self.signature,
                 message_with_metadata: self.message_with_metadata,
-            })
+            }))
         } else {
-            Err(VerificationError::Remote(RemoteError::new(
-                verifier.clone(),
-                "Invalid signature".into(),
-            )))
+            Ok(None)
         }
     }
 }
@@ -182,21 +163,27 @@ impl<S> CheckedMessageBundle<S> {
     pub fn verify<P: Protocol, Verifier>(
         self,
         verifier: &Verifier,
-    ) -> Result<VerifiedMessageBundle<Verifier, S>, VerificationError<Verifier>>
+    ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, LocalError>
     where
         Verifier: Clone + DigestVerifier<P::Digest, S>,
     {
-        let direct_message = self.direct_message.verify::<P, _>(verifier)?;
-        let echo_broadcast = self
-            .echo_broadcast
-            .map(|echo| echo.verify::<P, _>(verifier))
-            .transpose()?;
-        Ok(VerifiedMessageBundle {
+        let direct_message = match self.direct_message.verify::<P, _>(verifier)? {
+            Some(direct_message) => direct_message,
+            None => return Ok(None),
+        };
+        let echo_broadcast = match self.echo_broadcast {
+            Some(echo_broadcast) => match echo_broadcast.verify::<P, _>(verifier)? {
+                Some(echo_broadcast) => Some(echo_broadcast),
+                None => return Ok(None),
+            },
+            None => None,
+        };
+        Ok(Some(VerifiedMessageBundle {
             from: verifier.clone(),
             metadata: self.metadata,
             direct_message,
             echo_broadcast,
-        })
+        }))
     }
 }
 

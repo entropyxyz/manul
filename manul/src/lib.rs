@@ -15,18 +15,20 @@ extern crate alloc;
 
 mod echo;
 mod error;
+mod evidence;
 mod message;
 mod round;
 mod serde_bytes;
 mod session;
 mod signing;
 pub mod testing;
+mod transcript;
 
-pub use error::{Error, LocalError};
+pub use error::LocalError;
 pub use message::MessageBundle;
 pub use round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     Protocol, ProtocolError, ReceiveError, Round, RoundId,
 };
-pub use session::{RoundOutcome, Session};
+pub use session::{RoundOutcome, Session, SessionOutcome, SessionReport};
 pub use signing::{Digest, DigestSigner, DigestVerifier, Keypair};

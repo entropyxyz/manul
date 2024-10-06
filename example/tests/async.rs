@@ -4,7 +4,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
     testing::{Signature, Signer, Verifier},
-    Keypair, MessageBundle, Protocol, Round, RoundOutcome, Session,
+    Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session, SessionReport,
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;
@@ -22,7 +22,7 @@ async fn run_session<P>(
     tx: mpsc::Sender<MessageOut>,
     rx: mpsc::Receiver<MessageIn>,
     session: Session<P, Signer, Verifier, Signature>,
-) -> P::Result
+) -> Result<SessionReport<P, Verifier, Signature>, LocalError>
 where
     P: Protocol + 'static,
     P::Digest: digest::Digest,
@@ -51,21 +51,21 @@ where
             // (since it can take some time to create a message),
             // and the artifact will be sent back to the host task
             // to be added to the accumulator.
-            let (message, artifact) = session.make_message(destination).unwrap();
+            let (message, artifact) = session.make_message(destination)?;
             debug!("{key:?}: sending a message to {destination:?}",);
             tx.send((key, *destination, message)).await.unwrap();
 
             // This will happen in a host task
-            accum.add_artifact(artifact).unwrap();
+            session.add_artifact(&mut accum, artifact)?;
         }
 
         for preprocessed in cached_messages {
             // In production usage, this will happen in a spawned task.
             debug!("{key:?}: applying a cached message");
-            let result = session.process_message(preprocessed).unwrap();
+            let processed = session.process_message(preprocessed)?;
 
             // This will happen in a host task.
-            accum.add_processed_message(result).unwrap();
+            session.add_processed_message(&mut accum, processed)?;
         }
 
         while !session.can_finalize(&accum) {
@@ -77,24 +77,22 @@ where
             let (from, message) = rx.recv().await.unwrap();
 
             // Perform quick checks before proceeding with the verification.
-            let preprocessed = session
-                .preprocess_message(&mut accum, &from, message)
-                .unwrap();
+            let preprocessed = session.preprocess_message(&mut accum, &from, message)?;
 
             if let Some(preprocessed) = preprocessed {
                 // In production usage, this will happen in a spawned task.
                 debug!("{key:?}: applying a message from {from:?}");
-                let result = session.process_message(preprocessed).unwrap();
+                let processed = session.process_message(preprocessed)?;
 
                 // This will happen in a host task.
-                accum.add_processed_message(result).unwrap();
+                session.add_processed_message(&mut accum, processed)?;
             }
         }
 
         debug!("{key:?}: finalizing the round");
 
-        match session.finalize_round(accum).unwrap() {
-            RoundOutcome::Result(res) => break res,
+        match session.finalize_round(accum)? {
+            RoundOutcome::Finished(report) => break Ok(report),
             RoundOutcome::AnotherRound {
                 session: new_session,
                 cached_messages: new_cached_messages,
@@ -141,7 +139,9 @@ async fn message_dispatcher(
     }
 }
 
-async fn run_nodes<P>(sessions: Vec<Session<P, Signer, Verifier, Signature>>) -> Vec<P::Result>
+async fn run_nodes<P>(
+    sessions: Vec<Session<P, Signer, Verifier, Signature>>,
+) -> Vec<SessionReport<P, Verifier, Signature>>
 where
     P: Protocol + Send + 'static,
     P::Digest: digest::Digest,
@@ -163,7 +163,9 @@ where
     let dispatcher_task = message_dispatcher(tx_map, dispatcher_rx);
     let dispatcher = tokio::spawn(dispatcher_task);
 
-    let handles: Vec<tokio::task::JoinHandle<P::Result>> = rxs
+    let handles: Vec<
+        tokio::task::JoinHandle<Result<SessionReport<P, Verifier, Signature>, LocalError>>,
+    > = rxs
         .into_iter()
         .zip(sessions.into_iter())
         .map(|(rx, session)| {
@@ -177,7 +179,7 @@ where
 
     let mut results = Vec::with_capacity(num_parties);
     for handle in handles {
-        results.push(handle.await.unwrap());
+        results.push(handle.await.unwrap().unwrap());
     }
 
     dispatcher.await.unwrap();

@@ -4,15 +4,16 @@ use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::LocalError;
+use crate::error::{LocalError, RemoteError};
 use crate::serde_bytes;
 use crate::signing::Digest;
 
 pub enum ReceiveError<P: Protocol> {
     Local(LocalError),
-    InvalidMessage(String),
+    InvalidDirectMessage(String), // TODO: should it be P::DeserializationError?
+    InvalidEchoBroadcast(String), // TODO: should it be P::DeserializationError?
     Protocol(P::ProtocolError),
-    Unprovable(String),
+    Unprovable(RemoteError),
 }
 
 pub enum FinalizeOutcome<I, P: Protocol> {
@@ -22,9 +23,11 @@ pub enum FinalizeOutcome<I, P: Protocol> {
 
 pub enum FinalizeError<I, P: Protocol> {
     Local(LocalError),
-    Protocol { party: I, error: P::ProtocolError },
+    // TODO: need another type of P::FinalizeError, since this won't have an associated message
+    // when constructing the evidence
+    //Protocol { party: I, error: P::ProtocolError },
     Unattributable(P::CorrectnessProof),
-    Unprovable { party: I, error: String },
+    Unprovable { party: I, error: RemoteError },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -57,7 +60,7 @@ impl RoundId {
 pub trait Protocol: Debug {
     type Result;
     type ProtocolError: ProtocolError;
-    type CorrectnessProof;
+    type CorrectnessProof: Send;
     type DeserializationError: serde::de::Error;
     type Digest: Digest;
 
@@ -69,11 +72,20 @@ pub trait Protocol: Debug {
     ) -> Result<T, Self::DeserializationError>;
 }
 
-pub trait ProtocolError: Debug + Clone {
-    fn required_rounds(&self) -> BTreeSet<RoundId> {
+pub trait ProtocolError: Debug + Clone + Send {
+    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         BTreeSet::new()
     }
-    fn verify(&self, message: &DirectMessage, messages: &BTreeMap<RoundId, DirectMessage>) -> bool;
+    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+    fn verify(
+        &self,
+        echo_broadcast: &Option<EchoBroadcast>,
+        direct_message: &DirectMessage,
+        echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        direct_messages: &BTreeMap<RoundId, DirectMessage>,
+    ) -> bool;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -5,29 +5,55 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::echo::EchoRound;
-use crate::error::{
-    Evidence, EvidenceEnum, InvalidMessageEvidence, LocalError, ProtocolEvidence, RemoteError,
-};
+use crate::error::{LocalError, RemoteError};
+use crate::evidence::Evidence;
 use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
 use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, FirstRound, Payload, ProtocolError,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     ReceiveError, RoundId,
 };
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
-use crate::{Error, Protocol, Round};
+use crate::transcript::Transcript;
+use crate::{Protocol, Round};
 
-pub struct Session<P, Signer, Verifier, S> {
+pub enum SessionOutcome<P: Protocol> {
+    Result(P::Result),
+    StalledWithProof(P::CorrectnessProof),
+    NotEnoughMessages,
+    ProvableError,
+    UnprovableError,
+}
+
+pub struct SessionReport<P: Protocol, Verifier, S> {
+    pub outcome: SessionOutcome<P>,
+    pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
+    pub unprovable_errors: BTreeMap<Verifier, RemoteError>,
+    pub missing_messages: BTreeSet<Verifier>,
+}
+
+impl<P: Protocol, Verifier, S> SessionReport<P, Verifier, S> {
+    pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, Verifier, S>) -> Self {
+        Self {
+            outcome,
+            provable_errors: BTreeMap::new(),
+            unprovable_errors: BTreeMap::new(),
+            missing_messages: BTreeSet::new(),
+        }
+    }
+}
+
+pub struct Session<P: Protocol, Signer, Verifier, S> {
     signer: Signer,
     verifier: Verifier,
     round: Box<dyn Round<Verifier, Protocol = P>>,
     message_destinations: BTreeSet<Verifier>,
     echo_message: Option<SignedMessage<S, EchoBroadcast>>,
     possible_next_rounds: BTreeSet<RoundId>,
-    messages: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, DirectMessage>>>,
+    transcript: Transcript<P, Verifier, S>,
 }
 
 pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
-    Result(P::Result),
+    Finished(SessionReport<P, Verifier, S>),
     AnotherRound {
         session: Session<P, Signer, Verifier, S>,
         cached_messages: Vec<VerifiedMessageBundle<Verifier, S>>,
@@ -56,12 +82,13 @@ where
     {
         let verifier = signer.verifying_key();
         let first_round = Box::new(R::new(verifier.clone(), inputs)?);
-        Self::new_for_next_round(signer, first_round)
+        Self::new_for_next_round(signer, first_round, Transcript::new())
     }
 
     fn new_for_next_round(
         signer: Signer,
         round: Box<dyn Round<Verifier, Protocol = P>>,
+        transcript: Transcript<P, Verifier, S>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
         let echo_message = round
@@ -84,7 +111,7 @@ where
             echo_message,
             possible_next_rounds,
             message_destinations,
-            messages: BTreeMap::new(),
+            transcript,
         })
     }
 
@@ -118,57 +145,86 @@ where
         ))
     }
 
+    pub fn add_artifact(
+        &self,
+        accum: &mut RoundAccumulator<P, Verifier, S>,
+        processed: ProcessedArtifact<Verifier>,
+    ) -> Result<(), LocalError> {
+        accum.add_artifact(processed)
+    }
+
     pub fn round_id(&self) -> RoundId {
         self.round.id()
     }
 
     pub fn preprocess_message(
         &self,
-        accum: &mut RoundAccumulator<Verifier, S>,
+        accum: &mut RoundAccumulator<P, Verifier, S>,
         from: &Verifier,
         message: MessageBundle<S>,
-    ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, Error<P, Verifier, S>> {
+    ) -> Result<Option<VerifiedMessageBundle<Verifier, S>>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
 
-        let checked_message = message.unify_metadata().ok_or_else(|| {
-            Error::Remote(RemoteError::new(
-                from.clone(),
-                "Mismatched metadata in bundled messages".into(),
-            ))
-        })?;
+        if self.transcript.is_banned(from) || accum.is_banned(from) {
+            return Ok(None);
+        }
+
+        let checked_message = match message.unify_metadata() {
+            Some(checked_message) => checked_message,
+            None => {
+                accum.register_unprovable_error(
+                    from,
+                    RemoteError::new("Mismatched metadata in bundled messages"),
+                );
+                return Ok(None);
+            }
+        };
         let message_round_id = checked_message.metadata().round_id();
 
         // TODO: check session ID here
 
         if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
-                return Err(Error::Remote(RemoteError::new(
-                    from.clone(),
-                    format!("Message from {:?} is already being processed", from),
-                )));
+                accum.register_unprovable_error(
+                    from,
+                    RemoteError::new("Message from this party is already being processed"),
+                );
+                return Ok(None);
             }
         } else if self.possible_next_rounds.contains(&message_round_id) {
             if accum.message_is_cached(from, message_round_id) {
-                return Err(Error::Remote(RemoteError::new(
-                    from.clone(),
-                    format!(
-                        "Message from {:?} for {:?} is already cached",
-                        from, message_round_id
-                    ),
-                )));
+                accum.register_unprovable_error(
+                    from,
+                    RemoteError::new(&format!(
+                        "Message for {:?} is already cached",
+                        message_round_id
+                    )),
+                );
+                return Ok(None);
             }
         } else {
-            return Err(Error::Remote(RemoteError::new(
-                from.clone(),
-                format!("Unexpected message round ID: {:?}", message_round_id),
-            )));
+            accum.register_unprovable_error(
+                from,
+                RemoteError::new(&format!(
+                    "Unexpected message round ID: {:?}",
+                    message_round_id
+                )),
+            );
+            return Ok(None);
         }
 
         // Verify the signature now
 
-        let verified_message = checked_message
-            .verify::<P, _>(from)
-            .map_err(|err| err.into_error())?;
+        let verified_message = match checked_message.verify::<P, _>(from)? {
+            Some(verified_message) => verified_message,
+            None => {
+                accum.register_unprovable_error(
+                    from,
+                    RemoteError::new("Message verification failed"),
+                );
+                return Ok(None);
+            }
+        };
         debug!(
             "{:?}: received {:?} message from {:?}",
             self.verifier(),
@@ -177,9 +233,7 @@ where
         );
 
         if message_round_id == self.round_id() {
-            accum
-                .mark_processing(&verified_message)
-                .map_err(Error::Local)?;
+            accum.mark_processing(&verified_message)?;
             Ok(Some(verified_message))
         } else if self.possible_next_rounds.contains(&message_round_id) {
             debug!(
@@ -188,9 +242,7 @@ where
                 verified_message.from(),
                 verified_message.metadata().round_id()
             );
-            accum
-                .cache_message(verified_message)
-                .map_err(Error::Local)?;
+            accum.cache_message(verified_message)?;
             Ok(None)
         } else {
             // TODO: can we enforce it through types?
@@ -201,59 +253,67 @@ where
     pub fn process_message(
         &self,
         message: VerifiedMessageBundle<Verifier, S>,
-    ) -> Result<ProcessedMessage<Verifier, S>, Error<P, Verifier, S>> {
-        match self.round.receive_message(
+    ) -> Result<ProcessedMessage<P, Verifier, S>, LocalError> {
+        let processed = match self.round.receive_message(
             message.from(),
             message.echo_broadcast().cloned(),
             message.direct_message().clone(),
         ) {
-            Ok(payload) => Ok(ProcessedMessage {
-                from: message.from().clone(),
-                message,
-                payload,
-            }),
+            Ok(payload) => ProcessedMessageEnum::Success(payload),
             Err(error) => match error {
-                ReceiveError::InvalidMessage(error) => {
-                    let from = message.from().clone();
-                    let (echo, dm) = message.into_unverified();
-                    Err(Error::Protocol(
-                        self.prepare_invalid_message_evidence(&from, &dm),
-                    ))
+                ReceiveError::Local(error) => return Err(error),
+                ReceiveError::InvalidDirectMessage(error) => {
+                    ProcessedMessageEnum::InvalidDirectMessage(error)
                 }
-                ReceiveError::Protocol(error) => {
-                    let from = message.from().clone();
-                    let (echo, dm) = message.into_unverified();
-                    Err(Error::Protocol(self.prepare_evidence(&from, &dm, error)))
+                ReceiveError::InvalidEchoBroadcast(error) => {
+                    ProcessedMessageEnum::InvalidEchoBroadcast(error)
                 }
-                ReceiveError::Local(error) => Err(Error::Local(error)),
-                ReceiveError::Unprovable(error) => Err(Error::Remote(RemoteError::new(
-                    message.from().clone(),
-                    error,
-                ))),
+                ReceiveError::Protocol(error) => ProcessedMessageEnum::ProtocolError(error),
+                ReceiveError::Unprovable(error) => ProcessedMessageEnum::UnprovableError(error),
             },
-        }
+        };
+
+        Ok(ProcessedMessage { message, processed })
     }
 
-    pub fn make_accumulator(&self) -> RoundAccumulator<Verifier, S> {
+    pub fn add_processed_message(
+        &self,
+        accum: &mut RoundAccumulator<P, Verifier, S>,
+        processed: ProcessedMessage<P, Verifier, S>,
+    ) -> Result<(), LocalError> {
+        accum.add_processed_message(&self.transcript, processed)
+    }
+
+    pub fn make_accumulator(&self) -> RoundAccumulator<P, Verifier, S> {
         RoundAccumulator::new()
     }
 
     pub fn finalize_round(
         self,
-        accum: RoundAccumulator<Verifier, S>,
-    ) -> Result<RoundOutcome<P, Signer, Verifier, S>, Error<P, Verifier, S>> {
+        accum: RoundAccumulator<P, Verifier, S>,
+    ) -> Result<RoundOutcome<P, Signer, Verifier, S>, LocalError> {
         let verifier = self.verifier().clone();
+        let round_id = self.round_id();
+
+        let transcript = self.transcript.update(
+            round_id,
+            accum.echo_broadcasts,
+            accum.direct_messages,
+            accum.provable_errors,
+            accum.unprovable_errors,
+        )?;
+
         if let Some(echo_message) = self.echo_message {
             let round = Box::new(EchoRound::new(
                 verifier,
                 echo_message,
-                accum.echo_messages,
+                transcript.echo_broadcasts(round_id)?,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
             ));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(self.signer, round).map_err(Error::Local)?;
+            let session = Session::new_for_next_round(self.signer, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -262,84 +322,76 @@ where
 
         match self.round.finalize(accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
-                FinalizeOutcome::Result(result) => RoundOutcome::Result(result),
+                FinalizeOutcome::Result(result) => RoundOutcome::Finished(SessionReport::new(
+                    SessionOutcome::Result(result),
+                    transcript,
+                )),
                 FinalizeOutcome::AnotherRound(round) => {
                     let cached_messages = filter_messages(accum.cached, round.id());
-                    let session =
-                        Session::new_for_next_round(self.signer, round).map_err(Error::Local)?;
+                    let session = Session::new_for_next_round(self.signer, round, transcript)?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,
                     }
                 }
             }),
-            Err(error) => unimplemented!(),
+            Err(error) => Ok(match error {
+                FinalizeError::Local(error) => return Err(error),
+                FinalizeError::Unattributable(correctness_proof) => {
+                    RoundOutcome::Finished(SessionReport::new(
+                        SessionOutcome::StalledWithProof(correctness_proof),
+                        transcript,
+                    ))
+                }
+                FinalizeError::Unprovable { party, error } => {
+                    let mut transcript = transcript;
+                    transcript.register_unprovable_error(&party, error)?;
+                    RoundOutcome::Finished(SessionReport::new(
+                        SessionOutcome::UnprovableError,
+                        transcript,
+                    ))
+                }
+            }),
         }
     }
 
-    pub fn can_finalize(&self, accum: &RoundAccumulator<Verifier, S>) -> bool {
+    pub fn can_finalize(&self, accum: &RoundAccumulator<P, Verifier, S>) -> bool {
         self.round.can_finalize(&accum.payloads, &accum.artifacts)
-    }
-
-    fn prepare_invalid_message_evidence(
-        &self,
-        from: &Verifier,
-        message: &SignedMessage<S, DirectMessage>,
-    ) -> Evidence<P, Verifier, S> {
-        let evidence = EvidenceEnum::InvalidMessage(InvalidMessageEvidence {
-            message: message.clone(),
-            phantom: core::marker::PhantomData,
-        });
-
-        Evidence {
-            party: from.clone(),
-            evidence,
-        }
-    }
-
-    fn prepare_evidence(
-        &self,
-        from: &Verifier,
-        message: &SignedMessage<S, DirectMessage>,
-        error: P::ProtocolError,
-    ) -> Evidence<P, Verifier, S> {
-        let rounds = error.required_rounds();
-
-        let messages = rounds
-            .iter()
-            .map(|round| (*round, self.messages[round][from].clone()))
-            .collect();
-
-        let evidence = EvidenceEnum::Protocol(ProtocolEvidence {
-            error,
-            message: message.clone(),
-            previous_messages: messages,
-        });
-
-        Evidence {
-            party: from.clone(),
-            evidence,
-        }
     }
 }
 
-pub struct RoundAccumulator<Verifier, S> {
+pub struct RoundAccumulator<P: Protocol, Verifier, S> {
     processing: BTreeSet<Verifier>,
-    echo_messages: BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>,
     payloads: BTreeMap<Verifier, Payload>,
     artifacts: BTreeMap<Verifier, Artifact>,
     cached: BTreeMap<Verifier, BTreeMap<RoundId, VerifiedMessageBundle<Verifier, S>>>,
+    echo_broadcasts: BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>,
+    direct_messages: BTreeMap<Verifier, SignedMessage<S, DirectMessage>>,
+    provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
+    unprovable_errors: BTreeMap<Verifier, RemoteError>,
 }
 
-impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
-    pub fn new() -> Self {
+impl<P, Verifier, S> RoundAccumulator<P, Verifier, S>
+where
+    P: Protocol,
+    Verifier: Debug + Clone + Ord + DigestVerifier<P::Digest, S>,
+    S: Debug + Clone,
+{
+    fn new() -> Self {
         Self {
             processing: BTreeSet::new(),
-            echo_messages: BTreeMap::new(),
             payloads: BTreeMap::new(),
             artifacts: BTreeMap::new(),
             cached: BTreeMap::new(),
+            echo_broadcasts: BTreeMap::new(),
+            direct_messages: BTreeMap::new(),
+            provable_errors: BTreeMap::new(),
+            unprovable_errors: BTreeMap::new(),
         }
+    }
+
+    fn is_banned(&self, from: &Verifier) -> bool {
+        self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
     }
 
     fn message_is_being_processed(&self, from: &Verifier) -> bool {
@@ -352,6 +404,14 @@ impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
         } else {
             false
         }
+    }
+
+    fn register_unprovable_error(&mut self, from: &Verifier, error: RemoteError) {
+        self.unprovable_errors.insert(from.clone(), error);
+    }
+
+    fn register_provable_error(&mut self, from: &Verifier, evidence: Evidence<P, Verifier, S>) {
+        self.provable_errors.insert(from.clone(), evidence);
     }
 
     fn mark_processing(
@@ -368,10 +428,7 @@ impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
         }
     }
 
-    pub fn add_artifact(
-        &mut self,
-        processed: ProcessedArtifact<Verifier>,
-    ) -> Result<(), LocalError> {
+    fn add_artifact(&mut self, processed: ProcessedArtifact<Verifier>) -> Result<(), LocalError> {
         if self
             .artifacts
             .insert(processed.destination.clone(), processed.artifact)
@@ -385,22 +442,61 @@ impl<Verifier: Debug + Clone + Ord, S> RoundAccumulator<Verifier, S> {
         Ok(())
     }
 
-    pub fn add_processed_message(
+    fn add_processed_message(
         &mut self,
-        processed: ProcessedMessage<Verifier, S>,
+        transcript: &Transcript<P, Verifier, S>,
+        processed: ProcessedMessage<P, Verifier, S>,
     ) -> Result<(), LocalError> {
-        let (echo_broadcast, direct_message) = processed.message.into_unverified();
-        if self.payloads.contains_key(&processed.from) {
+        if self.payloads.contains_key(&processed.message.from()) {
             return Err(LocalError::new(format!(
                 "A processed message from {:?} has already been recorded",
-                processed.from
+                processed.message.from()
             )));
         }
-        if let Some(echo) = echo_broadcast {
-            self.echo_messages.insert(processed.from.clone(), echo);
+
+        let from = processed.message.from().clone();
+
+        match processed.processed {
+            ProcessedMessageEnum::Success(payload) => {
+                let (echo_broadcast, direct_message) = processed.message.into_unverified();
+                if let Some(echo) = echo_broadcast {
+                    self.echo_broadcasts.insert(from.clone(), echo);
+                }
+                self.direct_messages.insert(from.clone(), direct_message);
+                self.payloads.insert(from.clone(), payload);
+                Ok(())
+            }
+            ProcessedMessageEnum::InvalidDirectMessage(error) => {
+                let (_echo_broadcast, direct_message) = processed.message.into_unverified();
+                let evidence = Evidence::new_invalid_direct_message(direct_message, error);
+                self.provable_errors.insert(from.clone(), evidence);
+                Ok(())
+            }
+            ProcessedMessageEnum::InvalidEchoBroadcast(error) => {
+                let (echo_broadcast, _direct_message) = processed.message.into_unverified();
+                let echo_broadcast = echo_broadcast
+                    .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast".into()))?;
+                let evidence = Evidence::new_invalid_echo_broadcast(echo_broadcast, error);
+                self.provable_errors.insert(from.clone(), evidence);
+                Ok(())
+            }
+            ProcessedMessageEnum::ProtocolError(error) => {
+                let (echo_broadcast, direct_message) = processed.message.into_unverified();
+                let evidence = Evidence::new_protocol_error(
+                    &from,
+                    echo_broadcast,
+                    direct_message,
+                    error,
+                    transcript,
+                )?;
+                self.provable_errors.insert(from.clone(), evidence);
+                Ok(())
+            }
+            ProcessedMessageEnum::UnprovableError(error) => {
+                self.unprovable_errors.insert(from.clone(), error);
+                Ok(())
+            }
         }
-        self.payloads.insert(processed.from, processed.payload);
-        Ok(())
     }
 
     fn cache_message(
@@ -425,10 +521,17 @@ pub struct ProcessedArtifact<Verifier> {
     artifact: Artifact,
 }
 
-pub struct ProcessedMessage<Verifier, S> {
-    from: Verifier,
+pub struct ProcessedMessage<P: Protocol, Verifier, S> {
     message: VerifiedMessageBundle<Verifier, S>,
-    payload: Payload,
+    processed: ProcessedMessageEnum<P>,
+}
+
+enum ProcessedMessageEnum<P: Protocol> {
+    Success(Payload),
+    InvalidDirectMessage(String),
+    InvalidEchoBroadcast(String),
+    ProtocolError(P::ProtocolError),
+    UnprovableError(RemoteError),
 }
 
 fn filter_messages<Verifier, S>(
@@ -452,7 +555,9 @@ mod tests {
         MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle,
     };
     use crate::testing::{Signature, Signer, Verifier};
-    use crate::{Digest, DirectMessage, LocalError, Protocol, ProtocolError, RoundId};
+    use crate::{
+        Digest, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError, RoundId,
+    };
 
     #[test]
     fn test_concurrency_bounds() {
@@ -502,7 +607,13 @@ mod tests {
         }
 
         impl ProtocolError for DummyProtocolError {
-            fn verify(&self, _: &DirectMessage, _: &BTreeMap<RoundId, DirectMessage>) -> bool {
+            fn verify(
+                &self,
+                echo_broadcast: &Option<EchoBroadcast>,
+                direct_message: &DirectMessage,
+                echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+                direct_messages: &BTreeMap<RoundId, DirectMessage>,
+            ) -> bool {
                 unimplemented!()
             }
         }
@@ -538,6 +649,6 @@ mod tests {
         assert!(impls!(MessageBundle<Signature>: Send));
         assert!(impls!(ProcessedArtifact<Verifier>: Send));
         assert!(impls!(VerifiedMessageBundle<Verifier, Signature>: Send));
-        assert!(impls!(ProcessedMessage<Verifier, Signature>: Send));
+        assert!(impls!(ProcessedMessage<DummyProtocol, Verifier, Signature>: Send));
     }
 }

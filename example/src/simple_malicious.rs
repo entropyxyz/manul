@@ -5,14 +5,13 @@ use manul::{
     Artifact, DirectMessage, FirstRound, LocalError, Round,
 };
 
-use crate::simple::{Inputs, Round1};
+use crate::simple::{Inputs, Round1, Round1Message};
 
 #[derive(Debug, Clone, Copy)]
 enum Behavior {
     Lawful,
     SerializedGarbage,
     AttributableFailure,
-    //UnattributableFailure,
 }
 
 struct MaliciousRound1<Id> {
@@ -55,13 +54,14 @@ impl<Id: Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound
             let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&[99u8])
                 .unwrap();
             Ok((dm, Artifact::empty()))
-        /*} else if matches!(self.behavior, Behavior::AttributableFailure) {
-        let message = Round1Message {
-            my_position: self.round.context.ids_to_positions[&self.round.context.id],
-            your_position: self.round.context.ids_to_positions[&self.round.context.id],
-        };
-        let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&message)?;
-        Ok((dm, Artifact::empty()))*/
+        }
+        else if matches!(self.behavior, Behavior::AttributableFailure) {
+            let message = Round1Message {
+                my_position: self.round.context.ids_to_positions[&self.round.context.id],
+                your_position: self.round.context.ids_to_positions[&self.round.context.id],
+            };
+            let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&message)?;
+            Ok((dm, Artifact::empty()))
         } else {
             self.inner_round_ref().make_direct_message(destination)
         }
@@ -74,11 +74,8 @@ round_override!(MaliciousRound1);
 mod tests {
     use alloc::collections::BTreeSet;
 
+    use manul::testing::{run_sync, Signature, Signer, Verifier};
     use manul::Keypair;
-    use manul::{
-        testing::{run_sync, RunOutcome, Signature, Signer, Verifier},
-        Error,
-    };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
 
@@ -115,31 +112,23 @@ mod tests {
         let my_subscriber = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
-        let results = tracing::subscriber::with_default(my_subscriber, || {
+        let mut results = tracing::subscriber::with_default(my_subscriber, || {
             run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(
                 &mut OsRng, run_inputs,
             )
             .unwrap()
         });
 
-        match &results[&signers[0].verifying_key()] {
-            RunOutcome::Error(Error::Protocol(evidence)) => {
-                assert!(evidence.verify(&signers[0].verifying_key()));
-            }
-            _ => panic!(
-                "Unexpected result: {:?}",
-                results[&signers[0].verifying_key()]
-            ),
-        }
+        let v0 = signers[0].verifying_key();
+        let v1 = signers[1].verifying_key();
+        let v2 = signers[2].verifying_key();
 
-        assert!(matches!(
-            results[&signers[1].verifying_key()],
-            RunOutcome::Result(3)
-        ));
-        assert!(matches!(
-            results[&signers[2].verifying_key()],
-            RunOutcome::Result(3)
-        ));
+        let _report0 = results.remove(&v0).unwrap().unwrap_report();
+        let report1 = results.remove(&v1).unwrap().unwrap_report();
+        let report2 = results.remove(&v2).unwrap().unwrap_report();
+
+        assert!(report1.provable_errors[&v0].verify(&v0).unwrap());
+        assert!(report2.provable_errors[&v0].verify(&v0).unwrap());
     }
 
     #[test]
@@ -152,7 +141,7 @@ mod tests {
         let inputs = Inputs { all_ids };
 
         let run_inputs = signers
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(idx, signer)| {
                 let behavior = if idx == 0 {
@@ -165,25 +154,29 @@ mod tests {
                     inputs: inputs.clone(),
                     behavior,
                 };
-                (signer, malicious_inputs)
+                (signer.clone(), malicious_inputs)
             })
             .collect::<Vec<_>>();
 
         let my_subscriber = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
-        let results = tracing::subscriber::with_default(my_subscriber, || {
+        let mut results = tracing::subscriber::with_default(my_subscriber, || {
             run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(
                 &mut OsRng, run_inputs,
             )
             .unwrap()
         });
 
-        for (_id, result) in results {
-            assert!(matches!(result, RunOutcome::Result(_)));
-            if let RunOutcome::Result(x) = result {
-                assert_eq!(x, 0 + 1 + 2);
-            }
-        }
+        let v0 = signers[0].verifying_key();
+        let v1 = signers[1].verifying_key();
+        let v2 = signers[2].verifying_key();
+
+        let _report0 = results.remove(&v0).unwrap().unwrap_report();
+        let report1 = results.remove(&v1).unwrap().unwrap_report();
+        let report2 = results.remove(&v2).unwrap().unwrap_report();
+
+        assert!(report1.provable_errors[&v0].verify(&v0).unwrap());
+        assert!(report2.provable_errors[&v0].verify(&v0).unwrap());
     }
 }

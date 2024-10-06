@@ -7,26 +7,30 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::message::MessageBundle;
-use crate::session::RoundAccumulator;
+use crate::session::{RoundAccumulator, SessionReport};
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
-use crate::{Error, FirstRound, LocalError, Protocol, RoundOutcome, Session};
+use crate::{FirstRound, LocalError, Protocol, RoundOutcome, Session};
 
-#[derive(Debug, Clone)]
 pub enum RunOutcome<P: Protocol, Verifier, S> {
-    Result(P::Result),
-    // TODO: inlcude the round ID where the error occurred
-    Error(Error<P, Verifier, S>),
-    Stalled,
+    Report(SessionReport<P, Verifier, S>),
+    Stalled, // TODO: save the round ID at which the session stalled
+}
+
+impl<P: Protocol, Verifier, S> RunOutcome<P, Verifier, S> {
+    pub fn unwrap_report(self) -> SessionReport<P, Verifier, S> {
+        match self {
+            Self::Report(report) => report,
+            Self::Stalled => panic!("The run stalled"),
+        }
+    }
 }
 
 enum State<P: Protocol, Signer, Verifier, S> {
     InProgress {
         session: Session<P, Signer, Verifier, S>,
-        accum: RoundAccumulator<Verifier, S>,
+        accum: RoundAccumulator<P, Verifier, S>,
     },
-    Result(P::Result),
-    // TODO: inlcude the round ID where the error occurred
-    Error(Error<P, Verifier, S>),
+    Finished(SessionReport<P, Verifier, S>),
 }
 
 struct Message<Verifier, S> {
@@ -37,7 +41,7 @@ struct Message<Verifier, S> {
 
 fn propagate<P, Signer, Verifier, S>(
     session: Session<P, Signer, Verifier, S>,
-    accum: RoundAccumulator<Verifier, S>,
+    accum: RoundAccumulator<P, Verifier, S>,
 ) -> Result<(State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>), LocalError>
 where
     P: Protocol + 'static,
@@ -66,13 +70,12 @@ where
                 session.verifier(),
                 session.round_id(),
             );
-            match session.finalize_round(accum) {
-                Ok(RoundOutcome::Result(result)) => break State::Result(result),
-                Err(error) => break State::Error(error),
-                Ok(RoundOutcome::AnotherRound {
+            match session.finalize_round(accum)? {
+                RoundOutcome::Finished(report) => break State::Finished(report),
+                RoundOutcome::AnotherRound {
                     session: new_session,
                     cached_messages,
-                }) => {
+                } => {
                     session = new_session;
                     accum = session.make_accumulator();
 
@@ -82,8 +85,8 @@ where
                             message.from(),
                             session.verifier()
                         );
-                        let processed = session.process_message(message).unwrap();
-                        accum.add_processed_message(processed)?;
+                        let processed = session.process_message(message)?;
+                        session.add_processed_message(&mut accum, processed)?;
                     }
                 }
             }
@@ -99,7 +102,7 @@ where
                 to: destination.clone(),
                 message,
             });
-            accum.add_artifact(artifact)?;
+            session.add_artifact(&mut accum, artifact)?;
         }
     };
 
@@ -142,7 +145,7 @@ where
                 to: destination.clone(),
                 message,
             });
-            accum.add_artifact(artifact)?;
+            session.add_artifact(&mut accum, artifact)?;
         }
 
         let (state, new_messages) = propagate(session, accum)?;
@@ -167,13 +170,12 @@ where
             .expect("the message destination is one of the sessions");
         let new_state = if let State::InProgress { session, accum } = state {
             let mut accum = accum;
-            let preprocessed = session
-                .preprocess_message(&mut accum, &message.from, message.message)
-                .unwrap();
+            let preprocessed =
+                session.preprocess_message(&mut accum, &message.from, message.message)?;
 
             if let Some(verified) = preprocessed {
-                let processed = session.process_message(verified).unwrap();
-                accum.add_processed_message(processed)?;
+                let processed = session.process_message(verified)?;
+                session.add_processed_message(&mut accum, processed)?;
             }
 
             let (new_state, new_messages) = propagate(session, accum)?;
@@ -194,8 +196,7 @@ where
         .map(|(verifier, state)| {
             let outcome = match state {
                 State::InProgress { .. } => RunOutcome::Stalled,
-                State::Result(result) => RunOutcome::Result(result),
-                State::Error(error) => RunOutcome::Error(error),
+                State::Finished(report) => RunOutcome::Report(report),
             };
             (verifier, outcome)
         })

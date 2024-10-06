@@ -130,7 +130,7 @@ where
                 "{:?}: echo messages mismatch: {:?}, {:?}",
                 self.verifier, echo_messages, self.echo_messages
             );
-            return Err(ReceiveError::InvalidMessage(
+            return Err(ReceiveError::InvalidDirectMessage(
                 "Echo messages mismatch".into(),
             ));
         }

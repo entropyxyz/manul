@@ -17,8 +17,10 @@ pub enum SimpleProtocolError {
 impl ProtocolError for SimpleProtocolError {
     fn verify(
         &self,
-        _message: &DirectMessage,
-        _messages: &BTreeMap<RoundId, DirectMessage>,
+        _echo_broadcast: &Option<EchoBroadcast>,
+        _direct_message: &DirectMessage,
+        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
     ) -> bool {
         true
     }
@@ -154,7 +156,7 @@ impl<Id: Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
         let message = direct_message
             .try_deserialize::<SimpleProtocol, Round1Message>()
-            .map_err(|err| ReceiveError::InvalidMessage(err.to_string()))?;
+            .map_err(|err| ReceiveError::InvalidDirectMessage(err.to_string()))?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -207,7 +209,7 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::testing::{run_sync, RunOutcome, Signature, Signer, Verifier};
-    use manul::Keypair;
+    use manul::{Keypair, SessionOutcome};
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
 
@@ -240,9 +242,11 @@ mod tests {
         });
 
         for (_id, result) in results {
-            assert!(matches!(result, RunOutcome::Result(_)));
-            if let RunOutcome::Result(x) = result {
-                assert_eq!(x, 0 + 1 + 2);
+            assert!(matches!(result, RunOutcome::Report(_)));
+            if let RunOutcome::Report(report) = result {
+                if let SessionOutcome::Result(result) = report.outcome {
+                    assert_eq!(result, 0 + 1 + 2);
+                }
             }
         }
     }
