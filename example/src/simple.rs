@@ -21,17 +21,13 @@ impl ProtocolError for SimpleProtocolError {
         direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-    ) -> bool {
+    ) -> Result<(), ProtocolValidationError> {
         // TODO: how can we make it easier for the user to write these?
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
-                let _message =
-                    match direct_message.try_deserialize::<SimpleProtocol, Round1Message>() {
-                        Ok(message) => message,
-                        Err(_) => return false,
-                    };
+                let _message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
                 // Message contents would be checked here
-                true
+                Ok(())
             }
         }
     }
@@ -42,8 +38,6 @@ impl Protocol for SimpleProtocol {
     type ProtocolError = SimpleProtocolError;
     type CorrectnessProof = ();
 
-    type DeserializationError = bincode::error::DecodeError;
-
     type Digest = Sha3_256;
 
     fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, LocalError> {
@@ -52,24 +46,20 @@ impl Protocol for SimpleProtocol {
             .map_err(|err| LocalError::new(err.to_string()))
     }
 
-    fn deserialize<T: for<'de> Deserialize<'de>>(
-        bytes: &[u8],
-    ) -> Result<T, Self::DeserializationError> {
+    fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, DeserializationError> {
         bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
+            .map_err(|err| DeserializationError::new(err.to_string()))
     }
 
     fn validate_direct_message(
         round_id: RoundId,
         message: &DirectMessage,
-    ) -> Result<Result<(), Self::DeserializationError>, LocalError> {
+    ) -> Result<(), MessageValidationError> {
         // TODO: how can we make it easier for the user to write these?
         if round_id == RoundId::new(1) {
-            match message.try_deserialize::<Self, Round1Message>() {
-                Ok(_) => {}
-                Err(err) => return Ok(Err(err)),
-            }
+            return message.validate::<Self, Round1Message>();
         }
-        Err(LocalError::new("Invalid round number".into()))
+        Err(LocalError::new("Invalid round number".into()))?
     }
 }
 
@@ -179,9 +169,7 @@ impl<Id: Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     ) -> Result<Payload, ReceiveError<Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let message = direct_message
-            .try_deserialize::<SimpleProtocol, Round1Message>()
-            .map_err(|err| ReceiveError::InvalidDirectMessage(err.to_string()))?;
+        let message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 

@@ -7,8 +7,8 @@ use tracing::debug;
 use crate::error::LocalError;
 use crate::message::SignedMessage;
 use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol,
-    ReceiveError, Round, RoundId,
+    Artifact, DirectMessage, EchoBroadcast, EchoRoundError, FinalizeError, FinalizeOutcome,
+    Payload, Protocol, ReceiveError, Round, RoundId,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,9 +130,7 @@ where
                 "{:?}: echo messages mismatch: {:?}, {:?}",
                 self.verifier, echo_messages, self.echo_messages
             );
-            return Err(ReceiveError::InvalidDirectMessage(
-                "Echo messages mismatch".into(),
-            ));
+            return Err(ReceiveError::Echo(EchoRoundError::MessageMismatch));
         }
 
         Ok(Payload::empty())

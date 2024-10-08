@@ -62,7 +62,7 @@ where
         for preprocessed in cached_messages {
             // In production usage, this will happen in a spawned task.
             debug!("{key:?}: applying a cached message");
-            let processed = session.process_message(preprocessed)?;
+            let processed = session.process_message(preprocessed);
 
             // This will happen in a host task.
             session.add_processed_message(&mut accum, processed)?;
@@ -82,7 +82,7 @@ where
             if let Some(preprocessed) = preprocessed {
                 // In production usage, this will happen in a spawned task.
                 debug!("{key:?}: applying a message from {from:?}");
-                let processed = session.process_message(preprocessed)?;
+                let processed = session.process_message(preprocessed);
 
                 // This will happen in a host task.
                 session.add_processed_message(&mut accum, processed)?;

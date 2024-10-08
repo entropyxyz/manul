@@ -227,27 +227,15 @@ where
     pub fn process_message(
         &self,
         message: VerifiedMessageBundle<Verifier, S>,
-    ) -> Result<ProcessedMessage<P, Verifier, S>, LocalError> {
-        let processed = match self.round.receive_message(
+    ) -> ProcessedMessage<P, Verifier, S> {
+        let processed = self.round.receive_message(
             message.from(),
             message.echo_broadcast().cloned(),
             message.direct_message().clone(),
-        ) {
-            Ok(payload) => ProcessedMessageEnum::Success(payload),
-            Err(error) => match error {
-                ReceiveError::Local(error) => return Err(error),
-                ReceiveError::InvalidDirectMessage(error) => {
-                    ProcessedMessageEnum::InvalidDirectMessage(error)
-                }
-                ReceiveError::InvalidEchoBroadcast(error) => {
-                    ProcessedMessageEnum::InvalidEchoBroadcast(error)
-                }
-                ReceiveError::Protocol(error) => ProcessedMessageEnum::ProtocolError(error),
-                ReceiveError::Unprovable(error) => ProcessedMessageEnum::UnprovableError(error),
-            },
-        };
-
-        Ok(ProcessedMessage { message, processed })
+        );
+        // We could filter out and return a possible `LocalError` at this stage,
+        // but it's no harm in delaying it until `ProcessedMessage` is added to the accumulator.
+        ProcessedMessage { message, processed }
     }
 
     pub fn add_processed_message(
@@ -451,7 +439,7 @@ where
         let from = processed.message.from().clone();
 
         match processed.processed {
-            ProcessedMessageEnum::Success(payload) => {
+            Ok(payload) => {
                 let (echo_broadcast, direct_message) = processed.message.into_unverified();
                 if let Some(echo) = echo_broadcast {
                     self.echo_broadcasts.insert(from.clone(), echo);
@@ -460,14 +448,14 @@ where
                 self.payloads.insert(from.clone(), payload);
                 Ok(())
             }
-            ProcessedMessageEnum::InvalidDirectMessage(error) => {
+            Err(ReceiveError::InvalidDirectMessage(error)) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence =
                     Evidence::new_invalid_direct_message(&from, round_id, direct_message, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            ProcessedMessageEnum::InvalidEchoBroadcast(error) => {
+            Err(ReceiveError::InvalidEchoBroadcast(error)) => {
                 let (echo_broadcast, _direct_message) = processed.message.into_unverified();
                 let echo_broadcast = echo_broadcast
                     .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast".into()))?;
@@ -475,7 +463,7 @@ where
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            ProcessedMessageEnum::ProtocolError(error) => {
+            Err(ReceiveError::Protocol(error)) => {
                 let (echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence = Evidence::new_protocol_error(
                     &from,
@@ -487,10 +475,14 @@ where
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            ProcessedMessageEnum::UnprovableError(error) => {
+            Err(ReceiveError::Unprovable(error)) => {
                 self.unprovable_errors.insert(from.clone(), error);
                 Ok(())
             }
+            Err(ReceiveError::Echo(error)) => {
+                unimplemented!()
+            }
+            Err(ReceiveError::Local(error)) => return Err(error),
         }
     }
 
@@ -518,15 +510,7 @@ pub struct ProcessedArtifact<Verifier> {
 
 pub struct ProcessedMessage<P: Protocol, Verifier, S> {
     message: VerifiedMessageBundle<Verifier, S>,
-    processed: ProcessedMessageEnum<P>,
-}
-
-enum ProcessedMessageEnum<P: Protocol> {
-    Success(Payload),
-    InvalidDirectMessage(String),
-    InvalidEchoBroadcast(String),
-    ProtocolError(P::ProtocolError),
-    UnprovableError(RemoteError),
+    processed: Result<Payload, ReceiveError<P>>,
 }
 
 fn filter_messages<Verifier, S>(
@@ -551,7 +535,8 @@ mod tests {
     };
     use crate::testing::{Signature, Signer, Verifier};
     use crate::{
-        Digest, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError, RoundId,
+        DeserializationError, Digest, DirectMessage, EchoBroadcast, LocalError, Protocol,
+        ProtocolError, ProtocolValidationError, RoundId,
     };
 
     #[test]
@@ -581,26 +566,6 @@ mod tests {
             }
         }
 
-        #[derive(Debug)]
-        struct DummyError;
-
-        impl serde::de::Error for DummyError {
-            fn custom<T>(_: T) -> Self
-            where
-                T: core::fmt::Display,
-            {
-                unimplemented!()
-            }
-        }
-
-        impl core::error::Error for DummyError {}
-
-        impl core::fmt::Display for DummyError {
-            fn fmt(&self, _: &mut core::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                unimplemented!()
-            }
-        }
-
         impl ProtocolError for DummyProtocolError {
             fn verify(
                 &self,
@@ -608,7 +573,7 @@ mod tests {
                 direct_message: &DirectMessage,
                 echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
                 direct_messages: &BTreeMap<RoundId, DirectMessage>,
-            ) -> bool {
+            ) -> Result<(), ProtocolValidationError> {
                 unimplemented!()
             }
         }
@@ -617,7 +582,6 @@ mod tests {
             type Result = ();
             type ProtocolError = DummyProtocolError;
             type CorrectnessProof = ();
-            type DeserializationError = DummyError;
             type Digest = DummyDigest;
             fn serialize<T>(_: &T) -> Result<Box<[u8]>, LocalError>
             where
@@ -625,7 +589,7 @@ mod tests {
             {
                 unimplemented!()
             }
-            fn deserialize<T>(_: &[u8]) -> Result<T, <Self as Protocol>::DeserializationError>
+            fn deserialize<T>(_: &[u8]) -> Result<T, DeserializationError>
             where
                 T: for<'de> Deserialize<'de>,
             {

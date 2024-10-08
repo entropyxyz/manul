@@ -72,7 +72,7 @@ where
                             message.from(),
                             session.verifier()
                         );
-                        let processed = session.process_message(message)?;
+                        let processed = session.process_message(message);
                         session.add_processed_message(&mut accum, processed)?;
                     }
                 }
@@ -161,7 +161,7 @@ where
                 session.preprocess_message(&mut accum, &message.from, message.message)?;
 
             if let Some(verified) = preprocessed {
-                let processed = session.process_message(verified)?;
+                let processed = session.process_message(verified);
                 session.add_processed_message(&mut accum, processed)?;
             }
 

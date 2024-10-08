@@ -8,12 +8,30 @@ use crate::error::{LocalError, RemoteError};
 use crate::serde_bytes;
 use crate::signing::Digest;
 
+pub(crate) enum EchoRoundError {
+    MessageMismatch,
+}
+
 pub enum ReceiveError<P: Protocol> {
     Local(LocalError),
-    InvalidDirectMessage(String), // TODO: should it be P::DeserializationError?
-    InvalidEchoBroadcast(String), // TODO: should it be P::DeserializationError?
+    InvalidDirectMessage(DirectMessageError),
+    InvalidEchoBroadcast(EchoBroadcastError),
     Protocol(P::ProtocolError),
     Unprovable(RemoteError),
+    #[allow(private_interfaces)]
+    Echo(EchoRoundError),
+}
+
+impl<P: Protocol> From<DirectMessageError> for ReceiveError<P> {
+    fn from(error: DirectMessageError) -> Self {
+        Self::InvalidDirectMessage(error)
+    }
+}
+
+impl<P: Protocol> From<EchoBroadcastError> for ReceiveError<P> {
+    fn from(error: EchoBroadcastError) -> Self {
+        Self::InvalidEchoBroadcast(error)
+    }
 }
 
 pub enum FinalizeOutcome<I, P: Protocol> {
@@ -57,25 +75,62 @@ impl RoundId {
     }
 }
 
-pub trait Protocol: Debug {
+#[derive(Debug, Clone)]
+pub enum MessageValidationError {
+    Local(LocalError),
+    Deserialization(DeserializationError),
+}
+
+#[derive(Debug, Clone)]
+pub struct DeserializationError(String);
+
+impl DeserializationError {
+    pub fn new(message: String) -> Self {
+        Self(message)
+    }
+}
+
+impl From<LocalError> for MessageValidationError {
+    fn from(error: LocalError) -> Self {
+        Self::Local(error)
+    }
+}
+
+pub trait Protocol: Debug + Sized {
     type Result;
     type ProtocolError: ProtocolError;
     type CorrectnessProof: Send;
-    type DeserializationError: serde::de::Error;
     type Digest: Digest;
 
     // TODO: should we take inputs by value?
     fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, LocalError>;
     // TODO: should this be generic on 'de instead?
-    fn deserialize<T: for<'de> Deserialize<'de>>(
-        bytes: &[u8],
-    ) -> Result<T, Self::DeserializationError>;
+    fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, DeserializationError>;
 
     fn validate_direct_message(
         round_id: RoundId,
         message: &DirectMessage,
-    ) -> Result<Result<(), Self::DeserializationError>, LocalError> {
-        Ok(Ok(()))
+    ) -> Result<(), MessageValidationError> {
+        Err(MessageValidationError::Local(LocalError::new(format!(
+            "There are no direct messages in {round_id:?}"
+        ))))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ProtocolValidationError {
+    Local(LocalError),
+    ValidEvidence,
+}
+
+// If fail to deserialize a message when validating the evidence
+// it means that the evidence is invalid - a deserialization error would have been
+// processed separately, generating its own evidence.
+impl From<DirectMessageError> for ProtocolValidationError {
+    fn from(error: DirectMessageError) -> Self {
+        Self::Local(LocalError::new(format!(
+            "Failed to deserialize direct message: {error:?}"
+        )))
     }
 }
 
@@ -92,8 +147,14 @@ pub trait ProtocolError: Debug + Clone + Send {
         direct_message: &DirectMessage,
         echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         direct_messages: &BTreeMap<RoundId, DirectMessage>,
-    ) -> bool;
+    ) -> Result<(), ProtocolValidationError>;
 }
+
+#[derive(Debug, Clone)]
+pub struct DirectMessageError(DeserializationError);
+
+#[derive(Debug, Clone)]
+pub struct EchoBroadcastError(DeserializationError);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectMessage(#[serde(with = "serde_bytes")] Box<[u8]>);
@@ -103,10 +164,18 @@ impl DirectMessage {
         P::serialize(message).map(Self)
     }
 
+    pub fn validate<P: Protocol, T: for<'de> Deserialize<'de>>(
+        &self,
+    ) -> Result<(), MessageValidationError> {
+        self.try_deserialize::<P, T>()
+            .map_err(|err| MessageValidationError::Deserialization(err.0))?;
+        Ok(())
+    }
+
     pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(
         &self,
-    ) -> Result<T, P::DeserializationError> {
-        P::deserialize(&self.0)
+    ) -> Result<T, DirectMessageError> {
+        P::deserialize(&self.0).map_err(DirectMessageError)
     }
 }
 
@@ -120,8 +189,8 @@ impl EchoBroadcast {
 
     pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(
         &self,
-    ) -> Result<T, P::DeserializationError> {
-        P::deserialize(&self.0)
+    ) -> Result<T, EchoBroadcastError> {
+        P::deserialize(&self.0).map_err(EchoBroadcastError)
     }
 }
 

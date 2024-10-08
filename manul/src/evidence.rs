@@ -3,9 +3,12 @@ use core::fmt::Debug;
 
 use crate::error::LocalError;
 use crate::message::SignedMessage;
-use crate::round::{DirectMessage, EchoBroadcast, ProtocolError};
+use crate::round::{
+    DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
+    ProtocolError,
+};
 use crate::transcript::Transcript;
-use crate::{DigestVerifier, Protocol, RoundId};
+use crate::{DigestVerifier, Protocol, ProtocolValidationError, RoundId};
 
 #[derive(Debug, Clone)]
 pub struct Evidence<P: Protocol, Verifier, S> {
@@ -62,7 +65,7 @@ where
         verifier: &Verifier,
         round_id: RoundId,
         direct_message: SignedMessage<S, DirectMessage>,
-        error: String,
+        error: DirectMessageError,
     ) -> Self {
         Self {
             party: verifier.clone(),
@@ -77,7 +80,7 @@ where
 
     pub(crate) fn new_invalid_echo_broadcast(
         message: SignedMessage<S, EchoBroadcast>,
-        error: String,
+        error: EchoBroadcastError,
     ) -> Self {
         unimplemented!()
     }
@@ -103,7 +106,7 @@ enum EvidenceEnum<P: Protocol, S> {
 pub struct InvalidDirectMessageEvidence<P: Protocol, S> {
     round_id: RoundId,
     direct_message: SignedMessage<S, DirectMessage>,
-    error: String,
+    error: DirectMessageError,
     phantom: core::marker::PhantomData<P>,
 }
 
@@ -120,7 +123,11 @@ where
             Some(message) => message.payload().clone(),
             None => return Ok(false),
         };
-        Ok(P::validate_direct_message(self.round_id, &verified_direct_message)?.is_ok())
+        match P::validate_direct_message(self.round_id, &verified_direct_message) {
+            Ok(()) => Ok(true),
+            Err(MessageValidationError::Local(error)) => Err(error),
+            Err(_) => Ok(false),
+        }
     }
 }
 
@@ -174,11 +181,15 @@ where
             verified_echo_broadcasts.insert(*round_id, verified_echo_broadcast.payload().clone());
         }
 
-        Ok(self.error.verify(
+        match self.error.verify(
             &verified_echo_broadcast,
             &verified_direct_message,
             &verified_echo_broadcasts,
             &verified_direct_messages,
-        ))
+        ) {
+            Ok(()) => Ok(true),
+            Err(ProtocolValidationError::Local(error)) => Err(error),
+            Err(ProtocolValidationError::ValidEvidence) => Ok(false),
+        }
     }
 }
