@@ -134,11 +134,28 @@ impl From<DirectMessageError> for ProtocolValidationError {
     }
 }
 
+impl From<EchoBroadcastError> for ProtocolValidationError {
+    fn from(error: EchoBroadcastError) -> Self {
+        Self::Local(LocalError::new(format!(
+            "Failed to deserialize echo broadcast: {error:?}"
+        )))
+    }
+}
+
+impl From<LocalError> for ProtocolValidationError {
+    fn from(error: LocalError) -> Self {
+        Self::Local(error)
+    }
+}
+
 pub trait ProtocolError: Debug + Clone + Send {
     fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         BTreeSet::new()
     }
     fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
         BTreeSet::new()
     }
     fn verify(
@@ -147,6 +164,7 @@ pub trait ProtocolError: Debug + Clone + Send {
         direct_message: &DirectMessage,
         echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         direct_messages: &BTreeMap<RoundId, DirectMessage>,
+        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
 }
 
@@ -241,7 +259,7 @@ pub trait FirstRound<I>: Round<I> + Sized {
     fn new(id: I, inputs: Self::Inputs) -> Result<Self, LocalError>;
 }
 
-pub trait Round<I>: Send + Sync {
+pub trait Round<I>: 'static + Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
@@ -273,4 +291,39 @@ pub trait Round<I>: Send + Sync {
         payloads: &BTreeMap<I, Payload>,
         artifacts: &BTreeMap<I, Artifact>,
     ) -> bool;
+
+    /// Returns the type ID of the implementing type.
+    ///
+    /// **Warning:** this is not a part of the public API.
+    #[doc(hidden)]
+    fn __get_type_id(&self) -> core::any::TypeId {
+        core::any::TypeId::of::<Self>()
+    }
+}
+
+// When we are wrapping types implementing Round and overriding `finalize()`,
+// we need to unbox the result of `finalize()`, set it as an attribute of the wrapping round,
+// and then box the result.
+//
+// Because of Rust's peculiarities, Box<dyn Round> that we return in `finalize()`
+// cannot be unboxed into an object of a concrete type with `downcast()`,
+// so we have to provide this workaround.
+impl<Id: 'static, P: Protocol + 'static> dyn Round<Id, Protocol = P> {
+    pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
+        if core::any::TypeId::of::<T>() == self.__get_type_id() {
+            let boxed_downcast = unsafe { Box::<T>::from_raw(Box::into_raw(self) as *mut T) };
+            Ok(*boxed_downcast)
+        } else {
+            Err(self)
+        }
+    }
+
+    pub fn downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, LocalError> {
+        self.try_downcast().map_err(|_| {
+            LocalError::new(format!(
+                "Failed to downcast into type {}",
+                core::any::type_name::<T>()
+            ))
+        })
+    }
 }

@@ -355,8 +355,8 @@ pub struct RoundAccumulator<P: Protocol, Verifier, S> {
 impl<P, Verifier, S> RoundAccumulator<P, Verifier, S>
 where
     P: Protocol,
-    Verifier: Debug + Clone + Ord + DigestVerifier<P::Digest, S>,
-    S: Debug + Clone,
+    Verifier: Debug + Clone + Ord + for<'de> Deserialize<'de> + DigestVerifier<P::Digest, S>,
+    S: Debug + Clone + for<'de> Deserialize<'de>,
 {
     fn new() -> Self {
         Self {
@@ -573,6 +573,7 @@ mod tests {
                 direct_message: &DirectMessage,
                 echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
                 direct_messages: &BTreeMap<RoundId, DirectMessage>,
+                combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
             ) -> Result<(), ProtocolValidationError> {
                 unimplemented!()
             }

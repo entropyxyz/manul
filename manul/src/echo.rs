@@ -14,7 +14,7 @@ use crate::round::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EchoRoundMessage<I: Ord, S> {
     // TODO: use `Vec` to support more serializers?
-    echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
+    pub(crate) echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
 }
 
 pub struct EchoRound<P, I, S> {
@@ -58,9 +58,9 @@ impl<P: Protocol, I: Debug + Clone + Ord, S> EchoRound<P, I, S> {
 
 impl<P, I, S> Round<I> for EchoRound<P, I, S>
 where
-    P: Protocol,
-    I: Debug + Clone + Ord + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
-    S: Debug + Clone + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
+    P: 'static + Protocol,
+    I: 'static + Debug + Clone + Ord + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
+    S: 'static + Debug + Clone + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
 {
     type Protocol = P;
 

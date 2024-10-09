@@ -5,7 +5,7 @@ use crate::round::{
 };
 use crate::LocalError;
 
-pub trait RoundWrapper<Id>: Sized + Send + Sync {
+pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
     type InnerRound: Round<Id>;
     fn inner_round_ref(&self) -> &Self::InnerRound;
     fn inner_round(self) -> Self::InnerRound;

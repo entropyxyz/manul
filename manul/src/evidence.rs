@@ -1,6 +1,9 @@
 use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 
+use serde::Deserialize;
+
+use crate::echo::EchoRoundMessage;
 use crate::error::LocalError;
 use crate::message::SignedMessage;
 use crate::round::{
@@ -19,8 +22,8 @@ pub struct Evidence<P: Protocol, Verifier, S> {
 impl<P, Verifier, S> Evidence<P, Verifier, S>
 where
     P: Protocol,
-    Verifier: Debug + Clone + Ord + DigestVerifier<P::Digest, S>,
-    S: Debug + Clone,
+    Verifier: Debug + Clone + Ord + for<'de> Deserialize<'de> + DigestVerifier<P::Digest, S>,
+    S: Debug + Clone + for<'de> Deserialize<'de>,
 {
     pub(crate) fn new_protocol_error(
         verifier: &Verifier,
@@ -49,6 +52,16 @@ where
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
+        let combined_echos = error
+            .required_combined_echos()
+            .iter()
+            .map(|round_id| {
+                transcript
+                    .get_direct_message(round_id.echo(), verifier)
+                    .map(|dm| (*round_id, dm))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+
         Ok(Self {
             party: verifier.clone(),
             evidence: EvidenceEnum::Protocol(ProtocolEvidence {
@@ -57,6 +70,7 @@ where
                 echo_broadcast,
                 direct_messages,
                 echo_broadcasts,
+                combined_echos,
             }),
         })
     }
@@ -138,16 +152,17 @@ struct ProtocolEvidence<P: Protocol, S> {
     echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
     direct_messages: BTreeMap<RoundId, SignedMessage<S, DirectMessage>>,
     echo_broadcasts: BTreeMap<RoundId, SignedMessage<S, EchoBroadcast>>,
+    combined_echos: BTreeMap<RoundId, SignedMessage<S, DirectMessage>>,
 }
 
 impl<P, S> ProtocolEvidence<P, S>
 where
     P: Protocol,
-    S: Clone,
+    S: Clone + for<'de> Deserialize<'de>,
 {
     fn verify<Verifier>(&self, verifier: &Verifier) -> Result<bool, LocalError>
     where
-        Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
+        Verifier: Debug + Clone + Ord + for<'de> Deserialize<'de> + DigestVerifier<P::Digest, S>,
     {
         let verified_direct_message = match self.direct_message.clone().verify::<P, _>(verifier)? {
             Some(message) => message.payload().clone(),
@@ -181,11 +196,35 @@ where
             verified_echo_broadcasts.insert(*round_id, verified_echo_broadcast.payload().clone());
         }
 
+        let mut combined_echos = BTreeMap::new();
+        for (round_id, combined_echo) in self.combined_echos.iter() {
+            let verified_combined_echo = match combined_echo.clone().verify::<P, _>(verifier)? {
+                Some(message) => message,
+                None => return Ok(false),
+            };
+            let echo_set = DirectMessage::try_deserialize::<P, EchoRoundMessage<Verifier, S>>(
+                verified_combined_echo.payload(),
+            )
+            .unwrap();
+
+            let mut verified_echo_set = Vec::new();
+            for (other_verifier, echo_broadcast) in echo_set.echo_messages.iter() {
+                let verified_echo_broadcast =
+                    match echo_broadcast.clone().verify::<P, _>(other_verifier)? {
+                        Some(message) => message,
+                        None => return Ok(false),
+                    };
+                verified_echo_set.push(verified_echo_broadcast.payload().clone());
+            }
+            combined_echos.insert(*round_id, verified_echo_set);
+        }
+
         match self.error.verify(
             &verified_echo_broadcast,
             &verified_direct_message,
             &verified_echo_broadcasts,
             &verified_direct_messages,
+            &combined_echos,
         ) {
             Ok(()) => Ok(true),
             Err(ProtocolValidationError::Local(error)) => Err(error),
