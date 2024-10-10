@@ -5,13 +5,54 @@ use serde::Deserialize;
 
 use crate::echo::EchoRoundMessage;
 use crate::error::LocalError;
-use crate::message::SignedMessage;
+use crate::message::{MessageVerificationError, SignedMessage};
 use crate::round::{
     DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
     ProtocolError,
 };
 use crate::transcript::Transcript;
 use crate::{DigestVerifier, Protocol, ProtocolValidationError, RoundId};
+
+#[derive(Debug, Clone)]
+pub enum EvidenceError {
+    Local(LocalError),
+    InvalidEvidence(String),
+}
+
+impl From<MessageVerificationError> for EvidenceError {
+    fn from(error: MessageVerificationError) -> Self {
+        match error {
+            MessageVerificationError::Local(error) => Self::Local(error),
+            MessageVerificationError::InvalidSignature => {
+                Self::InvalidEvidence("Invalid message signature".into())
+            }
+        }
+    }
+}
+
+impl From<DirectMessageError> for EvidenceError {
+    fn from(error: DirectMessageError) -> Self {
+        Self::InvalidEvidence(format!("Failed to deserialize direct message: {:?}", error))
+    }
+}
+
+impl From<MessageValidationError> for EvidenceError {
+    fn from(error: MessageValidationError) -> Self {
+        match error {
+            MessageValidationError::Local(error) => Self::Local(error),
+            MessageValidationError::Other(error) => Self::InvalidEvidence(error),
+        }
+    }
+}
+
+impl From<ProtocolValidationError> for EvidenceError {
+    fn from(error: ProtocolValidationError) -> Self {
+        match error {
+            ProtocolValidationError::Local(error) => Self::Local(error),
+            ProtocolValidationError::Other(error) => Self::InvalidEvidence(error),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Evidence<P: Protocol, Verifier, S> {
@@ -99,10 +140,7 @@ where
         unimplemented!()
     }
 
-    // TODO: return an enum instead of `bool` to avoid confusion?
-    // `true` means: evidence is self-consistent and proves the guilt,
-    // `false` means: evidence is not self-consistent, or forged.
-    pub fn verify(&self, party: &Verifier) -> Result<bool, LocalError> {
+    pub fn verify(&self, party: &Verifier) -> Result<(), EvidenceError> {
         match &self.evidence {
             EvidenceEnum::Protocol(evidence) => evidence.verify(party),
             EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify(party),
@@ -129,19 +167,15 @@ where
     P: Protocol,
     S: Clone,
 {
-    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<bool, LocalError>
+    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<(), EvidenceError>
     where
         Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
     {
-        let verified_direct_message = match self.direct_message.clone().verify::<P, _>(verifier)? {
-            Some(message) => message.payload().clone(),
-            None => return Ok(false),
-        };
-        match P::validate_direct_message(self.round_id, &verified_direct_message) {
-            Ok(()) => Ok(true),
-            Err(MessageValidationError::Local(error)) => Err(error),
-            Err(_) => Ok(false),
-        }
+        let verified_direct_message = self.direct_message.clone().verify::<P, _>(verifier)?;
+        Ok(P::verify_direct_message_is_invalid(
+            self.round_id,
+            verified_direct_message.payload(),
+        )?)
     }
 }
 
@@ -160,75 +194,57 @@ where
     P: Protocol,
     S: Clone + for<'de> Deserialize<'de>,
 {
-    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<bool, LocalError>
+    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<(), EvidenceError>
     where
         Verifier: Debug + Clone + Ord + for<'de> Deserialize<'de> + DigestVerifier<P::Digest, S>,
     {
-        let verified_direct_message = match self.direct_message.clone().verify::<P, _>(verifier)? {
-            Some(message) => message.payload().clone(),
-            None => return Ok(false),
-        };
+        let verified_direct_message = self
+            .direct_message
+            .clone()
+            .verify::<P, _>(verifier)?
+            .payload()
+            .clone();
 
         let mut verified_direct_messages = BTreeMap::new();
         for (round_id, direct_message) in self.direct_messages.iter() {
-            let verified_direct_message = match direct_message.clone().verify::<P, _>(verifier)? {
-                Some(message) => message,
-                None => return Ok(false),
-            };
+            let verified_direct_message = direct_message.clone().verify::<P, _>(verifier)?;
             verified_direct_messages.insert(*round_id, verified_direct_message.payload().clone());
         }
 
         let verified_echo_broadcast = if let Some(echo) = self.echo_broadcast.as_ref() {
-            match echo.clone().verify::<P, _>(verifier)? {
-                Some(message) => Some(message.payload().clone()),
-                None => return Ok(false),
-            }
+            Some(echo.clone().verify::<P, _>(verifier)?.payload().clone())
         } else {
             None
         };
 
         let mut verified_echo_broadcasts = BTreeMap::new();
         for (round_id, echo_broadcast) in self.echo_broadcasts.iter() {
-            let verified_echo_broadcast = match echo_broadcast.clone().verify::<P, _>(verifier)? {
-                Some(message) => message,
-                None => return Ok(false),
-            };
+            let verified_echo_broadcast = echo_broadcast.clone().verify::<P, _>(verifier)?;
             verified_echo_broadcasts.insert(*round_id, verified_echo_broadcast.payload().clone());
         }
 
         let mut combined_echos = BTreeMap::new();
         for (round_id, combined_echo) in self.combined_echos.iter() {
-            let verified_combined_echo = match combined_echo.clone().verify::<P, _>(verifier)? {
-                Some(message) => message,
-                None => return Ok(false),
-            };
+            let verified_combined_echo = combined_echo.clone().verify::<P, _>(verifier)?;
             let echo_set = DirectMessage::try_deserialize::<P, EchoRoundMessage<Verifier, S>>(
                 verified_combined_echo.payload(),
-            )
-            .unwrap();
+            )?;
 
             let mut verified_echo_set = Vec::new();
             for (other_verifier, echo_broadcast) in echo_set.echo_messages.iter() {
                 let verified_echo_broadcast =
-                    match echo_broadcast.clone().verify::<P, _>(other_verifier)? {
-                        Some(message) => message,
-                        None => return Ok(false),
-                    };
+                    echo_broadcast.clone().verify::<P, _>(other_verifier)?;
                 verified_echo_set.push(verified_echo_broadcast.payload().clone());
             }
             combined_echos.insert(*round_id, verified_echo_set);
         }
 
-        match self.error.verify(
+        Ok(self.error.verify_messages_constitute_error(
             &verified_echo_broadcast,
             &verified_direct_message,
             &verified_echo_broadcasts,
             &verified_direct_messages,
             &combined_echos,
-        ) {
-            Ok(()) => Ok(true),
-            Err(ProtocolValidationError::Local(error)) => Err(error),
-            Err(ProtocolValidationError::ValidEvidence) => Ok(false),
-        }
+        )?)
     }
 }

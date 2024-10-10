@@ -7,7 +7,9 @@ use tracing::debug;
 use crate::echo::EchoRound;
 use crate::error::{LocalError, RemoteError};
 use crate::evidence::Evidence;
-use crate::message::{MessageBundle, SignedMessage, VerifiedMessageBundle};
+use crate::message::{
+    MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle,
+};
 use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     ReceiveError, RoundId,
@@ -189,15 +191,16 @@ where
 
         // Verify the signature now
 
-        let verified_message = match checked_message.verify::<P, _>(from)? {
-            Some(verified_message) => verified_message,
-            None => {
+        let verified_message = match checked_message.verify::<P, _>(from) {
+            Ok(verified_message) => verified_message,
+            Err(MessageVerificationError::InvalidSignature) => {
                 accum.register_unprovable_error(
                     from,
                     RemoteError::new("Message verification failed"),
                 );
                 return Ok(None);
             }
+            Err(MessageVerificationError::Local(error)) => return Err(error),
         };
         debug!(
             "{:?}: received {:?} message from {:?}",
@@ -567,7 +570,7 @@ mod tests {
         }
 
         impl ProtocolError for DummyProtocolError {
-            fn verify(
+            fn verify_messages_constitute_error(
                 &self,
                 echo_broadcast: &Option<EchoBroadcast>,
                 direct_message: &DirectMessage,

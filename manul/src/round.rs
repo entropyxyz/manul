@@ -78,7 +78,7 @@ impl RoundId {
 #[derive(Debug, Clone)]
 pub enum MessageValidationError {
     Local(LocalError),
-    Deserialization(DeserializationError),
+    Other(String),
 }
 
 #[derive(Debug, Clone)]
@@ -107,20 +107,20 @@ pub trait Protocol: Debug + Sized {
     // TODO: should this be generic on 'de instead?
     fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, DeserializationError>;
 
-    fn validate_direct_message(
+    fn verify_direct_message_is_invalid(
         round_id: RoundId,
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::Local(LocalError::new(format!(
+        Err(MessageValidationError::Other(format!(
             "There are no direct messages in {round_id:?}"
-        ))))
+        )))
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ProtocolValidationError {
     Local(LocalError),
-    ValidEvidence,
+    Other(String),
 }
 
 // If fail to deserialize a message when validating the evidence
@@ -128,17 +128,13 @@ pub enum ProtocolValidationError {
 // processed separately, generating its own evidence.
 impl From<DirectMessageError> for ProtocolValidationError {
     fn from(error: DirectMessageError) -> Self {
-        Self::Local(LocalError::new(format!(
-            "Failed to deserialize direct message: {error:?}"
-        )))
+        Self::Other(format!("Failed to deserialize direct message: {error:?}"))
     }
 }
 
 impl From<EchoBroadcastError> for ProtocolValidationError {
     fn from(error: EchoBroadcastError) -> Self {
-        Self::Local(LocalError::new(format!(
-            "Failed to deserialize echo broadcast: {error:?}"
-        )))
+        Self::Other(format!("Failed to deserialize echo broadcast: {error:?}"))
     }
 }
 
@@ -158,7 +154,7 @@ pub trait ProtocolError: Debug + Clone + Send {
     fn required_combined_echos(&self) -> BTreeSet<RoundId> {
         BTreeSet::new()
     }
-    fn verify(
+    fn verify_messages_constitute_error(
         &self,
         echo_broadcast: &Option<EchoBroadcast>,
         direct_message: &DirectMessage,
@@ -185,9 +181,13 @@ impl DirectMessage {
     pub fn validate<P: Protocol, T: for<'de> Deserialize<'de>>(
         &self,
     ) -> Result<(), MessageValidationError> {
-        self.try_deserialize::<P, T>()
-            .map_err(|err| MessageValidationError::Deserialization(err.0))?;
-        Ok(())
+        if self.try_deserialize::<P, T>().is_err() {
+            Ok(())
+        } else {
+            Err(MessageValidationError::Other(
+                "Message deserialized successfully".into(),
+            ))
+        }
     }
 
     pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(

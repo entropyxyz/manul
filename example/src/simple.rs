@@ -34,7 +34,7 @@ impl ProtocolError for SimpleProtocolError {
         }
     }
 
-    fn verify(
+    fn verify_messages_constitute_error(
         &self,
         _echo_broadcast: &Option<EchoBroadcast>,
         direct_message: &DirectMessage,
@@ -88,7 +88,7 @@ impl Protocol for SimpleProtocol {
             .map_err(|err| DeserializationError::new(err.to_string()))
     }
 
-    fn validate_direct_message(
+    fn verify_direct_message_is_invalid(
         round_id: RoundId,
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
@@ -96,7 +96,7 @@ impl Protocol for SimpleProtocol {
         if round_id == RoundId::new(1) {
             return message.validate::<Self, Round1Message>();
         }
-        Err(LocalError::new("Invalid round number".into()))?
+        Err(MessageValidationError::Other("Invalid round number".into()))?
     }
 }
 
