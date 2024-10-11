@@ -313,7 +313,15 @@ where
                     transcript,
                 )),
                 FinalizeOutcome::AnotherRound(round) => {
-                    let cached_messages = filter_messages(accum.cached, round.id());
+                    // These messages could have been cached before
+                    // processing messages from the same node for the current round.
+                    // So there might have been some new errors, and we need to check again
+                    // if the sender is already banned.
+                    let cached_messages = filter_messages(accum.cached, round.id())
+                        .into_iter()
+                        .filter(|message| !transcript.is_banned(message.from()))
+                        .collect::<Vec<_>>();
+
                     let session = Session::new_for_next_round(self.signer, round, transcript)?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
