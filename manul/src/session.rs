@@ -491,8 +491,7 @@ where
             }
             Err(ReceiveError::InvalidDirectMessage(error)) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence =
-                    Evidence::new_invalid_direct_message(&from, round_id, direct_message, error);
+                let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
@@ -500,8 +499,7 @@ where
                 let (echo_broadcast, _direct_message) = processed.message.into_unverified();
                 let echo_broadcast = echo_broadcast
                     .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast".into()))?;
-                let evidence =
-                    Evidence::new_invalid_echo_broadcast(&from, round_id, echo_broadcast, error);
+                let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }

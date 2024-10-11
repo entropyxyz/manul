@@ -164,14 +164,12 @@ where
 
     pub(crate) fn new_invalid_direct_message(
         verifier: &Verifier,
-        round_id: RoundId,
         direct_message: SignedMessage<S, DirectMessage>,
         error: DirectMessageError,
     ) -> Self {
         Self {
             party: verifier.clone(),
             evidence: EvidenceEnum::InvalidDirectMessage(InvalidDirectMessageEvidence {
-                round_id,
                 direct_message,
                 error,
                 phantom: core::marker::PhantomData,
@@ -181,14 +179,12 @@ where
 
     pub(crate) fn new_invalid_echo_broadcast(
         verifier: &Verifier,
-        round_id: RoundId,
         echo_broadcast: SignedMessage<S, EchoBroadcast>,
         error: EchoBroadcastError,
     ) -> Self {
         Self {
             party: verifier.clone(),
             evidence: EvidenceEnum::InvalidEchoBroadcast(InvalidEchoBroadcastEvidence {
-                round_id,
                 echo_broadcast,
                 error,
                 phantom: core::marker::PhantomData,
@@ -295,7 +291,6 @@ impl<P: Protocol, S: Clone> MismatchedBroadcastsEvidence<P, S> {
 
 #[derive(Debug, Clone)]
 pub struct InvalidDirectMessageEvidence<P: Protocol, S> {
-    round_id: RoundId,
     direct_message: SignedMessage<S, DirectMessage>,
     error: DirectMessageError,
     phantom: core::marker::PhantomData<P>,
@@ -312,7 +307,7 @@ where
     {
         let verified_direct_message = self.direct_message.clone().verify::<P, _>(verifier)?;
         Ok(P::verify_direct_message_is_invalid(
-            self.round_id,
+            self.direct_message.metadata().round_id(),
             verified_direct_message.payload(),
         )?)
     }
@@ -320,7 +315,6 @@ where
 
 #[derive(Debug, Clone)]
 pub struct InvalidEchoBroadcastEvidence<P: Protocol, S> {
-    round_id: RoundId,
     echo_broadcast: SignedMessage<S, EchoBroadcast>,
     error: EchoBroadcastError,
     phantom: core::marker::PhantomData<P>,
@@ -337,7 +331,7 @@ where
     {
         let verified_echo_broadcast = self.echo_broadcast.clone().verify::<P, _>(verifier)?;
         Ok(P::verify_echo_broadcast_is_invalid(
-            self.round_id,
+            self.echo_broadcast.metadata().round_id(),
             verified_echo_broadcast.payload(),
         )?)
     }
