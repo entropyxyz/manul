@@ -76,9 +76,6 @@ pub enum FinalizeOutcome<I, P: Protocol> {
 
 pub enum FinalizeError<I, P: Protocol> {
     Local(LocalError),
-    // TODO: need another type of P::FinalizeError, since this won't have an associated message
-    // when constructing the evidence
-    //Protocol { party: I, error: P::ProtocolError },
     Unattributable(P::CorrectnessProof),
     Unprovable { party: I, error: RemoteError },
 }
