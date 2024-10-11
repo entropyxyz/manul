@@ -142,7 +142,7 @@ where
                     .payload()
                     .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()
                     .map_err(|error| {
-                        LocalError::new("Failed to deserialize the given direct message".into())
+                        LocalError::new("Failed to deserialize the given direct message")
                     })?;
                 let echoed_to_us = deserialized.echo_messages.get(&from).ok_or_else(|| {
                     LocalError::new(format!(

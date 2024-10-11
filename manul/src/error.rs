@@ -4,8 +4,8 @@ use core::fmt::Debug;
 pub struct LocalError(String);
 
 impl LocalError {
-    pub fn new(message: String) -> Self {
-        Self(message)
+    pub fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
     }
 }
 
@@ -13,7 +13,7 @@ impl LocalError {
 pub struct RemoteError(String);
 
 impl RemoteError {
-    pub fn new(message: &str) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
 }

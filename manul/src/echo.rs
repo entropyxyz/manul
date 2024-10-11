@@ -4,7 +4,7 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::error::{LocalError, RemoteError};
+use crate::error::LocalError;
 use crate::message::{MessageVerificationError, SignedMessage};
 use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol,
@@ -142,10 +142,10 @@ where
 
         let mut expected_keys = self.expected_echos.clone();
         if !expected_keys.remove(from) {
-            return Err(ReceiveError::Local(LocalError::new(format!(
+            return Err(ReceiveError::local(format!(
                 "The message sender {from:?} is missing from the expected senders {:?}",
                 self.destinations
-            ))));
+            )));
         }
         let message_keys = message
             .echo_messages
@@ -155,18 +155,18 @@ where
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
         if !missing_keys.is_empty() {
-            return Err(ReceiveError::Unprovable(RemoteError::new(&format!(
+            return Err(ReceiveError::unprovable(format!(
                 "Missing echoed messages from: {:?}",
                 missing_keys
-            ))));
+            )));
         }
 
         let extra_keys = message_keys.difference(&expected_keys).collect::<Vec<_>>();
         if !extra_keys.is_empty() {
-            return Err(ReceiveError::Unprovable(RemoteError::new(&format!(
+            return Err(ReceiveError::unprovable(format!(
                 "Unexpected echoed messages from: {:?}",
                 extra_keys
-            ))));
+            )));
         }
 
         // Check that every entry is equal to what we received previously (in the main round).
@@ -188,32 +188,24 @@ where
 
             let verified_echo = match echo.clone().verify::<P, _>(sender) {
                 Ok(echo) => echo,
-                Err(MessageVerificationError::Local(error)) => {
-                    return Err(ReceiveError::Local(error))
-                }
+                Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.
                 // Provable fault of `from`.
                 Err(MessageVerificationError::InvalidSignature) => {
-                    return Err(ReceiveError::Echo(EchoRoundError::InvalidEcho(
-                        sender.clone(),
-                    )))
+                    return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
                 }
             };
 
             // `from` sent us a correctly signed message but from another round or another session.
             // Provable fault of `from`.
             if verified_echo.metadata() != previously_received_echo.metadata() {
-                return Err(ReceiveError::Echo(EchoRoundError::InvalidEcho(
-                    sender.clone(),
-                )));
+                return Err(EchoRoundError::InvalidEcho(sender.clone()).into());
             }
 
             // `sender` sent us and `from` messages with different payloads.
             // Provable fault of `sender`.
             if verified_echo.payload() != previously_received_echo.payload() {
-                return Err(ReceiveError::Echo(EchoRoundError::InvalidBroadcast(
-                    sender.clone(),
-                )));
+                return Err(EchoRoundError::InvalidBroadcast(sender.clone()).into());
             }
         }
 

@@ -52,10 +52,9 @@ impl ProtocolError for SimpleProtocolError {
             SimpleProtocolError::Round2InvalidPosition => {
                 let _r1_message =
                     direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
-                let r1_echos_serialized =
-                    combined_echos.get(&RoundId::new(1)).ok_or_else(|| {
-                        LocalError::new("Could not find combined echos for Round 1".into())
-                    })?;
+                let r1_echos_serialized = combined_echos
+                    .get(&RoundId::new(1))
+                    .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
 
                 // Deserialize the echos
                 let _r1_echos = r1_echos_serialized
@@ -211,7 +210,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::Protocol(
+            return Err(ReceiveError::protocol(
                 SimpleProtocolError::Round1InvalidPosition,
             ));
         }
@@ -319,7 +318,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::Protocol(
+            return Err(ReceiveError::protocol(
                 SimpleProtocolError::Round2InvalidPosition,
             ));
         }

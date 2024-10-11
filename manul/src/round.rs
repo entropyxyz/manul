@@ -9,25 +9,63 @@ use crate::error::{LocalError, RemoteError};
 use crate::serde_bytes;
 use crate::signing::Digest;
 
-pub enum ReceiveError<Id, P: Protocol> {
+pub struct ReceiveError<Id, P: Protocol>(pub(crate) ReceiveErrorType<Id, P>);
+
+pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
     Local(LocalError),
     InvalidDirectMessage(DirectMessageError),
     InvalidEchoBroadcast(EchoBroadcastError),
     Protocol(P::ProtocolError),
     Unprovable(RemoteError),
-    #[allow(private_interfaces)]
+    // Note that this variant should not be instantiated by the user (a protocol author),
+    // so this whole enum is crate-private and the variants are created
+    // via constructors and From impls.
     Echo(EchoRoundError<Id>),
+}
+
+impl<Id, P: Protocol> ReceiveError<Id, P> {
+    pub fn local(message: impl Into<String>) -> Self {
+        Self(ReceiveErrorType::Local(LocalError::new(message.into())))
+    }
+
+    pub fn unprovable(message: impl Into<String>) -> Self {
+        Self(ReceiveErrorType::Unprovable(RemoteError::new(
+            message.into(),
+        )))
+    }
+
+    pub fn protocol(error: P::ProtocolError) -> Self {
+        Self(ReceiveErrorType::Protocol(error))
+    }
+}
+
+impl<Id, P: Protocol> From<LocalError> for ReceiveError<Id, P> {
+    fn from(error: LocalError) -> Self {
+        Self(ReceiveErrorType::Local(error))
+    }
+}
+
+impl<Id, P: Protocol> From<RemoteError> for ReceiveError<Id, P> {
+    fn from(error: RemoteError) -> Self {
+        Self(ReceiveErrorType::Unprovable(error))
+    }
+}
+
+impl<Id, P: Protocol> From<EchoRoundError<Id>> for ReceiveError<Id, P> {
+    fn from(error: EchoRoundError<Id>) -> Self {
+        Self(ReceiveErrorType::Echo(error))
+    }
 }
 
 impl<Id, P: Protocol> From<DirectMessageError> for ReceiveError<Id, P> {
     fn from(error: DirectMessageError) -> Self {
-        Self::InvalidDirectMessage(error)
+        Self(ReceiveErrorType::InvalidDirectMessage(error))
     }
 }
 
 impl<Id, P: Protocol> From<EchoBroadcastError> for ReceiveError<Id, P> {
     fn from(error: EchoBroadcastError) -> Self {
-        Self::InvalidEchoBroadcast(error)
+        Self(ReceiveErrorType::InvalidEchoBroadcast(error))
     }
 }
 

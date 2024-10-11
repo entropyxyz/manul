@@ -12,7 +12,7 @@ use crate::message::{
 };
 use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
-    ReceiveError, RoundId,
+    ReceiveError, ReceiveErrorType, RoundId,
 };
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::transcript::{SessionOutcome, SessionReport, Transcript};
@@ -479,7 +479,7 @@ where
             )));
         }
 
-        match processed.processed {
+        let error = match processed.processed {
             Ok(payload) => {
                 let (echo_broadcast, direct_message) = processed.message.into_unverified();
                 if let Some(echo) = echo_broadcast {
@@ -487,23 +487,27 @@ where
                 }
                 self.direct_messages.insert(from.clone(), direct_message);
                 self.payloads.insert(from.clone(), payload);
-                Ok(())
+                return Ok(());
             }
-            Err(ReceiveError::InvalidDirectMessage(error)) => {
+            Err(error) => error,
+        };
+
+        match error.0 {
+            ReceiveErrorType::InvalidDirectMessage(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            Err(ReceiveError::InvalidEchoBroadcast(error)) => {
+            ReceiveErrorType::InvalidEchoBroadcast(error) => {
                 let (echo_broadcast, _direct_message) = processed.message.into_unverified();
                 let echo_broadcast = echo_broadcast
-                    .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast".into()))?;
+                    .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            Err(ReceiveError::Protocol(error)) => {
+            ReceiveErrorType::Protocol(error) => {
                 let (echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence = Evidence::new_protocol_error(
                     &from,
@@ -515,18 +519,18 @@ where
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            Err(ReceiveError::Unprovable(error)) => {
+            ReceiveErrorType::Unprovable(error) => {
                 self.unprovable_errors.insert(from.clone(), error);
                 Ok(())
             }
-            Err(ReceiveError::Echo(error)) => {
+            ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence =
                     Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
-            Err(ReceiveError::Local(error)) => return Err(error),
+            ReceiveErrorType::Local(error) => Err(error),
         }
     }
 
