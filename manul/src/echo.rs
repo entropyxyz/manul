@@ -1,6 +1,7 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -99,6 +100,7 @@ where
 
     fn make_direct_message(
         &self,
+        _rng: &mut dyn CryptoRngCore,
         destination: &I,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
@@ -126,6 +128,7 @@ where
 
     fn receive_message(
         &self,
+        rng: &mut dyn CryptoRngCore,
         from: &I,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -214,9 +217,10 @@ where
 
     fn finalize(
         self: Box<Self>,
+        rng: &mut dyn CryptoRngCore,
         _payloads: BTreeMap<I, Payload>,
         _artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>> {
-        self.main_round.finalize(self.payloads, self.artifacts)
+        self.main_round.finalize(rng, self.payloads, self.artifacts)
     }
 }

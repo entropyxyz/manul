@@ -2,6 +2,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::any::Any;
 use core::fmt::Debug;
 
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::echo::EchoRoundError;
@@ -309,7 +310,7 @@ impl Artifact {
 
 pub trait FirstRound<I>: Round<I> + Sized {
     type Inputs;
-    fn new(id: I, inputs: Self::Inputs) -> Result<Self, LocalError>;
+    fn new(rng: &mut impl CryptoRngCore, id: I, inputs: Self::Inputs) -> Result<Self, LocalError>;
 }
 
 pub trait Round<I>: 'static + Send + Sync {
@@ -319,14 +320,21 @@ pub trait Round<I>: 'static + Send + Sync {
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
     fn message_destinations(&self) -> &BTreeSet<I>;
-    fn make_direct_message(&self, destination: &I)
-        -> Result<(DirectMessage, Artifact), LocalError>;
-    fn make_echo_broadcast(&self) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_direct_message(
+        &self,
+        rng: &mut dyn CryptoRngCore,
+        destination: &I,
+    ) -> Result<(DirectMessage, Artifact), LocalError>;
+    fn make_echo_broadcast(
+        &self,
+        rng: &mut dyn CryptoRngCore,
+    ) -> Option<Result<EchoBroadcast, LocalError>> {
         None
     }
 
     fn receive_message(
         &self,
+        rng: &mut dyn CryptoRngCore,
         from: &I,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -334,6 +342,7 @@ pub trait Round<I>: 'static + Send + Sync {
 
     fn finalize(
         self: Box<Self>,
+        rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<I, Payload>,
         artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>>;

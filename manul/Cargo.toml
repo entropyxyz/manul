@@ -13,7 +13,7 @@ categories = ["cryptography", "no-std"]
 serde = { version = "1", default-features = false, features = ["alloc", "serde_derive"] }
 digest = "0.10"
 signature = { version = "2", features = ["digest"] }
-rand_core = "0.6"
+rand_core = "0.6.4"
 rand = "0.8"
 tracing = "0.1"
 

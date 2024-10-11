@@ -6,7 +6,7 @@ use manul::{
     Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, Keypair, LocalError,
     Payload, Round,
 };
-use rand_core::OsRng;
+use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
 
 use crate::simple::{Inputs, Round1, Round1Message, Round2, Round2Message};
@@ -41,8 +41,8 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for MaliciousRound1<Id> {
     type Inputs = MaliciousInputs<Id>;
-    fn new(id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
-        let round = Round1::new(id, inputs.inputs)?;
+    fn new(rng: &mut impl CryptoRngCore, id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
+        let round = Round1::new(rng, id, inputs.inputs)?;
         Ok(Self {
             round,
             behavior: inputs.behavior,
@@ -53,6 +53,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound1<Id> {
     fn make_direct_message(
         &self,
+        rng: &mut dyn CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
@@ -67,12 +68,13 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
             let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&message)?;
             Ok((dm, Artifact::empty()))
         } else {
-            self.inner_round_ref().make_direct_message(destination)
+            self.inner_round_ref().make_direct_message(rng, destination)
         }
     }
 
     fn finalize(
         self: Box<Self>,
+        rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<
@@ -80,7 +82,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         FinalizeError<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
     > {
         let behavior = self.behavior;
-        let outcome = Box::new(self.inner_round()).finalize(payloads, artifacts)?;
+        let outcome = Box::new(self.inner_round()).finalize(rng, payloads, artifacts)?;
 
         Ok(match outcome {
             FinalizeOutcome::Result(res) => FinalizeOutcome::Result(res),
@@ -117,6 +119,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound2<Id> {
     fn make_direct_message(
         &self,
+        rng: &mut dyn CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         if matches!(self.behavior, Behavior::AttributableFailureRound2) {
@@ -127,7 +130,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
             let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&message)?;
             Ok((dm, Artifact::empty()))
         } else {
-            self.inner_round_ref().make_direct_message(destination)
+            self.inner_round_ref().make_direct_message(rng, destination)
         }
     }
 }

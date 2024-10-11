@@ -1,6 +1,7 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -52,23 +53,28 @@ where
         + Sync,
     S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
-    pub fn new<R>(signer: Signer, inputs: R::Inputs) -> Result<Self, LocalError>
+    pub fn new<R>(
+        rng: &mut impl CryptoRngCore,
+        signer: Signer,
+        inputs: R::Inputs,
+    ) -> Result<Self, LocalError>
     where
         R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
         let verifier = signer.verifying_key();
-        let first_round = Box::new(R::new(verifier.clone(), inputs)?);
-        Self::new_for_next_round(signer, first_round, Transcript::new())
+        let first_round = Box::new(R::new(rng, verifier.clone(), inputs)?);
+        Self::new_for_next_round(rng, signer, first_round, Transcript::new())
     }
 
     fn new_for_next_round(
+        rng: &mut impl CryptoRngCore,
         signer: Signer,
         round: Box<dyn Round<Verifier, Protocol = P>>,
         transcript: Transcript<P, Verifier, S>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
         let echo_message = round
-            .make_echo_broadcast()
+            .make_echo_broadcast(rng)
             .transpose()?
             .map(|echo| SignedMessage::new::<P, _>(&signer, round.id(), echo))
             .transpose()?;
@@ -101,9 +107,10 @@ where
 
     pub fn make_message(
         &self,
+        rng: &mut impl CryptoRngCore,
         destination: &Verifier,
     ) -> Result<(MessageBundle<S>, ProcessedArtifact<Verifier>), LocalError> {
-        let (direct_message, artifact) = self.round.make_direct_message(destination)?;
+        let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
 
         let bundle = MessageBundle::new::<P, _>(
             &self.signer,
@@ -229,9 +236,11 @@ where
 
     pub fn process_message(
         &self,
+        rng: &mut impl CryptoRngCore,
         message: VerifiedMessageBundle<Verifier, S>,
     ) -> ProcessedMessage<P, Verifier, S> {
         let processed = self.round.receive_message(
+            rng,
             message.from(),
             message.echo_broadcast().cloned(),
             message.direct_message().clone(),
@@ -275,6 +284,7 @@ where
 
     pub fn finalize_round(
         self,
+        rng: &mut impl CryptoRngCore,
         accum: RoundAccumulator<P, Verifier, S>,
     ) -> Result<RoundOutcome<P, Signer, Verifier, S>, LocalError> {
         let verifier = self.verifier().clone();
@@ -299,14 +309,14 @@ where
                 accum.artifacts,
             ));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(self.signer, round, transcript)?;
+            let session = Session::new_for_next_round(rng, self.signer, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
             });
         }
 
-        match self.round.finalize(accum.payloads, accum.artifacts) {
+        match self.round.finalize(rng, accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
                 FinalizeOutcome::Result(result) => RoundOutcome::Finished(SessionReport::new(
                     SessionOutcome::Result(result),
@@ -322,7 +332,7 @@ where
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();
 
-                    let session = Session::new_for_next_round(self.signer, round, transcript)?;
+                    let session = Session::new_for_next_round(rng, self.signer, round, transcript)?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,

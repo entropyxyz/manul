@@ -2,6 +2,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::*;
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use sha3::Sha3_256;
 use tracing::debug;
@@ -131,7 +132,11 @@ struct Round1Payload {
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Round1<Id> {
     type Inputs = Inputs<Id>;
-    fn new(id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
+    fn new(
+        _rng: &mut impl CryptoRngCore,
+        id: Id,
+        inputs: Self::Inputs,
+    ) -> Result<Self, LocalError> {
         // Just some numbers associated with IDs to use in the dummy protocol.
         // They will be the same on each node since IDs are ordered.
         let ids_to_positions = inputs
@@ -169,7 +174,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(&self) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut dyn CryptoRngCore,
+    ) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
@@ -181,6 +189,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
     fn make_direct_message(
         &self,
+        _rng: &mut dyn CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
@@ -199,6 +208,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
     fn receive_message(
         &self,
+        _rng: &mut dyn CryptoRngCore,
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -222,6 +232,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
     fn finalize(
         self: Box<Self>,
+        _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
@@ -277,7 +288,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(&self) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut dyn CryptoRngCore,
+    ) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
@@ -289,6 +303,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 
     fn make_direct_message(
         &self,
+        _rng: &mut dyn CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
@@ -307,6 +322,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 
     fn receive_message(
         &self,
+        _rng: &mut dyn CryptoRngCore,
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -330,6 +346,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 
     fn finalize(
         self: Box<Self>,
+        _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {

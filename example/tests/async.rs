@@ -9,6 +9,7 @@ use manul::{
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;
+use rand_core::OsRng;
 use tokio::{
     sync::mpsc,
     time::{sleep, Duration},
@@ -28,6 +29,8 @@ where
     P: Protocol + 'static,
     P::Digest: digest::Digest,
 {
+    let rng = &mut OsRng;
+
     let mut rx = rx;
 
     let mut session = session;
@@ -52,7 +55,7 @@ where
             // (since it can take some time to create a message),
             // and the artifact will be sent back to the host task
             // to be added to the accumulator.
-            let (message, artifact) = session.make_message(destination)?;
+            let (message, artifact) = session.make_message(rng, destination)?;
             debug!("{key:?}: sending a message to {destination:?}",);
             tx.send((key, *destination, message)).await.unwrap();
 
@@ -63,7 +66,7 @@ where
         for preprocessed in cached_messages {
             // In production usage, this will happen in a spawned task.
             debug!("{key:?}: applying a cached message");
-            let processed = session.process_message(preprocessed);
+            let processed = session.process_message(rng, preprocessed);
 
             // This will happen in a host task.
             session.add_processed_message(&mut accum, processed)?;
@@ -88,7 +91,7 @@ where
             if let Some(preprocessed) = preprocessed {
                 // In production usage, this will happen in a spawned task.
                 debug!("{key:?}: applying a message from {from:?}");
-                let processed = session.process_message(preprocessed);
+                let processed = session.process_message(rng, preprocessed);
 
                 // This will happen in a host task.
                 session.add_processed_message(&mut accum, processed)?;
@@ -97,7 +100,7 @@ where
 
         debug!("{key:?}: finalizing the round");
 
-        match session.finalize_round(accum)? {
+        match session.finalize_round(rng, accum)? {
             RoundOutcome::Finished(report) => break Ok(report),
             RoundOutcome::AnotherRound {
                 session: new_session,
@@ -211,7 +214,7 @@ async fn async_run() {
                     Signer,
                     Verifier,
                     Signature,
-                >::new::<Round1<Verifier>>(signer, inputs)
+                >::new::<Round1<Verifier>>(&mut OsRng, signer, inputs)
                 .unwrap()
         })
         .collect::<Vec<_>>();

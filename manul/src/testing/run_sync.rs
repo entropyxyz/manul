@@ -2,7 +2,7 @@ use alloc::collections::BTreeMap;
 use core::fmt::Debug;
 
 use rand::Rng;
-use rand_core::RngCore;
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -27,6 +27,7 @@ struct Message<Verifier, S> {
 }
 
 fn propagate<P, Signer, Verifier, S>(
+    rng: &mut impl CryptoRngCore,
     session: Session<P, Signer, Verifier, S>,
     accum: RoundAccumulator<P, Verifier, S>,
 ) -> Result<(State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>), LocalError>
@@ -58,7 +59,7 @@ where
                     session.verifier(),
                     session.round_id(),
                 );
-                match session.finalize_round(accum)? {
+                match session.finalize_round(rng, accum)? {
                     RoundOutcome::Finished(report) => break State::Finished(report),
                     RoundOutcome::AnotherRound {
                         session: new_session,
@@ -73,7 +74,7 @@ where
                                 message.from(),
                                 session.verifier()
                             );
-                            let processed = session.process_message(message);
+                            let processed = session.process_message(rng, message);
                             session.add_processed_message(&mut accum, processed)?;
                         }
                     }
@@ -85,7 +86,7 @@ where
 
         let destinations = session.message_destinations();
         for destination in destinations {
-            let (message, artifact) = session.make_message(destination)?;
+            let (message, artifact) = session.make_message(rng, destination)?;
             messages.push(Message {
                 from: session.verifier().clone(),
                 to: destination.clone(),
@@ -99,7 +100,7 @@ where
 }
 
 pub fn run_sync<R, Signer, Verifier, S>(
-    rng: &mut impl RngCore,
+    rng: &mut impl CryptoRngCore,
     inputs: Vec<(Signer, R::Inputs)>,
 ) -> Result<BTreeMap<Verifier, SessionReport<R::Protocol, Verifier, S>>, LocalError>
 where
@@ -123,12 +124,12 @@ where
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(signer, inputs)?;
+        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(rng, signer, inputs)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();
         for destination in destinations {
-            let (message, artifact) = session.make_message(destination)?;
+            let (message, artifact) = session.make_message(rng, destination)?;
             messages.push(Message {
                 from: session.verifier().clone(),
                 to: destination.clone(),
@@ -137,7 +138,7 @@ where
             session.add_artifact(&mut accum, artifact)?;
         }
 
-        let (state, new_messages) = propagate(session, accum)?;
+        let (state, new_messages) = propagate(rng, session, accum)?;
         messages.extend(new_messages);
         states.insert(verifier, state);
     }
@@ -163,11 +164,11 @@ where
                 session.preprocess_message(&mut accum, &message.from, message.message)?;
 
             if let Some(verified) = preprocessed {
-                let processed = session.process_message(verified);
+                let processed = session.process_message(rng, verified);
                 session.add_processed_message(&mut accum, processed)?;
             }
 
-            let (new_state, new_messages) = propagate(session, accum)?;
+            let (new_state, new_messages) = propagate(rng, session, accum)?;
             messages.extend(new_messages);
             new_state
         } else {
