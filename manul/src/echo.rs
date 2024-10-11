@@ -120,6 +120,10 @@ where
         Ok((dm, Artifact::empty()))
     }
 
+    fn expecting_messages_from(&self) -> &BTreeSet<I> {
+        &self.destinations
+    }
+
     fn receive_message(
         &self,
         from: &I,
@@ -222,15 +226,5 @@ where
         _artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>> {
         self.main_round.finalize(self.payloads, self.artifacts)
-    }
-
-    fn can_finalize(
-        &self,
-        payloads: &BTreeMap<I, Payload>,
-        _artifacts: &BTreeMap<I, Artifact>,
-    ) -> bool {
-        self.message_destinations()
-            .iter()
-            .all(|id| payloads.contains_key(id))
     }
 }

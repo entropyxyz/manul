@@ -91,13 +91,8 @@ macro_rules! round_override {
                 <Self as RoundOverride<Id>>::finalize(self, payloads, artifacts)
             }
 
-            // Do we need to take `artifacts` here? Can we just judge by payloads?
-            fn can_finalize(
-                &self,
-                payloads: &::alloc::collections::BTreeMap<Id, $crate::Payload>,
-                artifacts: &::alloc::collections::BTreeMap<Id, $crate::Artifact>,
-            ) -> bool {
-                self.inner_round_ref().can_finalize(payloads, artifacts)
+            fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+                self.inner_round_ref().expecting_messages_from()
             }
         }
     };

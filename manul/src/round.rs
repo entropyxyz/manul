@@ -303,12 +303,7 @@ pub trait Round<I>: 'static + Send + Sync {
         artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>>;
 
-    // Do we need to take `artifacts` here? Can we just judge by payloads?
-    fn can_finalize(
-        &self,
-        payloads: &BTreeMap<I, Payload>,
-        artifacts: &BTreeMap<I, Artifact>,
-    ) -> bool;
+    fn expecting_messages_from(&self) -> &BTreeSet<I>;
 
     /// Returns the type ID of the implementing type.
     ///

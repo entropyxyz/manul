@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::message::MessageBundle;
-use crate::session::RoundAccumulator;
+use crate::session::{CanFinalize, RoundAccumulator};
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::transcript::SessionReport;
 use crate::{FirstRound, LocalError, Protocol, RoundOutcome, Session};
@@ -51,34 +51,36 @@ where
     let mut accum = accum;
 
     let state = loop {
-        if session.can_finalize(&accum) {
-            debug!(
-                "{:?}: finalizing {:?}",
-                session.verifier(),
-                session.round_id(),
-            );
-            match session.finalize_round(accum)? {
-                RoundOutcome::Finished(report) => break State::Finished(report),
-                RoundOutcome::AnotherRound {
-                    session: new_session,
-                    cached_messages,
-                } => {
-                    session = new_session;
-                    accum = session.make_accumulator();
+        match session.can_finalize(&accum) {
+            CanFinalize::Yes => {
+                debug!(
+                    "{:?}: finalizing {:?}",
+                    session.verifier(),
+                    session.round_id(),
+                );
+                match session.finalize_round(accum)? {
+                    RoundOutcome::Finished(report) => break State::Finished(report),
+                    RoundOutcome::AnotherRound {
+                        session: new_session,
+                        cached_messages,
+                    } => {
+                        session = new_session;
+                        accum = session.make_accumulator();
 
-                    for message in cached_messages {
-                        debug!(
-                            "Delivering cached message from {:?} to {:?}",
-                            message.from(),
-                            session.verifier()
-                        );
-                        let processed = session.process_message(message);
-                        session.add_processed_message(&mut accum, processed)?;
+                        for message in cached_messages {
+                            debug!(
+                                "Delivering cached message from {:?} to {:?}",
+                                message.from(),
+                                session.verifier()
+                            );
+                            let processed = session.process_message(message);
+                            session.add_processed_message(&mut accum, processed)?;
+                        }
                     }
                 }
             }
-        } else {
-            break State::InProgress { session, accum };
+            CanFinalize::NotYet => break State::InProgress { session, accum },
+            CanFinalize::Never => break State::Finished(session.terminate(accum)?),
         }
 
         let destinations = session.message_destinations();

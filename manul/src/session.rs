@@ -250,7 +250,7 @@ where
     }
 
     pub fn make_accumulator(&self) -> RoundAccumulator<P, Verifier, S> {
-        RoundAccumulator::new()
+        RoundAccumulator::new(self.round.expecting_messages_from())
     }
 
     pub fn terminate(
@@ -264,6 +264,7 @@ where
             accum.direct_messages,
             accum.provable_errors,
             accum.unprovable_errors,
+            accum.still_have_not_sent_messages,
         )?;
         Ok(SessionReport::new(
             // TODO: or have a special Outcome entry? "Terminated"?
@@ -285,6 +286,7 @@ where
             accum.direct_messages,
             accum.provable_errors,
             accum.unprovable_errors,
+            accum.still_have_not_sent_messages,
         )?;
 
         if let Some(echo_message) = self.echo_message {
@@ -339,12 +341,25 @@ where
         }
     }
 
-    pub fn can_finalize(&self, accum: &RoundAccumulator<P, Verifier, S>) -> bool {
-        self.round.can_finalize(&accum.payloads, &accum.artifacts)
+    pub fn can_finalize(&self, accum: &RoundAccumulator<P, Verifier, S>) -> CanFinalize {
+        accum.can_finalize()
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CanFinalize {
+    /// There are enough messages successfully processed to finalize the round.
+    Yes,
+    /// There are not enough successfully processed messages, but not all nodes have responded yet.
+    NotYet,
+    /// Too many responses were invalid, and finalizing the round is impossible at this stage.
+    /// Call [`Session::terminate`] to get the final report.
+    Never,
+}
+
 pub struct RoundAccumulator<P: Protocol, Verifier, S> {
+    still_have_not_sent_messages: BTreeSet<Verifier>,
+    expecting_messages_from: BTreeSet<Verifier>,
     processing: BTreeSet<Verifier>,
     payloads: BTreeMap<Verifier, Payload>,
     artifacts: BTreeMap<Verifier, Artifact>,
@@ -361,8 +376,10 @@ where
     Verifier: Debug + Clone + Ord + for<'de> Deserialize<'de> + DigestVerifier<P::Digest, S>,
     S: Debug + Clone + for<'de> Deserialize<'de>,
 {
-    fn new() -> Self {
+    fn new(expecting_messages_from: &BTreeSet<Verifier>) -> Self {
         Self {
+            still_have_not_sent_messages: expecting_messages_from.clone(),
+            expecting_messages_from: expecting_messages_from.clone(),
             processing: BTreeSet::new(),
             payloads: BTreeMap::new(),
             artifacts: BTreeMap::new(),
@@ -371,6 +388,20 @@ where
             direct_messages: BTreeMap::new(),
             provable_errors: BTreeMap::new(),
             unprovable_errors: BTreeMap::new(),
+        }
+    }
+
+    fn can_finalize(&self) -> CanFinalize {
+        if self
+            .expecting_messages_from
+            .iter()
+            .all(|key| self.payloads.contains_key(key))
+        {
+            CanFinalize::Yes
+        } else if !self.still_have_not_sent_messages.is_empty() {
+            CanFinalize::NotYet
+        } else {
+            CanFinalize::Never
         }
     }
 
@@ -440,6 +471,13 @@ where
         }
 
         let from = processed.message.from().clone();
+
+        if !self.still_have_not_sent_messages.remove(&from) {
+            return Err(LocalError::new(format!(
+                "Expected {:?} to not be in the list of expected messages",
+                from
+            )));
+        }
 
         match processed.processed {
             Ok(payload) => {

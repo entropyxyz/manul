@@ -4,7 +4,8 @@ use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
     testing::{Signature, Signer, Verifier},
-    Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session, SessionReport,
+    CanFinalize, Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session,
+    SessionReport,
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;
@@ -68,10 +69,15 @@ where
             session.add_processed_message(&mut accum, processed)?;
         }
 
-        while !session.can_finalize(&accum) {
-            // This can be checked if a timeout expired, to see which nodes have not responded yet.
-            //let unresponsive_parties = session.missing_messages(&accum).unwrap();
-            //assert!(!unresponsive_parties.is_empty());
+        loop {
+            match session.can_finalize(&accum) {
+                CanFinalize::Yes => break,
+                CanFinalize::NotYet => {}
+                // Due to already registered invalid messages from nodes,
+                // even if the remaining nodes send correct messages, it won't be enough.
+                // Terminating.
+                CanFinalize::Never => return Ok(session.terminate(accum)?),
+            }
 
             debug!("{key:?}: waiting for a message");
             let (from, message) = rx.recv().await.unwrap();

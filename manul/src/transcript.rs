@@ -11,6 +11,7 @@ pub(crate) struct Transcript<P: Protocol, Verifier, S> {
     direct_messages: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, DirectMessage>>>,
     provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
     unprovable_errors: BTreeMap<Verifier, RemoteError>,
+    missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
 }
 
 impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifier, S> {
@@ -20,6 +21,7 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
             direct_messages: BTreeMap::new(),
             provable_errors: BTreeMap::new(),
             unprovable_errors: BTreeMap::new(),
+            missing_messages: BTreeMap::new(),
         }
     }
 
@@ -30,6 +32,7 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
         direct_messages: BTreeMap<Verifier, SignedMessage<S, DirectMessage>>,
         provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
         unprovable_errors: BTreeMap<Verifier, RemoteError>,
+        missing_messages: BTreeSet<Verifier>,
     ) -> Result<Self, LocalError> {
         let mut all_echo_broadcasts = self.echo_broadcasts;
         match all_echo_broadcasts.entry(round_id) {
@@ -75,11 +78,22 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
             }
         }
 
+        let mut all_missing_messages = self.missing_messages;
+        match all_missing_messages.entry(round_id) {
+            Entry::Vacant(entry) => entry.insert(missing_messages),
+            Entry::Occupied(_) => {
+                return Err(LocalError::new(format!(
+                    "A missing messages entry for {round_id:?} already exists"
+                )))
+            }
+        };
+
         Ok(Self {
             echo_broadcasts: all_echo_broadcasts,
             direct_messages: all_direct_messages,
             provable_errors: all_provable_errors,
             unprovable_errors: all_unprovable_errors,
+            missing_messages: all_missing_messages,
         })
     }
 
@@ -166,7 +180,7 @@ pub struct SessionReport<P: Protocol, Verifier, S> {
     pub outcome: SessionOutcome<P>,
     pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
     pub unprovable_errors: BTreeMap<Verifier, RemoteError>,
-    pub missing_messages: BTreeSet<Verifier>,
+    pub missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
 }
 
 impl<P: Protocol, Verifier, S> SessionReport<P, Verifier, S> {
@@ -175,7 +189,7 @@ impl<P: Protocol, Verifier, S> SessionReport<P, Verifier, S> {
             outcome,
             provable_errors: transcript.provable_errors,
             unprovable_errors: transcript.unprovable_errors,
-            missing_messages: BTreeSet::new(), // TODO: implement missing messages reporting
+            missing_messages: transcript.missing_messages,
         }
     }
 }

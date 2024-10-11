@@ -247,15 +247,8 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         Ok(FinalizeOutcome::AnotherRound(Box::new(round2)))
     }
 
-    fn can_finalize(
-        &self,
-        payloads: &BTreeMap<Id, Payload>,
-        _artifacts: &BTreeMap<Id, Artifact>,
-    ) -> bool {
-        self.context
-            .other_ids
-            .iter()
-            .all(|id| payloads.contains_key(id))
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        &self.context.other_ids
     }
 }
 
@@ -358,15 +351,8 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         Ok(FinalizeOutcome::Result(sum))
     }
 
-    fn can_finalize(
-        &self,
-        payloads: &BTreeMap<Id, Payload>,
-        _artifacts: &BTreeMap<Id, Artifact>,
-    ) -> bool {
-        self.context
-            .other_ids
-            .iter()
-            .all(|id| payloads.contains_key(id))
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        &self.context.other_ids
     }
 }
 
