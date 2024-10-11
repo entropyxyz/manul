@@ -3,7 +3,7 @@ use core::fmt::Debug;
 
 use serde::Deserialize;
 
-use crate::echo::EchoRoundMessage;
+use crate::echo::{EchoRoundError, EchoRoundMessage};
 use crate::error::LocalError;
 use crate::message::{MessageVerificationError, SignedMessage};
 use crate::round::{
@@ -57,7 +57,7 @@ impl From<ProtocolValidationError> for EvidenceError {
 #[derive(Debug, Clone)]
 pub struct Evidence<P: Protocol, Verifier, S> {
     party: Verifier, // TOOD: should it be saved here?
-    evidence: EvidenceEnum<P, S>,
+    evidence: EvidenceEnum<P, Verifier, S>,
 }
 
 impl<P, Verifier, S> Evidence<P, Verifier, S>
@@ -116,6 +116,52 @@ where
         })
     }
 
+    pub(crate) fn new_echo_round_error(
+        verifier: &Verifier,
+        direct_message: SignedMessage<S, DirectMessage>,
+        error: EchoRoundError<Verifier>,
+        transcript: &Transcript<P, Verifier, S>,
+    ) -> Result<Self, LocalError> {
+        match error {
+            EchoRoundError::InvalidEcho(from) => Ok(Self {
+                party: verifier.clone(),
+                evidence: EvidenceEnum::InvalidEchoPack(InvalidEchoPackEvidence {
+                    direct_message,
+                    invalid_echo_sender: from,
+                    phantom: core::marker::PhantomData,
+                }),
+            }),
+            EchoRoundError::InvalidBroadcast(from) => {
+                // We could avoid all this if we attached the SignedMessage objects
+                // directly to the error. But then it would have to be generic over `S`,
+                // which the `Round` trait knows nothing about.
+                let round_id = direct_message.metadata().round_id().non_echo();
+                let we_received = transcript.get_echo_broadcast(round_id, &from)?;
+
+                let deserialized = direct_message
+                    .payload()
+                    .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()
+                    .map_err(|error| {
+                        LocalError::new("Failed to deserialize the given direct message".into())
+                    })?;
+                let echoed_to_us = deserialized.echo_messages.get(&from).ok_or_else(|| {
+                    LocalError::new(format!(
+                        "The echo message from {from:?} is missing from the echo packet"
+                    ))
+                })?;
+
+                Ok(Self {
+                    party: from,
+                    evidence: EvidenceEnum::MismatchedBroadcasts(MismatchedBroadcastsEvidence {
+                        we_received,
+                        echoed_to_us: echoed_to_us.clone(),
+                        phantom: core::marker::PhantomData,
+                    }),
+                })
+            }
+        }
+    }
+
     pub(crate) fn new_invalid_direct_message(
         verifier: &Verifier,
         round_id: RoundId,
@@ -134,24 +180,117 @@ where
     }
 
     pub(crate) fn new_invalid_echo_broadcast(
-        message: SignedMessage<S, EchoBroadcast>,
+        verifier: &Verifier,
+        round_id: RoundId,
+        echo_broadcast: SignedMessage<S, EchoBroadcast>,
         error: EchoBroadcastError,
     ) -> Self {
-        unimplemented!()
+        Self {
+            party: verifier.clone(),
+            evidence: EvidenceEnum::InvalidEchoBroadcast(InvalidEchoBroadcastEvidence {
+                round_id,
+                echo_broadcast,
+                error,
+                phantom: core::marker::PhantomData,
+            }),
+        }
     }
 
     pub fn verify(&self, party: &Verifier) -> Result<(), EvidenceError> {
         match &self.evidence {
             EvidenceEnum::Protocol(evidence) => evidence.verify(party),
             EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify(party),
+            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify(party),
+            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party),
+            EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify(party),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-enum EvidenceEnum<P: Protocol, S> {
+enum EvidenceEnum<P: Protocol, Verifier, S> {
     Protocol(ProtocolEvidence<P, S>),
     InvalidDirectMessage(InvalidDirectMessageEvidence<P, S>),
+    InvalidEchoBroadcast(InvalidEchoBroadcastEvidence<P, S>),
+    InvalidEchoPack(InvalidEchoPackEvidence<P, Verifier, S>),
+    MismatchedBroadcasts(MismatchedBroadcastsEvidence<P, S>),
+}
+
+#[derive(Debug, Clone)]
+pub struct InvalidEchoPackEvidence<P: Protocol, Verifier, S> {
+    direct_message: SignedMessage<S, DirectMessage>,
+    invalid_echo_sender: Verifier,
+    phantom: core::marker::PhantomData<P>,
+}
+
+impl<P, Verifier, S> InvalidEchoPackEvidence<P, Verifier, S>
+where
+    P: Protocol,
+    S: Clone + for<'de> Deserialize<'de>,
+    Verifier: Debug + Clone + Ord + DigestVerifier<P::Digest, S> + for<'de> Deserialize<'de>,
+{
+    fn verify(&self, verifier: &Verifier) -> Result<(), EvidenceError> {
+        let verified = self.direct_message.clone().verify::<P, _>(verifier)?;
+        let deserialized = verified
+            .payload()
+            .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()?;
+        let invalid_echo = deserialized
+            .echo_messages
+            .get(&self.invalid_echo_sender)
+            .ok_or_else(|| {
+                EvidenceError::InvalidEvidence(format!(
+                    "Did not find {:?} in the attached message",
+                    self.invalid_echo_sender
+                ))
+            })?;
+
+        let verified_echo = match invalid_echo
+            .clone()
+            .verify::<P, _>(&self.invalid_echo_sender)
+        {
+            Ok(echo) => echo,
+            Err(MessageVerificationError::Local(error)) => return Err(EvidenceError::Local(error)),
+            // The message was indeed incorrectly signed - fault proven
+            Err(MessageVerificationError::InvalidSignature) => return Ok(()),
+        };
+
+        // `from` sent us a correctly signed message but from another round or another session.
+        // Provable fault of `from`.
+        if verified_echo.metadata() != self.direct_message.metadata() {
+            return Ok(());
+        }
+
+        Err(EvidenceError::InvalidEvidence(
+            "There is nothing wrong with the echoed message".into(),
+        ))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MismatchedBroadcastsEvidence<P: Protocol, S> {
+    we_received: SignedMessage<S, EchoBroadcast>,
+    echoed_to_us: SignedMessage<S, EchoBroadcast>,
+    phantom: core::marker::PhantomData<P>,
+}
+
+impl<P: Protocol, S: Clone> MismatchedBroadcastsEvidence<P, S> {
+    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<(), EvidenceError>
+    where
+        Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
+    {
+        let we_received = self.we_received.clone().verify::<P, _>(verifier)?;
+        let echoed_to_us = self.echoed_to_us.clone().verify::<P, _>(verifier)?;
+
+        if we_received.metadata() == echoed_to_us.metadata()
+            && we_received.payload() != echoed_to_us.payload()
+        {
+            return Ok(());
+        }
+
+        Err(EvidenceError::InvalidEvidence(
+            "The attached messages don't constitute malicious behavior".into(),
+        ))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +314,31 @@ where
         Ok(P::verify_direct_message_is_invalid(
             self.round_id,
             verified_direct_message.payload(),
+        )?)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InvalidEchoBroadcastEvidence<P: Protocol, S> {
+    round_id: RoundId,
+    echo_broadcast: SignedMessage<S, EchoBroadcast>,
+    error: EchoBroadcastError,
+    phantom: core::marker::PhantomData<P>,
+}
+
+impl<P, S> InvalidEchoBroadcastEvidence<P, S>
+where
+    P: Protocol,
+    S: Clone,
+{
+    fn verify<Verifier>(&self, verifier: &Verifier) -> Result<(), EvidenceError>
+    where
+        Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,
+    {
+        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<P, _>(verifier)?;
+        Ok(P::verify_echo_broadcast_is_invalid(
+            self.round_id,
+            verified_echo_broadcast.payload(),
         )?)
     }
 }

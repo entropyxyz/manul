@@ -462,7 +462,8 @@ where
                 let (echo_broadcast, _direct_message) = processed.message.into_unverified();
                 let echo_broadcast = echo_broadcast
                     .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast".into()))?;
-                let evidence = Evidence::new_invalid_echo_broadcast(echo_broadcast, error);
+                let evidence =
+                    Evidence::new_invalid_echo_broadcast(&from, round_id, echo_broadcast, error);
                 self.provable_errors.insert(from.clone(), evidence);
                 Ok(())
             }
@@ -483,7 +484,11 @@ where
                 Ok(())
             }
             Err(ReceiveError::Echo(error)) => {
-                unimplemented!()
+                let (_echo_broadcast, direct_message) = processed.message.into_unverified();
+                let evidence =
+                    Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
+                self.provable_errors.insert(from.clone(), evidence);
+                Ok(())
             }
             Err(ReceiveError::Local(error)) => return Err(error),
         }
@@ -513,7 +518,7 @@ pub struct ProcessedArtifact<Verifier> {
 
 pub struct ProcessedMessage<P: Protocol, Verifier, S> {
     message: VerifiedMessageBundle<Verifier, S>,
-    processed: Result<Payload, ReceiveError<P>>,
+    processed: Result<Payload, ReceiveError<Verifier, P>>,
 }
 
 fn filter_messages<Verifier, S>(

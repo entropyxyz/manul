@@ -68,6 +68,10 @@ where
         &self.message_with_metadata.metadata
     }
 
+    pub(crate) fn payload(&self) -> &M {
+        &self.message_with_metadata.message
+    }
+
     pub(crate) fn verify<P: Protocol, Verifier>(
         self,
         verifier: &Verifier,
@@ -100,7 +104,11 @@ impl<S, M> VerifiedMessage<S, M> {
         self.message_with_metadata.metadata.round_id
     }
 
-    pub fn payload(&self) -> &M {
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.message_with_metadata.metadata
+    }
+
+    pub(crate) fn payload(&self) -> &M {
         &self.message_with_metadata.message
     }
 

@@ -94,7 +94,7 @@ impl Protocol for SimpleProtocol {
     ) -> Result<(), MessageValidationError> {
         // TODO: how can we make it easier for the user to write these?
         if round_id == RoundId::new(1) {
-            return message.validate::<Self, Round1Message>();
+            return message.verify_is_invalid::<Self, Round1Message>();
         }
         Err(MessageValidationError::Other("Invalid round number".into()))?
     }
@@ -203,7 +203,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
-    ) -> Result<Payload, ReceiveError<Self::Protocol>> {
+    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
         let message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
@@ -318,7 +318,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
-    ) -> Result<Payload, ReceiveError<Self::Protocol>> {
+    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
         let message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;

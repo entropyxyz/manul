@@ -4,31 +4,28 @@ use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
+use crate::echo::EchoRoundError;
 use crate::error::{LocalError, RemoteError};
 use crate::serde_bytes;
 use crate::signing::Digest;
 
-pub(crate) enum EchoRoundError {
-    MessageMismatch,
-}
-
-pub enum ReceiveError<P: Protocol> {
+pub enum ReceiveError<Id, P: Protocol> {
     Local(LocalError),
     InvalidDirectMessage(DirectMessageError),
     InvalidEchoBroadcast(EchoBroadcastError),
     Protocol(P::ProtocolError),
     Unprovable(RemoteError),
     #[allow(private_interfaces)]
-    Echo(EchoRoundError),
+    Echo(EchoRoundError<Id>),
 }
 
-impl<P: Protocol> From<DirectMessageError> for ReceiveError<P> {
+impl<Id, P: Protocol> From<DirectMessageError> for ReceiveError<Id, P> {
     fn from(error: DirectMessageError) -> Self {
         Self::InvalidDirectMessage(error)
     }
 }
 
-impl<P: Protocol> From<EchoBroadcastError> for ReceiveError<P> {
+impl<Id, P: Protocol> From<EchoBroadcastError> for ReceiveError<Id, P> {
     fn from(error: EchoBroadcastError) -> Self {
         Self::InvalidEchoBroadcast(error)
     }
@@ -73,6 +70,18 @@ impl RoundId {
             is_echo: true,
         }
     }
+
+    pub(crate) fn non_echo(&self) -> Self {
+        // If this panic happens, there is something wrong with the internal logic
+        // of managing echo-broadcast rounds.
+        if !self.is_echo {
+            panic!("This is already an non-echo round ID");
+        }
+        Self {
+            round_num: self.round_num,
+            is_echo: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +122,15 @@ pub trait Protocol: Debug + Sized {
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::Other(format!(
             "There are no direct messages in {round_id:?}"
+        )))
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        round_id: RoundId,
+        message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        Err(MessageValidationError::Other(format!(
+            "There are no echo broadcasts in {round_id:?}"
         )))
     }
 }
@@ -178,7 +196,7 @@ impl DirectMessage {
         P::serialize(message).map(Self)
     }
 
-    pub fn validate<P: Protocol, T: for<'de> Deserialize<'de>>(
+    pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(
         &self,
     ) -> Result<(), MessageValidationError> {
         if self.try_deserialize::<P, T>().is_err() {
@@ -277,7 +295,7 @@ pub trait Round<I>: 'static + Send + Sync {
         from: &I,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
-    ) -> Result<Payload, ReceiveError<Self::Protocol>>;
+    ) -> Result<Payload, ReceiveError<I, Self::Protocol>>;
 
     fn finalize(
         self: Box<Self>,

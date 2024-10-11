@@ -75,7 +75,7 @@ macro_rules! round_override {
                 from: &Id,
                 echo_broadcast: Option<$crate::EchoBroadcast>,
                 direct_message: $crate::DirectMessage,
-            ) -> Result<$crate::Payload, $crate::ReceiveError<Self::Protocol>> {
+            ) -> Result<$crate::Payload, $crate::ReceiveError<Id, Self::Protocol>> {
                 self.inner_round_ref()
                     .receive_message(from, echo_broadcast, direct_message)
             }
