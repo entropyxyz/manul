@@ -31,16 +31,18 @@ impl Signer {
 #[cfg(not(feature = "rustcrypto-traits"))]
 mod house_trait_impls {
 
-    use crate::{Digest, DigestSigner, DigestVerifier, Keypair};
+    use rand_core::CryptoRngCore;
+
+    use crate::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
 
     use super::{Signature, Signer, Verifier};
 
-    impl<D: Digest> DigestSigner<D, Signature> for Signer {
+    impl<D: Digest> RandomizedDigestSigner<D, Signature> for Signer {
         type Error = ();
-        fn try_sign_digest(&self, _digest: D) -> Result<Signature, Self::Error> {
+        fn try_sign_digest_with_rng(&self, rng: &mut impl CryptoRngCore, _digest: D) -> Result<Signature, Self::Error> {
             Ok(Signature {
                 signed_by: self.0,
-                randomness: 1, // TODO: real randomness
+                randomness: rng.next_u64(),
             })
         }
     }
@@ -67,13 +69,20 @@ mod house_trait_impls {
 
 #[cfg(feature = "rustcrypto-traits")]
 mod rustcrypto_trait_impls {
+
+    use rand_core::CryptoRngCore;
+
     use super::{Signature, Signer, Verifier};
 
-    impl<D: digest::Digest> signature::DigestSigner<D, Signature> for Signer {
-        fn try_sign_digest(&self, _digest: D) -> Result<Signature, signature::Error> {
+    impl<D: digest::Digest> signature::RandomizedDigestSigner<D, Signature> for Signer {
+        fn try_sign_digest_with_rng(
+            &self,
+            rng: &mut impl CryptoRngCore,
+            _digest: D,
+        ) -> Result<Signature, signature::Error> {
             Ok(Signature {
                 signed_by: self.0,
-                randomness: 1, // TODO: real randomness
+                randomness: rng.next_u64(),
             })
         }
     }

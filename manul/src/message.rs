@@ -1,12 +1,13 @@
 use alloc::format;
 
+use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     error::LocalError,
     round::{DirectMessage, EchoBroadcast, RoundId},
     session::SessionId,
-    signing::{Digest, DigestSigner, DigestVerifier},
+    signing::{Digest, DigestVerifier, RandomizedDigestSigner},
     Protocol,
 };
 
@@ -56,20 +57,21 @@ where
     M: Serialize,
 {
     pub fn new<P: Protocol, Signer>(
+        rng: &mut impl CryptoRngCore,
         signer: &Signer,
         session_id: &SessionId,
         round_id: RoundId,
         message: M,
     ) -> Result<Self, LocalError>
     where
-        Signer: DigestSigner<P::Digest, S>,
+        Signer: RandomizedDigestSigner<P::Digest, S>,
     {
         let metadata = MessageMetadata::new(session_id, round_id);
         let message_with_metadata = MessageWithMetadata { metadata, message };
         let message_bytes = P::serialize(&message_with_metadata)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = signer
-            .try_sign_digest(digest)
+            .try_sign_digest_with_rng(rng, digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
         Ok(Self {
             signature,
@@ -139,6 +141,7 @@ where
     S: PartialEq + Clone,
 {
     pub(crate) fn new<P, Signer>(
+        rng: &mut impl CryptoRngCore,
         signer: &Signer,
         session_id: &SessionId,
         round_id: RoundId,
@@ -147,9 +150,9 @@ where
     ) -> Result<Self, LocalError>
     where
         P: Protocol,
-        Signer: DigestSigner<P::Digest, S>,
+        Signer: RandomizedDigestSigner<P::Digest, S>,
     {
-        let direct_message = SignedMessage::new::<P, _>(signer, session_id, round_id, direct_message)?;
+        let direct_message = SignedMessage::new::<P, _>(rng, signer, session_id, round_id, direct_message)?;
         Ok(Self {
             direct_message,
             echo_broadcast,

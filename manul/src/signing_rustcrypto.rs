@@ -1,4 +1,6 @@
-use crate::{Digest, DigestSigner, DigestVerifier, Keypair};
+use crate::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
+
+use rand_core::CryptoRngCore;
 
 impl<T> Digest for T
 where
@@ -13,14 +15,14 @@ where
     }
 }
 
-impl<T, D, S> DigestSigner<D, S> for T
+impl<T, D, S> RandomizedDigestSigner<D, S> for T
 where
-    T: signature::DigestSigner<D, S>,
+    T: signature::RandomizedDigestSigner<D, S>,
     D: digest::Digest,
 {
     type Error = signature::Error;
-    fn try_sign_digest(&self, digest: D) -> Result<S, Self::Error> {
-        <T as signature::DigestSigner<D, S>>::try_sign_digest(self, digest)
+    fn try_sign_digest_with_rng(&self, rng: &mut impl CryptoRngCore, digest: D) -> Result<S, Self::Error> {
+        <T as signature::RandomizedDigestSigner<D, S>>::try_sign_digest_with_rng(self, rng, digest)
     }
 }
 

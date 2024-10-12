@@ -36,5 +36,5 @@ pub use round::{
     RoundId,
 };
 pub use session::{CanFinalize, RoundOutcome, Session, SessionId};
-pub use signing::{Digest, DigestSigner, DigestVerifier, Keypair};
+pub use signing::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
 pub use transcript::{SessionOutcome, SessionReport};

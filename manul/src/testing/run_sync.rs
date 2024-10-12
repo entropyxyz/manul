@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::{
     message::MessageBundle,
     session::{CanFinalize, RoundAccumulator},
-    signing::{DigestSigner, DigestVerifier, Keypair},
+    signing::{DigestVerifier, Keypair, RandomizedDigestSigner},
     transcript::SessionReport,
     FirstRound, LocalError, Protocol, RoundOutcome, Session, SessionId,
 };
@@ -36,7 +36,7 @@ fn propagate<P, Signer, Verifier, S>(
 ) -> Result<(State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>), LocalError>
 where
     P: Protocol + 'static,
-    Signer: DigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
+    Signer: RandomizedDigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
     Verifier: Debug
         + Clone
         + Eq
@@ -105,7 +105,7 @@ pub fn run_sync<R, Signer, Verifier, S>(
 ) -> Result<BTreeMap<Verifier, SessionReport<R::Protocol, Verifier, S>>, LocalError>
 where
     R: FirstRound<Verifier> + 'static,
-    Signer: DigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
+    Signer: RandomizedDigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
     Verifier: Debug
         + Clone
         + Eq

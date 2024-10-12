@@ -21,7 +21,7 @@ use crate::{
         ReceiveErrorType, RoundId,
     },
     serde_bytes,
-    signing::{DigestSigner, DigestVerifier, Keypair},
+    signing::{DigestVerifier, Keypair, RandomizedDigestSigner},
     transcript::{SessionOutcome, SessionReport, Transcript},
     Protocol, Round,
 };
@@ -70,7 +70,7 @@ pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
 impl<P, Signer, Verifier, S> Session<P, Signer, Verifier, S>
 where
     P: Protocol + 'static,
-    Signer: DigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
+    Signer: RandomizedDigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
     Verifier: Debug
         + Clone
         + Eq
@@ -113,7 +113,7 @@ where
         let echo_message = round
             .make_echo_broadcast(rng)
             .transpose()?
-            .map(|echo| SignedMessage::new::<P, _>(&signer, &session_id, round.id(), echo))
+            .map(|echo| SignedMessage::new::<P, _>(rng, &signer, &session_id, round.id(), echo))
             .transpose()?;
         let message_destinations = round.message_destinations().clone();
 
@@ -155,6 +155,7 @@ where
         let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
 
         let bundle = MessageBundle::new::<P, _>(
+            rng,
             &self.signer,
             &self.session_id,
             self.round.id(),
