@@ -11,6 +11,7 @@ use crate::evidence::Evidence;
 use crate::message::{
     MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle,
 };
+use crate::object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
 use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     ReceiveError, ReceiveErrorType, RoundId,
@@ -46,7 +47,7 @@ pub struct Session<P: Protocol, Signer, Verifier, S> {
     session_id: SessionId,
     signer: Signer,
     verifier: Verifier,
-    round: Box<dyn Round<Verifier, Protocol = P>>,
+    round: Box<dyn ObjectSafeRound<Verifier, Protocol = P>>,
     message_destinations: BTreeSet<Verifier>,
     echo_message: Option<SignedMessage<S, EchoBroadcast>>,
     possible_next_rounds: BTreeSet<RoundId>,
@@ -87,7 +88,12 @@ where
         R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
         let verifier = signer.verifying_key();
-        let first_round = Box::new(R::new(rng, &session_id, verifier.clone(), inputs)?);
+        let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(
+            rng,
+            &session_id,
+            verifier.clone(),
+            inputs,
+        )?));
         Self::new_for_next_round(rng, session_id, signer, first_round, Transcript::new())
     }
 
@@ -95,7 +101,7 @@ where
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
         signer: Signer,
-        round: Box<dyn Round<Verifier, Protocol = P>>,
+        round: Box<dyn ObjectSafeRound<Verifier, Protocol = P>>,
         transcript: Transcript<P, Verifier, S>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
@@ -338,14 +344,14 @@ where
         )?;
 
         if let Some(echo_message) = self.echo_message {
-            let round = Box::new(EchoRound::new(
+            let round = Box::new(ObjectSafeRoundWrapper::new(EchoRound::new(
                 verifier,
                 echo_message,
                 transcript.echo_broadcasts(round_id)?,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
-            ));
+            )));
             let cached_messages = filter_messages(accum.cached, round.id());
             let session =
                 Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
@@ -361,11 +367,12 @@ where
                     SessionOutcome::Result(result),
                     transcript,
                 )),
-                FinalizeOutcome::AnotherRound(round) => {
+                FinalizeOutcome::AnotherRound(another_round) => {
                     // These messages could have been cached before
                     // processing messages from the same node for the current round.
                     // So there might have been some new errors, and we need to check again
                     // if the sender is already banned.
+                    let round = another_round.into_boxed();
                     let cached_messages = filter_messages(accum.cached, round.id())
                         .into_iter()
                         .filter(|message| !transcript.is_banned(message.from()))

@@ -7,6 +7,7 @@ use tracing::debug;
 
 use crate::error::LocalError;
 use crate::message::{MessageVerificationError, SignedMessage};
+use crate::object_safe::ObjectSafeRound;
 use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol,
     ReceiveError, Round, RoundId,
@@ -30,7 +31,7 @@ pub struct EchoRound<P, I, S> {
     echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
     destinations: BTreeSet<I>,
     expected_echos: BTreeSet<I>,
-    main_round: Box<dyn Round<I, Protocol = P>>,
+    main_round: Box<dyn ObjectSafeRound<I, Protocol = P>>,
     payloads: BTreeMap<I, Payload>,
     artifacts: BTreeMap<I, Artifact>,
 }
@@ -40,7 +41,7 @@ impl<P: Protocol, I: Debug + Clone + Ord, S> EchoRound<P, I, S> {
         verifier: I,
         my_echo_message: SignedMessage<S, EchoBroadcast>,
         echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
-        main_round: Box<dyn Round<I, Protocol = P>>,
+        main_round: Box<dyn ObjectSafeRound<I, Protocol = P>>,
         payloads: BTreeMap<I, Payload>,
         artifacts: BTreeMap<I, Artifact>,
     ) -> Self {
@@ -100,7 +101,7 @@ where
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         destination: &I,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
@@ -128,7 +129,7 @@ where
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         from: &I,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -216,8 +217,8 @@ where
     }
 
     fn finalize(
-        self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        self,
+        rng: &mut impl CryptoRngCore,
         _payloads: BTreeMap<I, Payload>,
         _artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>> {

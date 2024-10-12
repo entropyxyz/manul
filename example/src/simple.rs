@@ -177,7 +177,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
@@ -190,7 +190,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
@@ -209,7 +209,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
 
     fn receive_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -232,8 +232,8 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     }
 
     fn finalize(
-        self: Box<Self>,
-        _rng: &mut dyn CryptoRngCore,
+        self,
+        _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
@@ -255,7 +255,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
             round1_sum: sum,
             context: self.context,
         };
-        Ok(FinalizeOutcome::AnotherRound(Box::new(round2)))
+        Ok(FinalizeOutcome::another_round(round2))
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id> {
@@ -291,7 +291,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
@@ -304,7 +304,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
@@ -323,7 +323,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 
     fn receive_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -346,8 +346,8 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
     }
 
     fn finalize(
-        self: Box<Self>,
-        _rng: &mut dyn CryptoRngCore,
+        self,
+        _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
@@ -364,6 +364,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             .map_err(FinalizeError::Local)?;
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
+
+        if sum != self.round1_sum {
+            return Err(FinalizeError::Unattributable(()));
+        }
 
         Ok(FinalizeOutcome::Result(sum))
     }

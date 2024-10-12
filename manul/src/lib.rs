@@ -17,6 +17,7 @@ mod echo;
 mod error;
 mod evidence;
 mod message;
+mod object_safe;
 mod round;
 mod serde_bytes;
 mod session;

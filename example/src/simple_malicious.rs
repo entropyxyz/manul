@@ -58,7 +58,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound1<Id> {
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
@@ -78,8 +78,8 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
     }
 
     fn finalize(
-        self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        self,
+        rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<
@@ -87,18 +87,18 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         FinalizeError<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
     > {
         let behavior = self.behavior;
-        let outcome = Box::new(self.inner_round()).finalize(rng, payloads, artifacts)?;
+        let outcome = self.inner_round().finalize(rng, payloads, artifacts)?;
 
         Ok(match outcome {
             FinalizeOutcome::Result(res) => FinalizeOutcome::Result(res),
-            FinalizeOutcome::AnotherRound(boxed_round) => {
-                let round2 = boxed_round
+            FinalizeOutcome::AnotherRound(another_round) => {
+                let round2 = another_round
                     .downcast::<Round2<Id>>()
                     .map_err(FinalizeError::Local)?;
-                FinalizeOutcome::AnotherRound(Box::new(MaliciousRound2 {
+                FinalizeOutcome::another_round(MaliciousRound2 {
                     round: round2,
                     behavior,
-                }))
+                })
             }
         })
     }
@@ -124,7 +124,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound2<Id> {
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         if matches!(self.behavior, Behavior::AttributableFailureRound2) {

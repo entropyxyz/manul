@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::echo::EchoRoundError;
 use crate::error::{LocalError, RemoteError};
+use crate::object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
 use crate::serde_bytes;
 use crate::session::SessionId;
 use crate::signing::Digest;
@@ -72,8 +73,35 @@ impl<Id, P: Protocol> From<EchoBroadcastError> for ReceiveError<Id, P> {
 }
 
 pub enum FinalizeOutcome<I, P: Protocol> {
-    AnotherRound(Box<dyn Round<I, Protocol = P>>),
+    AnotherRound(AnotherRound<I, P>),
     Result(P::Result),
+}
+
+impl<I: 'static, P: Protocol + 'static> FinalizeOutcome<I, P> {
+    pub fn another_round(round: impl Round<I, Protocol = P>) -> Self {
+        Self::AnotherRound(AnotherRound::new(round))
+    }
+}
+
+// We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
+pub struct AnotherRound<I, P: Protocol>(Box<dyn ObjectSafeRound<I, Protocol = P>>);
+
+impl<I: 'static, P: Protocol + 'static> AnotherRound<I, P> {
+    pub fn new(round: impl Round<I, Protocol = P>) -> Self {
+        Self(Box::new(ObjectSafeRoundWrapper::new(round)))
+    }
+
+    pub(crate) fn into_boxed(self) -> Box<dyn ObjectSafeRound<I, Protocol = P>> {
+        self.0
+    }
+
+    pub fn downcast<T: Round<I>>(self) -> Result<T, LocalError> {
+        self.0.downcast::<T>()
+    }
+
+    pub fn try_downcast<T: Round<I>>(self) -> Result<T, Self> {
+        self.0.try_downcast::<T>().map_err(Self)
+    }
 }
 
 pub enum FinalizeError<I, P: Protocol> {
@@ -309,7 +337,7 @@ impl Artifact {
     }
 }
 
-pub trait FirstRound<I>: Round<I> + Sized {
+pub trait FirstRound<I: 'static>: Round<I> + Sized {
     type Inputs;
     fn new(
         rng: &mut impl CryptoRngCore,
@@ -330,66 +358,31 @@ pub trait Round<I>: 'static + Send + Sync {
 
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
         destination: &I,
     ) -> Result<(DirectMessage, Artifact), LocalError>;
 
     fn make_echo_broadcast(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         None
     }
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
         from: &I,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<I, Self::Protocol>>;
 
     fn finalize(
-        self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        self,
+        rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<I, Payload>,
         artifacts: BTreeMap<I, Artifact>,
     ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>>;
 
     fn expecting_messages_from(&self) -> &BTreeSet<I>;
-
-    /// Returns the type ID of the implementing type.
-    ///
-    /// **Warning:** this is not a part of the public API.
-    #[doc(hidden)]
-    fn __get_type_id(&self) -> core::any::TypeId {
-        core::any::TypeId::of::<Self>()
-    }
-}
-
-// When we are wrapping types implementing Round and overriding `finalize()`,
-// we need to unbox the result of `finalize()`, set it as an attribute of the wrapping round,
-// and then box the result.
-//
-// Because of Rust's peculiarities, Box<dyn Round> that we return in `finalize()`
-// cannot be unboxed into an object of a concrete type with `downcast()`,
-// so we have to provide this workaround.
-impl<Id: 'static, P: Protocol + 'static> dyn Round<Id, Protocol = P> {
-    pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
-        if core::any::TypeId::of::<T>() == self.__get_type_id() {
-            let boxed_downcast = unsafe { Box::<T>::from_raw(Box::into_raw(self) as *mut T) };
-            Ok(*boxed_downcast)
-        } else {
-            Err(self)
-        }
-    }
-
-    pub fn downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, LocalError> {
-        self.try_downcast().map_err(|_| {
-            LocalError::new(format!(
-                "Failed to downcast into type {}",
-                core::any::type_name::<T>()
-            ))
-        })
-    }
 }

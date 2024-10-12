@@ -16,27 +16,27 @@ pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
 pub trait RoundOverride<Id>: RoundWrapper<Id> {
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         self.inner_round_ref().make_direct_message(rng, destination)
     }
     fn make_echo_broadcast(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut impl CryptoRngCore,
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         self.inner_round_ref().make_echo_broadcast(rng)
     }
     fn finalize(
-        self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        self,
+        rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<
         FinalizeOutcome<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
         FinalizeError<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
     > {
-        Box::new(self.inner_round()).finalize(rng, payloads, artifacts)
+        self.inner_round().finalize(rng, payloads, artifacts)
     }
 }
 
@@ -66,7 +66,7 @@ macro_rules! round_override {
 
             fn make_direct_message(
                 &self,
-                rng: &mut dyn CryptoRngCore,
+                rng: &mut impl CryptoRngCore,
                 destination: &Id,
             ) -> Result<($crate::DirectMessage, $crate::Artifact), $crate::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(
@@ -78,14 +78,14 @@ macro_rules! round_override {
 
             fn make_echo_broadcast(
                 &self,
-                rng: &mut dyn CryptoRngCore,
+                rng: &mut impl CryptoRngCore,
             ) -> Option<Result<$crate::EchoBroadcast, $crate::LocalError>> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_echo_broadcast(self, rng)
             }
 
             fn receive_message(
                 &self,
-                rng: &mut dyn CryptoRngCore,
+                rng: &mut impl CryptoRngCore,
                 from: &Id,
                 echo_broadcast: Option<$crate::EchoBroadcast>,
                 direct_message: $crate::DirectMessage,
@@ -95,8 +95,8 @@ macro_rules! round_override {
             }
 
             fn finalize(
-                self: Box<Self>,
-                rng: &mut dyn CryptoRngCore,
+                self,
+                rng: &mut impl CryptoRngCore,
                 payloads: ::alloc::collections::BTreeMap<Id, $crate::Payload>,
                 artifacts: ::alloc::collections::BTreeMap<Id, $crate::Artifact>,
             ) -> Result<
