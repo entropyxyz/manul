@@ -4,7 +4,7 @@ use core::fmt::Debug;
 use manul::{
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signature, Signer, Verifier},
     Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, Keypair, LocalError,
-    Payload, Round,
+    Payload, Round, SessionId,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
@@ -41,8 +41,13 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for MaliciousRound1<Id> {
     type Inputs = MaliciousInputs<Id>;
-    fn new(rng: &mut impl CryptoRngCore, id: Id, inputs: Self::Inputs) -> Result<Self, LocalError> {
-        let round = Round1::new(rng, id, inputs.inputs)?;
+    fn new(
+        rng: &mut impl CryptoRngCore,
+        session_id: &SessionId,
+        id: Id,
+        inputs: Self::Inputs,
+    ) -> Result<Self, LocalError> {
+        let round = Round1::new(rng, session_id, id, inputs.inputs)?;
         Ok(Self {
             round,
             behavior: inputs.behavior,

@@ -10,7 +10,7 @@ use crate::message::MessageBundle;
 use crate::session::{CanFinalize, RoundAccumulator};
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::transcript::SessionReport;
-use crate::{FirstRound, LocalError, Protocol, RoundOutcome, Session};
+use crate::{FirstRound, LocalError, Protocol, RoundOutcome, Session, SessionId};
 
 enum State<P: Protocol, Signer, Verifier, S> {
     InProgress {
@@ -118,13 +118,19 @@ where
         + Sync,
     S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
-    let mut messages = Vec::new();
+    let session_id = SessionId::random(rng);
 
+    let mut messages = Vec::new();
     let mut states = BTreeMap::new();
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(rng, signer, inputs)?;
+        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(
+            rng,
+            session_id.clone(),
+            signer,
+            inputs,
+        )?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();

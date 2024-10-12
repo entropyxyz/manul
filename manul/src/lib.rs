@@ -31,6 +31,6 @@ pub use round::{
     FirstRound, MessageValidationError, Payload, Protocol, ProtocolError, ProtocolValidationError,
     ReceiveError, Round, RoundId,
 };
-pub use session::{CanFinalize, RoundOutcome, Session};
+pub use session::{CanFinalize, RoundOutcome, Session, SessionId};
 pub use signing::{Digest, DigestSigner, DigestVerifier, Keypair};
 pub use transcript::{SessionOutcome, SessionReport};

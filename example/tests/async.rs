@@ -5,7 +5,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use manul::{
     testing::{Signature, Signer, Verifier},
     CanFinalize, Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session,
-    SessionReport,
+    SessionId, SessionReport,
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;
@@ -203,6 +203,7 @@ async fn async_run() {
         .iter()
         .map(|signer| signer.verifying_key().clone())
         .collect::<BTreeSet<_>>();
+    let session_id = SessionId::random(&mut OsRng);
     let sessions = signers
         .into_iter()
         .map(|signer| {
@@ -214,7 +215,7 @@ async fn async_run() {
                     Signer,
                     Verifier,
                     Signature,
-                >::new::<Round1<Verifier>>(&mut OsRng, signer, inputs)
+                >::new::<Round1<Verifier>>(&mut OsRng, session_id.clone(), signer, inputs)
                 .unwrap()
         })
         .collect::<Vec<_>>();

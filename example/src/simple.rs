@@ -134,6 +134,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Round1<
     type Inputs = Inputs<Id>;
     fn new(
         _rng: &mut impl CryptoRngCore,
+        _session_id: &SessionId,
         id: Id,
         inputs: Self::Inputs,
     ) -> Result<Self, LocalError> {

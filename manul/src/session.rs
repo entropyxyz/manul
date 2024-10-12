@@ -15,11 +15,35 @@ use crate::round::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
     ReceiveError, ReceiveErrorType, RoundId,
 };
+use crate::serde_bytes;
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
 use crate::transcript::{SessionOutcome, SessionReport, Transcript};
 use crate::{Protocol, Round};
 
+/// A session identifier shared between the parties.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub struct SessionId(#[serde(with = "serde_bytes")] Box<[u8]>);
+
+impl SessionId {
+    pub fn random(rng: &mut impl CryptoRngCore) -> Self {
+        let mut buffer = [0u8; 256];
+        rng.fill_bytes(&mut buffer);
+        Self(buffer.into())
+    }
+
+    pub fn new(bytes: &[u8]) -> Self {
+        Self(bytes.into())
+    }
+}
+
+impl AsRef<[u8]> for SessionId {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
 pub struct Session<P: Protocol, Signer, Verifier, S> {
+    session_id: SessionId,
     signer: Signer,
     verifier: Verifier,
     round: Box<dyn Round<Verifier, Protocol = P>>,
@@ -55,6 +79,7 @@ where
 {
     pub fn new<R>(
         rng: &mut impl CryptoRngCore,
+        session_id: SessionId,
         signer: Signer,
         inputs: R::Inputs,
     ) -> Result<Self, LocalError>
@@ -62,12 +87,13 @@ where
         R: FirstRound<Verifier> + Round<Verifier, Protocol = P> + 'static,
     {
         let verifier = signer.verifying_key();
-        let first_round = Box::new(R::new(rng, verifier.clone(), inputs)?);
-        Self::new_for_next_round(rng, signer, first_round, Transcript::new())
+        let first_round = Box::new(R::new(rng, &session_id, verifier.clone(), inputs)?);
+        Self::new_for_next_round(rng, session_id, signer, first_round, Transcript::new())
     }
 
     fn new_for_next_round(
         rng: &mut impl CryptoRngCore,
+        session_id: SessionId,
         signer: Signer,
         round: Box<dyn Round<Verifier, Protocol = P>>,
         transcript: Transcript<P, Verifier, S>,
@@ -76,7 +102,7 @@ where
         let echo_message = round
             .make_echo_broadcast(rng)
             .transpose()?
-            .map(|echo| SignedMessage::new::<P, _>(&signer, round.id(), echo))
+            .map(|echo| SignedMessage::new::<P, _>(&signer, &session_id, round.id(), echo))
             .transpose()?;
         let message_destinations = round.message_destinations().clone();
 
@@ -87,6 +113,7 @@ where
         };
 
         Ok(Self {
+            session_id,
             signer,
             verifier,
             round,
@@ -99,6 +126,10 @@ where
 
     pub fn verifier(&self) -> Verifier {
         self.verifier.clone()
+    }
+
+    pub fn session_id(&self) -> &SessionId {
+        &self.session_id
     }
 
     pub fn message_destinations(&self) -> &BTreeSet<Verifier> {
@@ -114,6 +145,7 @@ where
 
         let bundle = MessageBundle::new::<P, _>(
             &self.signer,
+            &self.session_id,
             self.round.id(),
             direct_message,
             self.echo_message.clone(),
@@ -164,7 +196,13 @@ where
         };
         let message_round_id = checked_message.metadata().round_id();
 
-        // TODO: check session ID here
+        if checked_message.metadata().session_id() != &self.session_id {
+            accum.register_unprovable_error(
+                from,
+                RemoteError::new("The received message has an incorrect session ID"),
+            );
+            return Ok(None);
+        }
 
         if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
@@ -309,7 +347,8 @@ where
                 accum.artifacts,
             ));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(rng, self.signer, round, transcript)?;
+            let session =
+                Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -332,7 +371,13 @@ where
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();
 
-                    let session = Session::new_for_next_round(rng, self.signer, round, transcript)?;
+                    let session = Session::new_for_next_round(
+                        rng,
+                        self.session_id,
+                        self.signer,
+                        round,
+                        transcript,
+                    )?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,

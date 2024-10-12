@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::LocalError;
 use crate::round::{DirectMessage, EchoBroadcast, RoundId};
+use crate::session::SessionId;
 use crate::signing::{Digest, DigestSigner, DigestVerifier};
 use crate::Protocol;
 
@@ -19,13 +20,20 @@ pub(crate) struct SignedMessage<S, M> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct MessageMetadata {
+    session_id: SessionId,
     round_id: RoundId,
-    // TODO: session ID
 }
 
 impl MessageMetadata {
-    pub fn new(round_id: RoundId) -> Self {
-        Self { round_id }
+    pub fn new(session_id: &SessionId, round_id: RoundId) -> Self {
+        Self {
+            session_id: session_id.clone(),
+            round_id,
+        }
+    }
+
+    pub fn session_id(&self) -> &SessionId {
+        &self.session_id
     }
 
     pub fn round_id(&self) -> RoundId {
@@ -45,13 +53,14 @@ where
 {
     pub fn new<P: Protocol, Signer>(
         signer: &Signer,
+        session_id: &SessionId,
         round_id: RoundId,
         message: M,
     ) -> Result<Self, LocalError>
     where
         Signer: DigestSigner<P::Digest, S>,
     {
-        let metadata = MessageMetadata::new(round_id);
+        let metadata = MessageMetadata::new(session_id, round_id);
         let message_with_metadata = MessageWithMetadata { metadata, message };
         let message_bytes = P::serialize(&message_with_metadata)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
@@ -129,6 +138,7 @@ pub struct MessageBundle<S> {
 impl<S: PartialEq + Clone> MessageBundle<S> {
     pub(crate) fn new<P, Signer>(
         signer: &Signer,
+        session_id: &SessionId,
         round_id: RoundId,
         direct_message: DirectMessage,
         echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
@@ -137,7 +147,8 @@ impl<S: PartialEq + Clone> MessageBundle<S> {
         P: Protocol,
         Signer: DigestSigner<P::Digest, S>,
     {
-        let direct_message = SignedMessage::new::<P, _>(signer, round_id, direct_message)?;
+        let direct_message =
+            SignedMessage::new::<P, _>(signer, session_id, round_id, direct_message)?;
         Ok(Self {
             direct_message,
             echo_broadcast,

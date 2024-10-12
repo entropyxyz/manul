@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::echo::EchoRoundError;
 use crate::error::{LocalError, RemoteError};
 use crate::serde_bytes;
+use crate::session::SessionId;
 use crate::signing::Digest;
 
 pub struct ReceiveError<Id, P: Protocol>(pub(crate) ReceiveErrorType<Id, P>);
@@ -310,21 +311,29 @@ impl Artifact {
 
 pub trait FirstRound<I>: Round<I> + Sized {
     type Inputs;
-    fn new(rng: &mut impl CryptoRngCore, id: I, inputs: Self::Inputs) -> Result<Self, LocalError>;
+    fn new(
+        rng: &mut impl CryptoRngCore,
+        session_id: &SessionId,
+        id: I,
+        inputs: Self::Inputs,
+    ) -> Result<Self, LocalError>;
 }
 
 pub trait Round<I>: 'static + Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
+
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
     fn message_destinations(&self) -> &BTreeSet<I>;
+
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         destination: &I,
     ) -> Result<(DirectMessage, Artifact), LocalError>;
+
     fn make_echo_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
