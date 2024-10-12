@@ -92,8 +92,9 @@ impl<Id: 'static, R: Round<Id>> ObjectSafeRoundWrapper<Id, R> {
     }
 }
 
-impl<Id: 'static, R> ObjectSafeRound<Id> for ObjectSafeRoundWrapper<Id, R>
+impl<Id, R> ObjectSafeRound<Id> for ObjectSafeRoundWrapper<Id, R>
 where
+    Id: 'static,
     R: Round<Id>,
 {
     type Protocol = <R as Round<Id>>::Protocol;
@@ -166,7 +167,11 @@ where
 // Because of Rust's peculiarities, Box<dyn Round> that we return in `finalize()`
 // cannot be unboxed into an object of a concrete type with `downcast()`,
 // so we have to provide this workaround.
-impl<Id: 'static, P: Protocol + 'static> dyn ObjectSafeRound<Id, Protocol = P> {
+impl<Id, P> dyn ObjectSafeRound<Id, Protocol = P>
+where
+    Id: 'static,
+    P: 'static + Protocol,
+{
     pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
         if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.__get_type_id() {
             let boxed_downcast = unsafe {

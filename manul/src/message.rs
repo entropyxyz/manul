@@ -131,7 +131,10 @@ pub struct MessageBundle<S> {
     echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
 }
 
-impl<S: PartialEq + Clone> MessageBundle<S> {
+impl<S> MessageBundle<S>
+where
+    S: PartialEq + Clone,
+{
     pub(crate) fn new<P, Signer>(
         signer: &Signer,
         session_id: &SessionId,

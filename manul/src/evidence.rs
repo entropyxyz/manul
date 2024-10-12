@@ -287,7 +287,11 @@ pub struct MismatchedBroadcastsEvidence<P: Protocol, S> {
     phantom: core::marker::PhantomData<P>,
 }
 
-impl<P: Protocol, S: Clone> MismatchedBroadcastsEvidence<P, S> {
+impl<P, S> MismatchedBroadcastsEvidence<P, S>
+where
+    P: Protocol,
+    S: Clone,
+{
     fn verify<Verifier>(&self, verifier: &Verifier) -> Result<(), EvidenceError>
     where
         Verifier: Debug + Clone + DigestVerifier<P::Digest, S>,

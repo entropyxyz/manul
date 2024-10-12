@@ -14,7 +14,12 @@ pub(crate) struct Transcript<P: Protocol, Verifier, S> {
     missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
 }
 
-impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifier, S> {
+impl<P, Verifier, S> Transcript<P, Verifier, S>
+where
+    P: Protocol,
+    Verifier: Debug + Clone + Ord,
+    S: Clone,
+{
     pub fn new() -> Self {
         Self {
             echo_broadcasts: BTreeMap::new(),
@@ -180,7 +185,10 @@ pub struct SessionReport<P: Protocol, Verifier, S> {
     pub missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
 }
 
-impl<P: Protocol, Verifier, S> SessionReport<P, Verifier, S> {
+impl<P, Verifier, S> SessionReport<P, Verifier, S>
+where
+    P: Protocol,
+{
     pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, Verifier, S>) -> Self {
         Self {
             outcome,

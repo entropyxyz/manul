@@ -36,7 +36,11 @@ pub struct EchoRound<P, Id, S> {
     artifacts: BTreeMap<Id, Artifact>,
 }
 
-impl<P: Protocol, Id: Debug + Clone + Ord, S> EchoRound<P, Id, S> {
+impl<P, Id, S> EchoRound<P, Id, S>
+where
+    P: Protocol,
+    Id: Debug + Clone + Ord,
+{
     pub fn new(
         verifier: Id,
         my_echo_message: SignedMessage<S, EchoBroadcast>,

@@ -42,31 +42,46 @@ impl<Id, P: Protocol> ReceiveError<Id, P> {
     }
 }
 
-impl<Id, P: Protocol> From<LocalError> for ReceiveError<Id, P> {
+impl<Id, P> From<LocalError> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
     fn from(error: LocalError) -> Self {
         Self(ReceiveErrorType::Local(error))
     }
 }
 
-impl<Id, P: Protocol> From<RemoteError> for ReceiveError<Id, P> {
+impl<Id, P> From<RemoteError> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
     fn from(error: RemoteError) -> Self {
         Self(ReceiveErrorType::Unprovable(error))
     }
 }
 
-impl<Id, P: Protocol> From<EchoRoundError<Id>> for ReceiveError<Id, P> {
+impl<Id, P> From<EchoRoundError<Id>> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
     fn from(error: EchoRoundError<Id>) -> Self {
         Self(ReceiveErrorType::Echo(error))
     }
 }
 
-impl<Id, P: Protocol> From<DirectMessageError> for ReceiveError<Id, P> {
+impl<Id, P> From<DirectMessageError> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
     fn from(error: DirectMessageError) -> Self {
         Self(ReceiveErrorType::InvalidDirectMessage(error))
     }
 }
 
-impl<Id, P: Protocol> From<EchoBroadcastError> for ReceiveError<Id, P> {
+impl<Id, P> From<EchoBroadcastError> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
     fn from(error: EchoBroadcastError) -> Self {
         Self(ReceiveErrorType::InvalidEchoBroadcast(error))
     }
@@ -77,7 +92,11 @@ pub enum FinalizeOutcome<Id, P: Protocol> {
     Result(P::Result),
 }
 
-impl<Id: 'static, P: Protocol + 'static> FinalizeOutcome<Id, P> {
+impl<Id, P> FinalizeOutcome<Id, P>
+where
+    Id: 'static,
+    P: 'static + Protocol,
+{
     pub fn another_round(round: impl Round<Id, Protocol = P>) -> Self {
         Self::AnotherRound(AnotherRound::new(round))
     }
@@ -86,7 +105,11 @@ impl<Id: 'static, P: Protocol + 'static> FinalizeOutcome<Id, P> {
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
 pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = P>>);
 
-impl<Id: 'static, P: Protocol + 'static> AnotherRound<Id, P> {
+impl<Id, P> AnotherRound<Id, P>
+where
+    Id: 'static,
+    P: 'static + Protocol,
+{
     pub fn new(round: impl Round<Id, Protocol = P>) -> Self {
         Self(Box::new(ObjectSafeRoundWrapper::new(round)))
     }
