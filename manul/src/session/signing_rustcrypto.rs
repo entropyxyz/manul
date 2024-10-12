@@ -1,4 +1,4 @@
-use crate::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
+use super::signing::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
 
 use rand_core::CryptoRngCore;
 

@@ -13,28 +13,7 @@
 
 extern crate alloc;
 
-mod echo;
-mod error;
-mod evidence;
-mod message;
-mod object_safe;
-mod round;
+pub mod protocol;
 mod serde_bytes;
-mod session;
-mod signing;
+pub mod session;
 pub mod testing;
-mod transcript;
-
-#[cfg(feature = "rustcrypto-traits")]
-mod signing_rustcrypto;
-
-pub use error::LocalError;
-pub use message::MessageBundle;
-pub use round::{
-    AnotherRound, Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome,
-    FirstRound, MessageValidationError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round,
-    RoundId,
-};
-pub use session::{CanFinalize, RoundOutcome, Session, SessionId};
-pub use signing::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
-pub use transcript::{SessionOutcome, SessionReport};

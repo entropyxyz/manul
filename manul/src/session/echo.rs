@@ -10,15 +10,14 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::{
-    error::LocalError,
+use super::{
     message::{MessageVerificationError, SignedMessage},
-    object_safe::ObjectSafeRound,
-    round::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
-        RoundId,
-    },
-    DigestVerifier,
+    signing::DigestVerifier,
+    LocalError,
+};
+use crate::protocol::{
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
+    ReceiveError, Round, RoundId,
 };
 
 #[derive(Debug)]

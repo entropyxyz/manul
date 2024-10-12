@@ -33,7 +33,7 @@ mod house_trait_impls {
 
     use rand_core::CryptoRngCore;
 
-    use crate::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
+    use crate::session::{Digest, DigestVerifier, Keypair, RandomizedDigestSigner};
 
     use super::{Signature, Signer, Verifier};
 

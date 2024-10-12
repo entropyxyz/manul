@@ -3,15 +3,16 @@ use core::fmt::Debug;
 
 use serde::Deserialize;
 
-use crate::{
+use super::{
     echo::{EchoRoundError, EchoRoundMessage},
-    error::LocalError,
     message::{MessageVerificationError, SignedMessage},
-    round::{
-        DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, ProtocolError,
-    },
+    signing::DigestVerifier,
     transcript::Transcript,
-    DigestVerifier, Protocol, ProtocolValidationError, RoundId,
+    LocalError,
+};
+use crate::protocol::{
+    DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, Protocol,
+    ProtocolError, ProtocolValidationError, RoundId,
 };
 
 #[derive(Debug, Clone)]

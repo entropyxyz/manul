@@ -2,9 +2,11 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::{
+    protocol::{
+        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round, SessionId,
+    },
+    session::Keypair,
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signature, Signer, Verifier},
-    Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, Keypair, LocalError, Payload, Round,
-    SessionId,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;

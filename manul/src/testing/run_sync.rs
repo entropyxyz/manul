@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::{
-    message::MessageBundle,
-    session::{CanFinalize, RoundAccumulator},
-    signing::{DigestVerifier, Keypair, RandomizedDigestSigner},
-    transcript::SessionReport,
-    FirstRound, LocalError, Protocol, RoundOutcome, Session, SessionId,
+    protocol::{FirstRound, Protocol},
+    session::{
+        CanFinalize, DigestVerifier, Keypair, LocalError, MessageBundle, RandomizedDigestSigner, RoundAccumulator,
+        RoundOutcome, Session, SessionId, SessionReport,
+    },
 };
 
 enum State<P: Protocol, Signer, Verifier, S> {

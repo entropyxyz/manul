@@ -3,8 +3,9 @@ extern crate alloc;
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
+    protocol::{Protocol, Round},
+    session::{CanFinalize, Keypair, LocalError, MessageBundle, RoundOutcome, Session, SessionId, SessionReport},
     testing::{Signature, Signer, Verifier},
-    CanFinalize, Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session, SessionId, SessionReport,
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;

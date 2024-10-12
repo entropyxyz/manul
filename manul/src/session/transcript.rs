@@ -4,12 +4,8 @@ use alloc::{
 };
 use core::fmt::Debug;
 
-use crate::{
-    error::{LocalError, RemoteError},
-    evidence::Evidence,
-    message::SignedMessage,
-    round::{DirectMessage, EchoBroadcast, Protocol, RoundId},
-};
+use super::{evidence::Evidence, message::SignedMessage, LocalError, RemoteError};
+use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
 pub(crate) struct Transcript<P: Protocol, Verifier, S> {
     echo_broadcasts: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>>,

@@ -7,7 +7,7 @@ use core::marker::PhantomData;
 
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
-use crate::{
+use super::{
     error::LocalError,
     round::{
         Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,

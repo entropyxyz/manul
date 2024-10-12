@@ -2,9 +2,8 @@ use alloc::collections::BTreeMap;
 
 use rand_core::CryptoRngCore;
 
-use crate::{
-    round::{Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Round},
-    LocalError,
+use crate::protocol::{
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, Payload, Round,
 };
 
 pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
@@ -46,13 +45,13 @@ macro_rules! round_override {
             $round<Id>: RoundOverride<Id>,
         {
             type Protocol =
-                <<$round<Id> as $crate::testing::RoundWrapper<Id>>::InnerRound as $crate::Round<Id>>::Protocol;
+                <<$round<Id> as $crate::testing::RoundWrapper<Id>>::InnerRound as $crate::protocol::Round<Id>>::Protocol;
 
-            fn id(&self) -> $crate::RoundId {
+            fn id(&self) -> $crate::protocol::RoundId {
                 self.inner_round_ref().id()
             }
 
-            fn possible_next_rounds(&self) -> ::alloc::collections::BTreeSet<$crate::RoundId> {
+            fn possible_next_rounds(&self) -> ::alloc::collections::BTreeSet<$crate::protocol::RoundId> {
                 self.inner_round_ref().possible_next_rounds()
             }
 
@@ -64,14 +63,14 @@ macro_rules! round_override {
                 &self,
                 rng: &mut impl CryptoRngCore,
                 destination: &Id,
-            ) -> Result<($crate::DirectMessage, $crate::Artifact), $crate::LocalError> {
+            ) -> Result<($crate::protocol::DirectMessage, $crate::protocol::Artifact), $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, destination)
             }
 
             fn make_echo_broadcast(
                 &self,
                 rng: &mut impl CryptoRngCore,
-            ) -> Option<Result<$crate::EchoBroadcast, $crate::LocalError>> {
+            ) -> Option<Result<$crate::protocol::EchoBroadcast, $crate::protocol::LocalError>> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_echo_broadcast(self, rng)
             }
 
@@ -79,9 +78,9 @@ macro_rules! round_override {
                 &self,
                 rng: &mut impl CryptoRngCore,
                 from: &Id,
-                echo_broadcast: Option<$crate::EchoBroadcast>,
-                direct_message: $crate::DirectMessage,
-            ) -> Result<$crate::Payload, $crate::ReceiveError<Id, Self::Protocol>> {
+                echo_broadcast: Option<$crate::protocol::EchoBroadcast>,
+                direct_message: $crate::protocol::DirectMessage,
+            ) -> Result<$crate::protocol::Payload, $crate::protocol::ReceiveError<Id, Self::Protocol>> {
                 self.inner_round_ref()
                     .receive_message(rng, from, echo_broadcast, direct_message)
             }
@@ -89,9 +88,9 @@ macro_rules! round_override {
             fn finalize(
                 self,
                 rng: &mut impl CryptoRngCore,
-                payloads: ::alloc::collections::BTreeMap<Id, $crate::Payload>,
-                artifacts: ::alloc::collections::BTreeMap<Id, $crate::Artifact>,
-            ) -> Result<$crate::FinalizeOutcome<Id, Self::Protocol>, $crate::FinalizeError<Id, Self::Protocol>> {
+                payloads: ::alloc::collections::BTreeMap<Id, $crate::protocol::Payload>,
+                artifacts: ::alloc::collections::BTreeMap<Id, $crate::protocol::Artifact>,
+            ) -> Result<$crate::protocol::FinalizeOutcome<Id, Self::Protocol>, $crate::protocol::FinalizeError<Id, Self::Protocol>> {
                 <Self as RoundOverride<Id>>::finalize(self, rng, payloads, artifacts)
             }
 

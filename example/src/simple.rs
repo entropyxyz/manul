@@ -1,7 +1,7 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
-use manul::*;
+use manul::protocol::*;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use sha3::Sha3_256;
@@ -359,8 +359,8 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::{
+        session::{Keypair, SessionOutcome},
         testing::{run_sync, Signature, Signer, Verifier},
-        Keypair, SessionOutcome,
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;

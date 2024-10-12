@@ -3,13 +3,12 @@ use alloc::format;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::LocalError,
-    round::{DirectMessage, EchoBroadcast, RoundId},
+use super::{
     session::SessionId,
     signing::{Digest, DigestVerifier, RandomizedDigestSigner},
-    Protocol,
+    LocalError,
 };
+use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageVerificationError {
