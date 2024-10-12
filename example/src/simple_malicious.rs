@@ -144,10 +144,10 @@ round_override!(MaliciousRound2);
 
 #[test]
 fn serialized_garbage() {
-    let signers = (0..3).map(|id| Signer::new(id)).collect::<Vec<_>>();
+    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
-        .map(|signer| signer.verifying_key().clone())
+        .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
     let inputs = Inputs { all_ids };
 
@@ -165,7 +165,7 @@ fn serialized_garbage() {
                 inputs: inputs.clone(),
                 behavior,
             };
-            (signer.clone(), malicious_inputs)
+            (*signer, malicious_inputs)
         })
         .collect::<Vec<_>>();
 
@@ -191,10 +191,10 @@ fn serialized_garbage() {
 
 #[test]
 fn attributable_failure() {
-    let signers = (0..3).map(|id| Signer::new(id)).collect::<Vec<_>>();
+    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
-        .map(|signer| signer.verifying_key().clone())
+        .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
     let inputs = Inputs { all_ids };
 
@@ -212,7 +212,7 @@ fn attributable_failure() {
                 inputs: inputs.clone(),
                 behavior,
             };
-            (signer.clone(), malicious_inputs)
+            (*signer, malicious_inputs)
         })
         .collect::<Vec<_>>();
 
@@ -238,10 +238,10 @@ fn attributable_failure() {
 
 #[test]
 fn attributable_failure_round2() {
-    let signers = (0..3).map(|id| Signer::new(id)).collect::<Vec<_>>();
+    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
-        .map(|signer| signer.verifying_key().clone())
+        .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
     let inputs = Inputs { all_ids };
 
@@ -259,7 +259,7 @@ fn attributable_failure_round2() {
                 inputs: inputs.clone(),
                 behavior,
             };
-            (signer.clone(), malicious_inputs)
+            (*signer, malicious_inputs)
         })
         .collect::<Vec<_>>();
 

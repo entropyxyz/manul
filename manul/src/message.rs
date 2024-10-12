@@ -109,10 +109,6 @@ pub struct VerifiedMessage<S, M> {
 }
 
 impl<S, M> VerifiedMessage<S, M> {
-    pub fn round_id(&self) -> RoundId {
-        self.message_with_metadata.metadata.round_id
-    }
-
     pub(crate) fn metadata(&self) -> &MessageMetadata {
         &self.message_with_metadata.metadata
     }
@@ -225,7 +221,7 @@ impl<Verifier, S> VerifiedMessageBundle<Verifier, S> {
     }
 
     pub(crate) fn direct_message(&self) -> &DirectMessage {
-        &self.direct_message.payload()
+        self.direct_message.payload()
     }
 
     pub(crate) fn into_unverified(

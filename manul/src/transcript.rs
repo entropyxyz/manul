@@ -108,7 +108,7 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
                 LocalError::new(format!("No echo broadcasts registered for {round_id:?}"))
             })?
             .get(from)
-            .map(|echo_broadcast| echo_broadcast.clone())
+            .cloned()
             .ok_or_else(|| {
                 LocalError::new(format!(
                     "No echo broadcasts registered for {from:?} in {round_id:?}"
@@ -127,7 +127,7 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
                 LocalError::new(format!("No direct messages registered for {round_id:?}"))
             })?
             .get(from)
-            .map(|direct_message| direct_message.clone())
+            .cloned()
             .ok_or_else(|| {
                 LocalError::new(format!(
                     "No direct messages registered for {from:?} in {round_id:?}"
@@ -143,14 +143,11 @@ impl<P: Protocol, Verifier: Debug + Clone + Ord, S: Clone> Transcript<P, Verifie
         &self,
         round_id: RoundId,
     ) -> Result<BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>, LocalError> {
-        self.echo_broadcasts
-            .get(&round_id)
-            .map(|echo_broadcasts| echo_broadcasts.clone())
-            .ok_or_else(|| {
-                LocalError::new(format!(
-                    "Echo-broadcasts for {round_id:?} are not in the transcript"
-                ))
-            })
+        self.echo_broadcasts.get(&round_id).cloned().ok_or_else(|| {
+            LocalError::new(format!(
+                "Echo-broadcasts for {round_id:?} are not in the transcript"
+            ))
+        })
     }
 
     pub fn register_unprovable_error(

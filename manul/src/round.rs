@@ -155,7 +155,8 @@ pub enum MessageValidationError {
     Other(String),
 }
 
-#[derive(Debug, Clone)]
+/// Deserialization error: {0}
+#[derive(displaydoc::Display, Debug, Clone)]
 pub struct DeserializationError(String);
 
 impl DeserializationError {
@@ -183,7 +184,7 @@ pub trait Protocol: Debug + Sized {
 
     fn verify_direct_message_is_invalid(
         round_id: RoundId,
-        message: &DirectMessage,
+        #[allow(unused_variables)] message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::Other(format!(
             "There are no direct messages in {round_id:?}"
@@ -192,7 +193,7 @@ pub trait Protocol: Debug + Sized {
 
     fn verify_echo_broadcast_is_invalid(
         round_id: RoundId,
-        message: &EchoBroadcast,
+        #[allow(unused_variables)] message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::Other(format!(
             "There are no echo broadcasts in {round_id:?}"
@@ -247,10 +248,12 @@ pub trait ProtocolError: Debug + Clone + Send {
     ) -> Result<(), ProtocolValidationError>;
 }
 
-#[derive(Debug, Clone)]
+/// An error deserializing a direct message: {0}
+#[derive(displaydoc::Display, Debug, Clone)]
 pub struct DirectMessageError(DeserializationError);
 
-#[derive(Debug, Clone)]
+/// An error deserializing an echo broadcast: {0}
+#[derive(displaydoc::Display, Debug, Clone)]
 pub struct EchoBroadcastError(DeserializationError);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -364,7 +367,7 @@ pub trait Round<I>: 'static + Send + Sync {
 
     fn make_echo_broadcast(
         &self,
-        rng: &mut impl CryptoRngCore,
+        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         None
     }

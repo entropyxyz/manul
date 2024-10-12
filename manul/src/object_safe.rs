@@ -174,7 +174,7 @@ impl<Id: 'static, P: Protocol + 'static> dyn ObjectSafeRound<Id, Protocol = P> {
                     Box::into_raw(self) as *mut ObjectSafeRoundWrapper<Id, T>
                 )
             };
-            Ok((*boxed_downcast).round)
+            Ok(boxed_downcast.round)
         } else {
             Err(self)
         }

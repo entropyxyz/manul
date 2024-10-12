@@ -79,7 +79,7 @@ where
                 // Due to already registered invalid messages from nodes,
                 // even if the remaining nodes send correct messages, it won't be enough.
                 // Terminating.
-                CanFinalize::Never => return Ok(session.terminate(accum)?),
+                CanFinalize::Never => return session.terminate(accum),
             }
 
             debug!("{key:?}: waiting for a message");
@@ -172,16 +172,14 @@ where
     let dispatcher_task = message_dispatcher(tx_map, dispatcher_rx);
     let dispatcher = tokio::spawn(dispatcher_task);
 
-    let handles: Vec<
-        tokio::task::JoinHandle<Result<SessionReport<P, Verifier, Signature>, LocalError>>,
-    > = rxs
+    let handles = rxs
         .into_iter()
         .zip(sessions.into_iter())
         .map(|(rx, session)| {
             let node_task = run_session(dispatcher_tx.clone(), rx, session);
             tokio::spawn(node_task)
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     // Drop the last copy of the dispatcher's incoming channel so that it could finish.
     drop(dispatcher_tx);
@@ -198,10 +196,10 @@ where
 
 #[tokio::test]
 async fn async_run() {
-    let signers = (0..3).map(|id| Signer::new(id)).collect::<Vec<_>>();
+    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
-        .map(|signer| signer.verifying_key().clone())
+        .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
     let session_id = SessionId::random(&mut OsRng);
     let sessions = signers

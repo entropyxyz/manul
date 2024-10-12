@@ -390,10 +390,10 @@ mod tests {
 
     #[test]
     fn round() {
-        let signers = (0..3).map(|id| Signer::new(id)).collect::<Vec<_>>();
+        let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
         let all_ids = signers
             .iter()
-            .map(|signer| signer.verifying_key().clone())
+            .map(|signer| signer.verifying_key())
             .collect::<BTreeSet<_>>();
         let inputs = signers
             .into_iter()
@@ -416,7 +416,7 @@ mod tests {
 
         for (_id, report) in reports {
             if let SessionOutcome::Result(result) = report.outcome {
-                assert_eq!(result, 0 + 1 + 2);
+                assert_eq!(result, 3); // 0 + 1 + 2
             } else {
                 panic!("Session did not finish successfully");
             }

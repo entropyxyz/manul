@@ -196,7 +196,7 @@ where
                 accum.register_unprovable_error(
                     from,
                     RemoteError::new("Mismatched metadata in bundled messages"),
-                );
+                )?;
                 return Ok(None);
             }
         };
@@ -206,7 +206,7 @@ where
             accum.register_unprovable_error(
                 from,
                 RemoteError::new("The received message has an incorrect session ID"),
-            );
+            )?;
             return Ok(None);
         }
 
@@ -215,28 +215,28 @@ where
                 accum.register_unprovable_error(
                     from,
                     RemoteError::new("Message from this party is already being processed"),
-                );
+                )?;
                 return Ok(None);
             }
         } else if self.possible_next_rounds.contains(&message_round_id) {
             if accum.message_is_cached(from, message_round_id) {
                 accum.register_unprovable_error(
                     from,
-                    RemoteError::new(&format!(
+                    RemoteError::new(format!(
                         "Message for {:?} is already cached",
                         message_round_id
                     )),
-                );
+                )?;
                 return Ok(None);
             }
         } else {
             accum.register_unprovable_error(
                 from,
-                RemoteError::new(&format!(
+                RemoteError::new(format!(
                     "Unexpected message round ID: {:?}",
                     message_round_id
                 )),
-            );
+            )?;
             return Ok(None);
         }
 
@@ -248,7 +248,7 @@ where
                 accum.register_unprovable_error(
                     from,
                     RemoteError::new("Message verification failed"),
-                );
+                )?;
                 return Ok(None);
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
@@ -299,7 +299,7 @@ where
         accum: &mut RoundAccumulator<P, Verifier, S>,
         processed: ProcessedMessage<P, Verifier, S>,
     ) -> Result<(), LocalError> {
-        accum.add_processed_message(self.round_id(), &self.transcript, processed)
+        accum.add_processed_message(&self.transcript, processed)
     }
 
     pub fn make_accumulator(&self) -> RoundAccumulator<P, Verifier, S> {
@@ -491,12 +491,38 @@ where
         }
     }
 
-    fn register_unprovable_error(&mut self, from: &Verifier, error: RemoteError) {
-        self.unprovable_errors.insert(from.clone(), error);
+    fn register_unprovable_error(
+        &mut self,
+        from: &Verifier,
+        error: RemoteError,
+    ) -> Result<(), LocalError> {
+        if self.unprovable_errors.insert(from.clone(), error).is_some() {
+            Err(LocalError::new(format!(
+                "An unprovable error for {:?} is already registered",
+                from
+            )))
+        } else {
+            Ok(())
+        }
     }
 
-    fn register_provable_error(&mut self, from: &Verifier, evidence: Evidence<P, Verifier, S>) {
-        self.provable_errors.insert(from.clone(), evidence);
+    fn register_provable_error(
+        &mut self,
+        from: &Verifier,
+        evidence: Evidence<P, Verifier, S>,
+    ) -> Result<(), LocalError> {
+        if self
+            .provable_errors
+            .insert(from.clone(), evidence)
+            .is_some()
+        {
+            Err(LocalError::new(format!(
+                "A provable error for {:?} is already registered",
+                from
+            )))
+        } else {
+            Ok(())
+        }
     }
 
     fn mark_processing(
@@ -529,11 +555,10 @@ where
 
     fn add_processed_message(
         &mut self,
-        round_id: RoundId,
         transcript: &Transcript<P, Verifier, S>,
         processed: ProcessedMessage<P, Verifier, S>,
     ) -> Result<(), LocalError> {
-        if self.payloads.contains_key(&processed.message.from()) {
+        if self.payloads.contains_key(processed.message.from()) {
             return Err(LocalError::new(format!(
                 "A processed message from {:?} has already been recorded",
                 processed.message.from()
@@ -566,16 +591,14 @@ where
             ReceiveErrorType::InvalidDirectMessage(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
-                self.provable_errors.insert(from.clone(), evidence);
-                Ok(())
+                self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::InvalidEchoBroadcast(error) => {
                 let (echo_broadcast, _direct_message) = processed.message.into_unverified();
                 let echo_broadcast = echo_broadcast
                     .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
-                self.provable_errors.insert(from.clone(), evidence);
-                Ok(())
+                self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Protocol(error) => {
                 let (echo_broadcast, direct_message) = processed.message.into_unverified();
@@ -586,8 +609,7 @@ where
                     error,
                     transcript,
                 )?;
-                self.provable_errors.insert(from.clone(), evidence);
-                Ok(())
+                self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Unprovable(error) => {
                 self.unprovable_errors.insert(from.clone(), error);
@@ -597,8 +619,7 @@ where
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
                 let evidence =
                     Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
-                self.provable_errors.insert(from.clone(), evidence);
-                Ok(())
+                self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),
         }
@@ -610,7 +631,7 @@ where
     ) -> Result<(), LocalError> {
         let from = message.from().clone();
         let round_id = message.metadata().round_id();
-        let cached = self.cached.entry(from.clone()).or_insert(BTreeMap::new());
+        let cached = self.cached.entry(from.clone()).or_default();
         if cached.insert(round_id, message).is_some() {
             return Err(LocalError::new(format!(
                 "A message from for {:?} has already been cached",
@@ -676,10 +697,10 @@ mod tests {
         struct DummyDigest;
 
         impl Digest for DummyDigest {
-            fn new_with_prefix(data: impl AsRef<[u8]>) -> Self {
+            fn new_with_prefix(_data: impl AsRef<[u8]>) -> Self {
                 unimplemented!()
             }
-            fn chain_update(self, data: impl AsRef<[u8]>) -> Self {
+            fn chain_update(self, _data: impl AsRef<[u8]>) -> Self {
                 unimplemented!()
             }
         }
@@ -687,11 +708,11 @@ mod tests {
         impl ProtocolError for DummyProtocolError {
             fn verify_messages_constitute_error(
                 &self,
-                echo_broadcast: &Option<EchoBroadcast>,
-                direct_message: &DirectMessage,
-                echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-                direct_messages: &BTreeMap<RoundId, DirectMessage>,
-                combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+                _echo_broadcast: &Option<EchoBroadcast>,
+                _direct_message: &DirectMessage,
+                _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+                _direct_messages: &BTreeMap<RoundId, DirectMessage>,
+                _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
             ) -> Result<(), ProtocolValidationError> {
                 unimplemented!()
             }

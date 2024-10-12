@@ -16,6 +16,7 @@ signature = { version = "2", features = ["digest"] }
 rand_core = "0.6.4"
 rand = "0.8"
 tracing = "0.1"
+displaydoc = "0.2"
 
 [dev-dependencies]
 impls = "1"

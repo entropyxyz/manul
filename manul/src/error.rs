@@ -1,6 +1,7 @@
 use core::fmt::Debug;
 
-#[derive(Debug, Clone)]
+/// Local error: {0}
+#[derive(displaydoc::Display, Debug, Clone)]
 pub struct LocalError(String);
 
 impl LocalError {
@@ -9,7 +10,8 @@ impl LocalError {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Remote error: {0}
+#[derive(displaydoc::Display, Debug, Clone)]
 pub struct RemoteError(String);
 
 impl RemoteError {

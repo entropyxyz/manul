@@ -26,6 +26,7 @@ struct Message<Verifier, S> {
     message: MessageBundle<S>,
 }
 
+#[allow(clippy::type_complexity)]
 fn propagate<P, Signer, Verifier, S>(
     rng: &mut impl CryptoRngCore,
     session: Session<P, Signer, Verifier, S>,
@@ -99,6 +100,7 @@ where
     Ok((state, messages))
 }
 
+#[allow(clippy::type_complexity)]
 pub fn run_sync<R, Signer, Verifier, S>(
     rng: &mut impl CryptoRngCore,
     inputs: Vec<(Signer, R::Inputs)>,
@@ -148,8 +150,6 @@ where
         messages.extend(new_messages);
         states.insert(verifier, state);
     }
-
-    let ids = states.keys().cloned().collect::<Vec<_>>();
 
     loop {
         // Pick a random message and deliver it

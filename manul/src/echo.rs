@@ -131,7 +131,7 @@ where
         &self,
         _rng: &mut impl CryptoRngCore,
         from: &I,
-        echo_broadcast: Option<EchoBroadcast>,
+        _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<I, Self::Protocol>> {
         debug!(

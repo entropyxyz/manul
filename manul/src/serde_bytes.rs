@@ -4,10 +4,6 @@ use core::fmt;
 
 use serde::{de, Deserializer, Serializer};
 
-// A type of a trait alias, to work around https://github.com/rust-lang/rust/issues/113517
-// If not for that issue, we could just use `TryFrom<&'a [u8]>` directly in the bounds.
-pub(crate) trait TryFromBytes<'a, E>: TryFrom<&'a [u8], Error = E> {}
-
 struct BoxVisitor;
 
 impl<'de> de::Visitor<'de> for BoxVisitor {

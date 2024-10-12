@@ -27,6 +27,7 @@ pub trait RoundOverride<Id>: RoundWrapper<Id> {
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         self.inner_round_ref().make_echo_broadcast(rng)
     }
+    #[allow(clippy::type_complexity)]
     fn finalize(
         self,
         rng: &mut impl CryptoRngCore,

@@ -56,7 +56,8 @@ impl From<ProtocolValidationError> for EvidenceError {
 
 #[derive(Debug, Clone)]
 pub struct Evidence<P: Protocol, Verifier, S> {
-    party: Verifier, // TOOD: should it be saved here?
+    guilty_party: Verifier,
+    description: String,
     evidence: EvidenceEnum<P, Verifier, S>,
 }
 
@@ -103,8 +104,11 @@ where
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
+        let description = format!("Protocol error: {:?}", error);
+
         Ok(Self {
-            party: verifier.clone(),
+            guilty_party: verifier.clone(),
+            description,
             evidence: EvidenceEnum::Protocol(ProtocolEvidence {
                 error,
                 direct_message,
@@ -122,9 +126,11 @@ where
         error: EchoRoundError<Verifier>,
         transcript: &Transcript<P, Verifier, S>,
     ) -> Result<Self, LocalError> {
+        let description = format!("{:?}", error);
         match error {
             EchoRoundError::InvalidEcho(from) => Ok(Self {
-                party: verifier.clone(),
+                guilty_party: verifier.clone(),
+                description,
                 evidence: EvidenceEnum::InvalidEchoPack(InvalidEchoPackEvidence {
                     direct_message,
                     invalid_echo_sender: from,
@@ -142,7 +148,10 @@ where
                     .payload()
                     .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()
                     .map_err(|error| {
-                        LocalError::new("Failed to deserialize the given direct message")
+                        LocalError::new(format!(
+                            "Failed to deserialize the given direct message: {:?}",
+                            error
+                        ))
                     })?;
                 let echoed_to_us = deserialized.echo_messages.get(&from).ok_or_else(|| {
                     LocalError::new(format!(
@@ -151,7 +160,8 @@ where
                 })?;
 
                 Ok(Self {
-                    party: from,
+                    guilty_party: from,
+                    description,
                     evidence: EvidenceEnum::MismatchedBroadcasts(MismatchedBroadcastsEvidence {
                         we_received,
                         echoed_to_us: echoed_to_us.clone(),
@@ -168,10 +178,10 @@ where
         error: DirectMessageError,
     ) -> Self {
         Self {
-            party: verifier.clone(),
+            guilty_party: verifier.clone(),
+            description: format!("{:?}", error),
             evidence: EvidenceEnum::InvalidDirectMessage(InvalidDirectMessageEvidence {
                 direct_message,
-                error,
                 phantom: core::marker::PhantomData,
             }),
         }
@@ -183,13 +193,21 @@ where
         error: EchoBroadcastError,
     ) -> Self {
         Self {
-            party: verifier.clone(),
+            guilty_party: verifier.clone(),
+            description: format!("{:?}", error),
             evidence: EvidenceEnum::InvalidEchoBroadcast(InvalidEchoBroadcastEvidence {
                 echo_broadcast,
-                error,
                 phantom: core::marker::PhantomData,
             }),
         }
+    }
+
+    pub fn guilty_party(&self) -> &Verifier {
+        &self.guilty_party
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
     }
 
     pub fn verify(&self, party: &Verifier) -> Result<(), EvidenceError> {
@@ -292,7 +310,6 @@ impl<P: Protocol, S: Clone> MismatchedBroadcastsEvidence<P, S> {
 #[derive(Debug, Clone)]
 pub struct InvalidDirectMessageEvidence<P: Protocol, S> {
     direct_message: SignedMessage<S, DirectMessage>,
-    error: DirectMessageError,
     phantom: core::marker::PhantomData<P>,
 }
 
@@ -316,7 +333,6 @@ where
 #[derive(Debug, Clone)]
 pub struct InvalidEchoBroadcastEvidence<P: Protocol, S> {
     echo_broadcast: SignedMessage<S, EchoBroadcast>,
-    error: EchoBroadcastError,
     phantom: core::marker::PhantomData<P>,
 }
 
