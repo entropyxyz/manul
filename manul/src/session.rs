@@ -259,7 +259,6 @@ where
             accum.cache_message(verified_message)?;
             Ok(None)
         } else {
-            // TODO: can we enforce it through types?
             unreachable!()
         }
     }
@@ -306,7 +305,6 @@ where
             accum.still_have_not_sent_messages,
         )?;
         Ok(SessionReport::new(
-            // TODO: or have a special Outcome entry? "Terminated"?
             SessionOutcome::NotEnoughMessages,
             transcript,
         ))
@@ -673,15 +671,15 @@ mod tests {
             type ProtocolError = DummyProtocolError;
             type CorrectnessProof = ();
             type Digest = DummyDigest;
-            fn serialize<T>(_: &T) -> Result<Box<[u8]>, LocalError>
+            fn serialize<T>(_: T) -> Result<Box<[u8]>, LocalError>
             where
                 T: Serialize,
             {
                 unimplemented!()
             }
-            fn deserialize<T>(_: &[u8]) -> Result<T, DeserializationError>
+            fn deserialize<'de, T>(_: &[u8]) -> Result<T, DeserializationError>
             where
-                T: for<'de> Deserialize<'de>,
+                T: Deserialize<'de>,
             {
                 unimplemented!()
             }

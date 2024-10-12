@@ -21,8 +21,6 @@ pub trait DigestVerifier<D: Digest, S> {
     fn verify_digest(&self, digest: D, signature: &S) -> Result<(), Self::Error>;
 }
 
-// TODO: the following should be gated under "rust-crypto" feature
-
 impl<T> Digest for T
 where
     T: digest::Digest,

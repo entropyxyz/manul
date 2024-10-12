@@ -154,7 +154,6 @@ pub enum SessionOutcome<P: Protocol> {
     UnprovableError,
 }
 
-// TODO: save the round ID at which the report was generated
 pub struct SessionReport<P: Protocol, Verifier, S> {
     pub outcome: SessionOutcome<P>,
     pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,

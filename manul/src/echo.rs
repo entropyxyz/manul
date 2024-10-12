@@ -22,7 +22,6 @@ pub(crate) enum EchoRoundError<Id> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EchoRoundMessage<Id: Ord, S> {
-    // TODO: use `Vec` to support more serializers?
     pub(crate) echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
 }
 

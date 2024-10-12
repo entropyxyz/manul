@@ -198,10 +198,8 @@ pub trait Protocol: Debug + Sized {
     type CorrectnessProof: Send;
     type Digest: Digest;
 
-    // TODO: should we take inputs by value?
-    fn serialize<T: Serialize>(value: &T) -> Result<Box<[u8]>, LocalError>;
-    // TODO: should this be generic on 'de instead?
-    fn deserialize<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, DeserializationError>;
+    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
+    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError>;
 
     fn verify_direct_message_is_invalid(
         round_id: RoundId,
