@@ -3,8 +3,8 @@ use core::fmt::Debug;
 
 use manul::{
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signature, Signer, Verifier},
-    Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, Keypair, LocalError,
-    Payload, Round, SessionId,
+    Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, Keypair, LocalError, Payload, Round,
+    SessionId,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
@@ -62,8 +62,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
-            let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&[99u8])
-                .unwrap();
+            let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&[99u8]).unwrap();
             Ok((dm, Artifact::empty()))
         } else if matches!(self.behavior, Behavior::AttributableFailure) {
             let message = Round1Message {
@@ -92,9 +91,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         Ok(match outcome {
             FinalizeOutcome::Result(res) => FinalizeOutcome::Result(res),
             FinalizeOutcome::AnotherRound(another_round) => {
-                let round2 = another_round
-                    .downcast::<Round2<Id>>()
-                    .map_err(FinalizeError::Local)?;
+                let round2 = another_round.downcast::<Round2<Id>>().map_err(FinalizeError::Local)?;
                 FinalizeOutcome::another_round(MaliciousRound2 {
                     round: round2,
                     behavior,
@@ -173,8 +170,7 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs)
-            .unwrap()
+        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -220,8 +216,7 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs)
-            .unwrap()
+        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -267,8 +262,7 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs)
-            .unwrap()
+        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();

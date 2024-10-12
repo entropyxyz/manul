@@ -55,11 +55,7 @@ where
     let state = loop {
         match session.can_finalize(&accum) {
             CanFinalize::Yes => {
-                debug!(
-                    "{:?}: finalizing {:?}",
-                    session.verifier(),
-                    session.round_id(),
-                );
+                debug!("{:?}: finalizing {:?}", session.verifier(), session.round_id(),);
                 match session.finalize_round(rng, accum)? {
                     RoundOutcome::Finished(report) => break State::Finished(report),
                     RoundOutcome::AnotherRound {
@@ -127,12 +123,7 @@ where
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(
-            rng,
-            session_id.clone(),
-            signer,
-            inputs,
-        )?;
+        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(rng, session_id.clone(), signer, inputs)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();
@@ -156,18 +147,14 @@ where
         let message_idx = rng.gen_range(0..messages.len());
         let message = messages.swap_remove(message_idx);
 
-        debug!(
-            "Delivering message from {:?} to {:?}",
-            message.from, message.to
-        );
+        debug!("Delivering message from {:?} to {:?}", message.from, message.to);
 
         let state = states
             .remove(&message.to)
             .expect("the message destination is one of the sessions");
         let new_state = if let State::InProgress { session, accum } = state {
             let mut accum = accum;
-            let preprocessed =
-                session.preprocess_message(&mut accum, &message.from, message.message)?;
+            let preprocessed = session.preprocess_message(&mut accum, &message.from, message.message)?;
 
             if let Some(verified) = preprocessed {
                 let processed = session.process_message(rng, verified);

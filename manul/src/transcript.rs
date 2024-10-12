@@ -61,10 +61,7 @@ where
 
         let mut all_provable_errors = self.provable_errors;
         for (verifier, error) in provable_errors {
-            if all_provable_errors
-                .insert(verifier.clone(), error)
-                .is_some()
-            {
+            if all_provable_errors.insert(verifier.clone(), error).is_some() {
                 return Err(LocalError::new(format!(
                     "A provable errors entry for {verifier:?} already exists"
                 )));
@@ -73,10 +70,7 @@ where
 
         let mut all_unprovable_errors = self.unprovable_errors;
         for (verifier, error) in unprovable_errors {
-            if all_unprovable_errors
-                .insert(verifier.clone(), error)
-                .is_some()
-            {
+            if all_unprovable_errors.insert(verifier.clone(), error).is_some() {
                 return Err(LocalError::new(format!(
                     "An unprovable errors entry for {verifier:?} already exists"
                 )));
@@ -109,16 +103,10 @@ where
     ) -> Result<SignedMessage<S, EchoBroadcast>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
-            .ok_or_else(|| {
-                LocalError::new(format!("No echo broadcasts registered for {round_id:?}"))
-            })?
+            .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {round_id:?}")))?
             .get(from)
             .cloned()
-            .ok_or_else(|| {
-                LocalError::new(format!(
-                    "No echo broadcasts registered for {from:?} in {round_id:?}"
-                ))
-            })
+            .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {from:?} in {round_id:?}")))
     }
 
     pub fn get_direct_message(
@@ -128,16 +116,10 @@ where
     ) -> Result<SignedMessage<S, DirectMessage>, LocalError> {
         self.direct_messages
             .get(&round_id)
-            .ok_or_else(|| {
-                LocalError::new(format!("No direct messages registered for {round_id:?}"))
-            })?
+            .ok_or_else(|| LocalError::new(format!("No direct messages registered for {round_id:?}")))?
             .get(from)
             .cloned()
-            .ok_or_else(|| {
-                LocalError::new(format!(
-                    "No direct messages registered for {from:?} in {round_id:?}"
-                ))
-            })
+            .ok_or_else(|| LocalError::new(format!("No direct messages registered for {from:?} in {round_id:?}")))
     }
 
     pub fn is_banned(&self, from: &Verifier) -> bool {
@@ -148,18 +130,13 @@ where
         &self,
         round_id: RoundId,
     ) -> Result<BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>, LocalError> {
-        self.echo_broadcasts.get(&round_id).cloned().ok_or_else(|| {
-            LocalError::new(format!(
-                "Echo-broadcasts for {round_id:?} are not in the transcript"
-            ))
-        })
+        self.echo_broadcasts
+            .get(&round_id)
+            .cloned()
+            .ok_or_else(|| LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript")))
     }
 
-    pub fn register_unprovable_error(
-        &mut self,
-        from: &Verifier,
-        error: RemoteError,
-    ) -> Result<(), LocalError> {
+    pub fn register_unprovable_error(&mut self, from: &Verifier, error: RemoteError) -> Result<(), LocalError> {
         if self.unprovable_errors.insert(from.clone(), error).is_some() {
             return Err(LocalError::new(format!(
                 "An unprovable errors entry for {from:?} already exists"

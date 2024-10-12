@@ -4,8 +4,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
     testing::{Signature, Signer, Verifier},
-    CanFinalize, Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session,
-    SessionId, SessionReport,
+    CanFinalize, Keypair, LocalError, MessageBundle, Protocol, Round, RoundOutcome, Session, SessionId, SessionReport,
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;
@@ -113,10 +112,7 @@ where
     }
 }
 
-async fn message_dispatcher(
-    txs: BTreeMap<Verifier, mpsc::Sender<MessageIn>>,
-    rx: mpsc::Receiver<MessageOut>,
-) {
+async fn message_dispatcher(txs: BTreeMap<Verifier, mpsc::Sender<MessageIn>>, rx: mpsc::Receiver<MessageOut>) {
     let mut rx = rx;
     let mut messages = Vec::<MessageOut>::new();
     loop {
@@ -161,8 +157,7 @@ where
     let (dispatcher_tx, dispatcher_rx) = mpsc::channel::<MessageOut>(100);
 
     let channels = (0..num_parties).map(|_| mpsc::channel::<MessageIn>(100));
-    let (txs, rxs): (Vec<mpsc::Sender<MessageIn>>, Vec<mpsc::Receiver<MessageIn>>) =
-        channels.unzip();
+    let (txs, rxs): (Vec<mpsc::Sender<MessageIn>>, Vec<mpsc::Receiver<MessageIn>>) = channels.unzip();
     let tx_map = sessions
         .iter()
         .map(|session| session.verifier())
@@ -208,13 +203,10 @@ async fn async_run() {
             let inputs = Inputs {
                 all_ids: all_ids.clone(),
             };
-            Session::<
-                    <Round1<Verifier> as Round<Verifier>>::Protocol,
-                    Signer,
-                    Verifier,
-                    Signature,
-                >::new::<Round1<Verifier>>(&mut OsRng, session_id.clone(), signer, inputs)
-                .unwrap()
+            Session::<<Round1<Verifier> as Round<Verifier>>::Protocol, Signer, Verifier, Signature>::new::<
+                Round1<Verifier>,
+            >(&mut OsRng, session_id.clone(), signer, inputs)
+            .unwrap()
         })
         .collect::<Vec<_>>();
 

@@ -5,8 +5,8 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use crate::error::LocalError;
 use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol,
-    ReceiveError, Round, RoundId,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
+    RoundId,
 };
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
@@ -49,10 +49,7 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError>;
 
-    fn make_echo_broadcast(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-    ) -> Option<Result<EchoBroadcast, LocalError>>;
+    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>>;
 
     fn receive_message(
         &self,
@@ -120,10 +117,7 @@ where
         self.round.make_direct_message(&mut boxed_rng, destination)
     }
 
-    fn make_echo_broadcast(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-    ) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_echo_broadcast(&mut boxed_rng)
     }
@@ -175,9 +169,7 @@ where
     pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
         if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.__get_type_id() {
             let boxed_downcast = unsafe {
-                Box::<ObjectSafeRoundWrapper<Id, T>>::from_raw(
-                    Box::into_raw(self) as *mut ObjectSafeRoundWrapper<Id, T>
-                )
+                Box::<ObjectSafeRoundWrapper<Id, T>>::from_raw(Box::into_raw(self) as *mut ObjectSafeRoundWrapper<Id, T>)
             };
             Ok(boxed_downcast.round)
         } else {
@@ -186,11 +178,7 @@ where
     }
 
     pub fn downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, LocalError> {
-        self.try_downcast().map_err(|_| {
-            LocalError::new(format!(
-                "Failed to downcast into type {}",
-                core::any::type_name::<T>()
-            ))
-        })
+        self.try_downcast()
+            .map_err(|_| LocalError::new(format!("Failed to downcast into type {}", core::any::type_name::<T>())))
     }
 }

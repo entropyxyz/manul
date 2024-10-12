@@ -9,8 +9,8 @@ use crate::error::LocalError;
 use crate::message::{MessageVerificationError, SignedMessage};
 use crate::object_safe::ObjectSafeRound;
 use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol,
-    ReceiveError, Round, RoundId,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
+    RoundId,
 };
 use crate::DigestVerifier;
 
@@ -58,10 +58,7 @@ where
         let mut echo_messages = echo_messages;
         echo_messages.insert(verifier.clone(), my_echo_message);
 
-        debug!(
-            "{:?}: initialized echo round with {:?}",
-            verifier, destinations
-        );
+        debug!("{:?}: initialized echo round with {:?}", verifier, destinations);
         Self {
             verifier,
             echo_messages,
@@ -108,10 +105,7 @@ where
         _rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
-        debug!(
-            "{:?}: making echo round message for {:?}",
-            self.verifier, destination
-        );
+        debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
 
         // Don't send our own message the second time
         let mut echo_messages = self.echo_messages.clone();
@@ -138,10 +132,7 @@ where
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        debug!(
-            "{:?}: received an echo message from {:?}",
-            self.verifier, from
-        );
+        debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
         let message = direct_message.try_deserialize::<P, EchoRoundMessage<Id, S>>()?;
 
@@ -155,11 +146,7 @@ where
                 self.destinations
             )));
         }
-        let message_keys = message
-            .echo_messages
-            .keys()
-            .cloned()
-            .collect::<BTreeSet<_>>();
+        let message_keys = message.echo_messages.keys().cloned().collect::<BTreeSet<_>>();
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
         if !missing_keys.is_empty() {

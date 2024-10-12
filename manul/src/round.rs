@@ -32,9 +32,7 @@ impl<Id, P: Protocol> ReceiveError<Id, P> {
     }
 
     pub fn unprovable(message: impl Into<String>) -> Self {
-        Self(ReceiveErrorType::Unprovable(RemoteError::new(
-            message.into(),
-        )))
+        Self(ReceiveErrorType::Unprovable(RemoteError::new(message.into())))
     }
 
     pub fn protocol(error: P::ProtocolError) -> Self {
@@ -287,9 +285,7 @@ impl DirectMessage {
         P::serialize(message).map(Self)
     }
 
-    pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<(), MessageValidationError> {
+    pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
         if self.try_deserialize::<P, T>().is_err() {
             Ok(())
         } else {
@@ -299,9 +295,7 @@ impl DirectMessage {
         }
     }
 
-    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<T, DirectMessageError> {
+    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, DirectMessageError> {
         P::deserialize(&self.0).map_err(DirectMessageError)
     }
 }
@@ -314,9 +308,7 @@ impl EchoBroadcast {
         P::serialize(message).map(Self)
     }
 
-    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(
-        &self,
-    ) -> Result<T, EchoBroadcastError> {
+    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, EchoBroadcastError> {
         P::deserialize(&self.0).map_err(EchoBroadcastError)
     }
 }
@@ -333,12 +325,10 @@ impl Payload {
     }
 
     pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
-        Ok(*(self.0.downcast::<T>().map_err(|_| {
-            LocalError::new(format!(
-                "Failed to downcast into {}",
-                core::any::type_name::<T>()
-            ))
-        })?))
+        Ok(*(self
+            .0
+            .downcast::<T>()
+            .map_err(|_| LocalError::new(format!("Failed to downcast into {}", core::any::type_name::<T>())))?))
     }
 }
 
@@ -354,12 +344,10 @@ impl Artifact {
     }
 
     pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
-        Ok(*(self.0.downcast::<T>().map_err(|_| {
-            LocalError::new(format!(
-                "Failed to downcast into {}",
-                core::any::type_name::<T>()
-            ))
-        })?))
+        Ok(*(self
+            .0
+            .downcast::<T>()
+            .map_err(|_| LocalError::new(format!("Failed to downcast into {}", core::any::type_name::<T>())))?))
     }
 }
 

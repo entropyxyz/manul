@@ -51,8 +51,7 @@ impl ProtocolError for SimpleProtocolError {
                 Ok(())
             }
             SimpleProtocolError::Round2InvalidPosition => {
-                let _r1_message =
-                    direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
+                let _r1_message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
                 let r1_echos_serialized = combined_echos
                     .get(&RoundId::new(1))
                     .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
@@ -175,10 +174,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-    ) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
@@ -193,10 +189,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
-        debug!(
-            "{:?}: making direct message for {:?}",
-            self.context.id, destination
-        );
+        debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
@@ -221,14 +214,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::protocol(
-                SimpleProtocolError::Round1InvalidPosition,
-            ));
+            return Err(ReceiveError::protocol(SimpleProtocolError::Round1InvalidPosition));
         }
 
-        Ok(Payload::new(Round1Payload {
-            x: message.my_position,
-        }))
+        Ok(Payload::new(Round1Payload { x: message.my_position }))
     }
 
     fn finalize(
@@ -289,10 +278,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-    ) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
@@ -307,10 +293,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
-        debug!(
-            "{:?}: making direct message for {:?}",
-            self.context.id, destination
-        );
+        debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
@@ -335,14 +318,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::protocol(
-                SimpleProtocolError::Round2InvalidPosition,
-            ));
+            return Err(ReceiveError::protocol(SimpleProtocolError::Round2InvalidPosition));
         }
 
-        Ok(Payload::new(Round1Payload {
-            x: message.my_position,
-        }))
+        Ok(Payload::new(Round1Payload { x: message.my_position }))
     }
 
     fn finalize(

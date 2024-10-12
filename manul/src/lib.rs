@@ -27,9 +27,9 @@ mod transcript;
 pub use error::LocalError;
 pub use message::MessageBundle;
 pub use round::{
-    AnotherRound, Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError,
-    FinalizeOutcome, FirstRound, MessageValidationError, Payload, Protocol, ProtocolError,
-    ProtocolValidationError, ReceiveError, Round, RoundId,
+    AnotherRound, Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome,
+    FirstRound, MessageValidationError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round,
+    RoundId,
 };
 pub use session::{CanFinalize, RoundOutcome, Session, SessionId};
 pub use signing::{Digest, DigestSigner, DigestVerifier, Keypair};

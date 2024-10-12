@@ -7,8 +7,7 @@ use crate::echo::{EchoRoundError, EchoRoundMessage};
 use crate::error::LocalError;
 use crate::message::{MessageVerificationError, SignedMessage};
 use crate::round::{
-    DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
-    ProtocolError,
+    DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, ProtocolError,
 };
 use crate::transcript::Transcript;
 use crate::{DigestVerifier, Protocol, ProtocolValidationError, RoundId};
@@ -23,9 +22,7 @@ impl From<MessageVerificationError> for EvidenceError {
     fn from(error: MessageVerificationError) -> Self {
         match error {
             MessageVerificationError::Local(error) => Self::Local(error),
-            MessageVerificationError::InvalidSignature => {
-                Self::InvalidEvidence("Invalid message signature".into())
-            }
+            MessageVerificationError::InvalidSignature => Self::InvalidEvidence("Invalid message signature".into()),
         }
     }
 }
@@ -148,10 +145,7 @@ where
                     .payload()
                     .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()
                     .map_err(|error| {
-                        LocalError::new(format!(
-                            "Failed to deserialize the given direct message: {:?}",
-                            error
-                        ))
+                        LocalError::new(format!("Failed to deserialize the given direct message: {:?}", error))
                     })?;
                 let echoed_to_us = deserialized.echo_messages.get(&from).ok_or_else(|| {
                     LocalError::new(format!(
@@ -258,10 +252,7 @@ where
                 ))
             })?;
 
-        let verified_echo = match invalid_echo
-            .clone()
-            .verify::<P, _>(&self.invalid_echo_sender)
-        {
+        let verified_echo = match invalid_echo.clone().verify::<P, _>(&self.invalid_echo_sender) {
             Ok(echo) => echo,
             Err(MessageVerificationError::Local(error)) => return Err(EvidenceError::Local(error)),
             // The message was indeed incorrectly signed - fault proven
@@ -299,9 +290,7 @@ where
         let we_received = self.we_received.clone().verify::<P, _>(verifier)?;
         let echoed_to_us = self.echoed_to_us.clone().verify::<P, _>(verifier)?;
 
-        if we_received.metadata() == echoed_to_us.metadata()
-            && we_received.payload() != echoed_to_us.payload()
-        {
+        if we_received.metadata() == echoed_to_us.metadata() && we_received.payload() != echoed_to_us.payload() {
             return Ok(());
         }
 
@@ -378,12 +367,7 @@ where
     {
         let session_id = self.direct_message.metadata().session_id();
 
-        let verified_direct_message = self
-            .direct_message
-            .clone()
-            .verify::<P, _>(verifier)?
-            .payload()
-            .clone();
+        let verified_direct_message = self.direct_message.clone().verify::<P, _>(verifier)?.payload().clone();
 
         let mut verified_direct_messages = BTreeMap::new();
         for (round_id, direct_message) in self.direct_messages.iter() {
@@ -399,9 +383,7 @@ where
 
         let verified_echo_broadcast = if let Some(echo) = self.echo_broadcast.as_ref() {
             let metadata = echo.metadata();
-            if metadata.session_id() != session_id
-                || metadata.round_id() != self.direct_message.metadata().round_id()
-            {
+            if metadata.session_id() != session_id || metadata.round_id() != self.direct_message.metadata().round_id() {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));
@@ -432,14 +414,12 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            let echo_set = DirectMessage::try_deserialize::<P, EchoRoundMessage<Verifier, S>>(
-                verified_combined_echo.payload(),
-            )?;
+            let echo_set =
+                DirectMessage::try_deserialize::<P, EchoRoundMessage<Verifier, S>>(verified_combined_echo.payload())?;
 
             let mut verified_echo_set = Vec::new();
             for (other_verifier, echo_broadcast) in echo_set.echo_messages.iter() {
-                let verified_echo_broadcast =
-                    echo_broadcast.clone().verify::<P, _>(other_verifier)?;
+                let verified_echo_broadcast = echo_broadcast.clone().verify::<P, _>(other_verifier)?;
                 let metadata = verified_echo_broadcast.metadata();
                 if metadata.session_id() != session_id || metadata.round_id() != *round_id {
                     return Err(EvidenceError::InvalidEvidence(

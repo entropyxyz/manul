@@ -88,8 +88,7 @@ where
     where
         Verifier: Clone + DigestVerifier<P::Digest, S>,
     {
-        let message_bytes =
-            P::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
+        let message_bytes = P::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
         let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         if verifier.verify_digest(digest, &self.signature).is_ok() {
             Ok(VerifiedMessage {
@@ -146,8 +145,7 @@ where
         P: Protocol,
         Signer: DigestSigner<P::Digest, S>,
     {
-        let direct_message =
-            SignedMessage::new::<P, _>(signer, session_id, round_id, direct_message)?;
+        let direct_message = SignedMessage::new::<P, _>(signer, session_id, round_id, direct_message)?;
         Ok(Self {
             direct_message,
             echo_broadcast,
@@ -227,12 +225,7 @@ impl<Verifier, S> VerifiedMessageBundle<Verifier, S> {
         self.direct_message.payload()
     }
 
-    pub(crate) fn into_unverified(
-        self,
-    ) -> (
-        Option<SignedMessage<S, EchoBroadcast>>,
-        SignedMessage<S, DirectMessage>,
-    ) {
+    pub(crate) fn into_unverified(self) -> (Option<SignedMessage<S, EchoBroadcast>>, SignedMessage<S, DirectMessage>) {
         let direct_message = self.direct_message.into_unverified();
         let echo_broadcast = self.echo_broadcast.map(|echo| echo.into_unverified());
         (echo_broadcast, direct_message)

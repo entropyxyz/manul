@@ -8,13 +8,11 @@ use tracing::debug;
 use crate::echo::EchoRound;
 use crate::error::{LocalError, RemoteError};
 use crate::evidence::Evidence;
-use crate::message::{
-    MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle,
-};
+use crate::message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle};
 use crate::object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
 use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
-    ReceiveError, ReceiveErrorType, RoundId,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload, ReceiveError,
+    ReceiveErrorType, RoundId,
 };
 use crate::serde_bytes;
 use crate::signing::{DigestSigner, DigestVerifier, Keypair};
@@ -193,10 +191,7 @@ where
         let checked_message = match message.unify_metadata() {
             Some(checked_message) => checked_message,
             None => {
-                accum.register_unprovable_error(
-                    from,
-                    RemoteError::new("Mismatched metadata in bundled messages"),
-                )?;
+                accum.register_unprovable_error(from, RemoteError::new("Mismatched metadata in bundled messages"))?;
                 return Ok(None);
             }
         };
@@ -222,20 +217,14 @@ where
             if accum.message_is_cached(from, message_round_id) {
                 accum.register_unprovable_error(
                     from,
-                    RemoteError::new(format!(
-                        "Message for {:?} is already cached",
-                        message_round_id
-                    )),
+                    RemoteError::new(format!("Message for {:?} is already cached", message_round_id)),
                 )?;
                 return Ok(None);
             }
         } else {
             accum.register_unprovable_error(
                 from,
-                RemoteError::new(format!(
-                    "Unexpected message round ID: {:?}",
-                    message_round_id
-                )),
+                RemoteError::new(format!("Unexpected message round ID: {:?}", message_round_id)),
             )?;
             return Ok(None);
         }
@@ -245,10 +234,7 @@ where
         let verified_message = match checked_message.verify::<P, _>(from) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
-                accum.register_unprovable_error(
-                    from,
-                    RemoteError::new("Message verification failed"),
-                )?;
+                accum.register_unprovable_error(from, RemoteError::new("Message verification failed"))?;
                 return Ok(None);
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
@@ -353,8 +339,7 @@ where
                 accum.artifacts,
             )));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session =
-                Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
+            let session = Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -363,10 +348,9 @@ where
 
         match self.round.finalize(rng, accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
-                FinalizeOutcome::Result(result) => RoundOutcome::Finished(SessionReport::new(
-                    SessionOutcome::Result(result),
-                    transcript,
-                )),
+                FinalizeOutcome::Result(result) => {
+                    RoundOutcome::Finished(SessionReport::new(SessionOutcome::Result(result), transcript))
+                }
                 FinalizeOutcome::AnotherRound(another_round) => {
                     // These messages could have been cached before
                     // processing messages from the same node for the current round.
@@ -378,13 +362,7 @@ where
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();
 
-                    let session = Session::new_for_next_round(
-                        rng,
-                        self.session_id,
-                        self.signer,
-                        round,
-                        transcript,
-                    )?;
+                    let session = Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,
@@ -393,19 +371,14 @@ where
             }),
             Err(error) => Ok(match error {
                 FinalizeError::Local(error) => return Err(error),
-                FinalizeError::Unattributable(correctness_proof) => {
-                    RoundOutcome::Finished(SessionReport::new(
-                        SessionOutcome::StalledWithProof(correctness_proof),
-                        transcript,
-                    ))
-                }
+                FinalizeError::Unattributable(correctness_proof) => RoundOutcome::Finished(SessionReport::new(
+                    SessionOutcome::StalledWithProof(correctness_proof),
+                    transcript,
+                )),
                 FinalizeError::Unprovable { party, error } => {
                     let mut transcript = transcript;
                     transcript.register_unprovable_error(&party, error)?;
-                    RoundOutcome::Finished(SessionReport::new(
-                        SessionOutcome::UnprovableError,
-                        transcript,
-                    ))
+                    RoundOutcome::Finished(SessionReport::new(SessionOutcome::UnprovableError, transcript))
                 }
             }),
         }
@@ -491,11 +464,7 @@ where
         }
     }
 
-    fn register_unprovable_error(
-        &mut self,
-        from: &Verifier,
-        error: RemoteError,
-    ) -> Result<(), LocalError> {
+    fn register_unprovable_error(&mut self, from: &Verifier, error: RemoteError) -> Result<(), LocalError> {
         if self.unprovable_errors.insert(from.clone(), error).is_some() {
             Err(LocalError::new(format!(
                 "An unprovable error for {:?} is already registered",
@@ -511,11 +480,7 @@ where
         from: &Verifier,
         evidence: Evidence<P, Verifier, S>,
     ) -> Result<(), LocalError> {
-        if self
-            .provable_errors
-            .insert(from.clone(), evidence)
-            .is_some()
-        {
+        if self.provable_errors.insert(from.clone(), evidence).is_some() {
             Err(LocalError::new(format!(
                 "A provable error for {:?} is already registered",
                 from
@@ -525,10 +490,7 @@ where
         }
     }
 
-    fn mark_processing(
-        &mut self,
-        message: &VerifiedMessageBundle<Verifier, S>,
-    ) -> Result<(), LocalError> {
+    fn mark_processing(&mut self, message: &VerifiedMessageBundle<Verifier, S>) -> Result<(), LocalError> {
         if !self.processing.insert(message.from().clone()) {
             Err(LocalError::new(format!(
                 "A message from {:?} is already marked as being processed",
@@ -595,20 +557,14 @@ where
             }
             ReceiveErrorType::InvalidEchoBroadcast(error) => {
                 let (echo_broadcast, _direct_message) = processed.message.into_unverified();
-                let echo_broadcast = echo_broadcast
-                    .ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
+                let echo_broadcast =
+                    echo_broadcast.ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Protocol(error) => {
                 let (echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence = Evidence::new_protocol_error(
-                    &from,
-                    echo_broadcast,
-                    direct_message,
-                    error,
-                    transcript,
-                )?;
+                let evidence = Evidence::new_protocol_error(&from, echo_broadcast, direct_message, error, transcript)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Unprovable(error) => {
@@ -617,18 +573,14 @@ where
             }
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence =
-                    Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
+                let evidence = Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),
         }
     }
 
-    fn cache_message(
-        &mut self,
-        message: VerifiedMessageBundle<Verifier, S>,
-    ) -> Result<(), LocalError> {
+    fn cache_message(&mut self, message: VerifiedMessageBundle<Verifier, S>) -> Result<(), LocalError> {
         let from = message.from().clone();
         let round_id = message.metadata().round_id();
         let cached = self.cached.entry(from.clone()).or_default();
@@ -669,13 +621,11 @@ mod tests {
     use impls::impls;
     use serde::{Deserialize, Serialize};
 
-    use super::{
-        MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle,
-    };
+    use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
     use crate::testing::{Signature, Signer, Verifier};
     use crate::{
-        DeserializationError, Digest, DirectMessage, EchoBroadcast, LocalError, Protocol,
-        ProtocolError, ProtocolValidationError, RoundId,
+        DeserializationError, Digest, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
+        ProtocolValidationError, RoundId,
     };
 
     #[test]
