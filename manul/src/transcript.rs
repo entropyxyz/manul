@@ -1,10 +1,15 @@
-use alloc::collections::{btree_map::Entry, BTreeMap, BTreeSet};
+use alloc::{
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    format,
+};
 use core::fmt::Debug;
 
-use crate::error::{LocalError, RemoteError};
-use crate::evidence::Evidence;
-use crate::message::SignedMessage;
-use crate::round::{DirectMessage, EchoBroadcast, Protocol, RoundId};
+use crate::{
+    error::{LocalError, RemoteError},
+    evidence::Evidence,
+    message::SignedMessage,
+    round::{DirectMessage, EchoBroadcast, Protocol, RoundId},
+};
 
 pub(crate) struct Transcript<P: Protocol, Verifier, S> {
     echo_broadcasts: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>>,
@@ -146,6 +151,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum SessionOutcome<P: Protocol> {
     Result(P::Result),
     StalledWithProof(P::CorrectnessProof),

@@ -1,19 +1,28 @@
-use alloc::collections::{BTreeMap, BTreeSet};
-use core::any::Any;
-use core::fmt::Debug;
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    format,
+    string::String,
+    vec::Vec,
+};
+use core::{any::Any, fmt::Debug};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::echo::EchoRoundError;
-use crate::error::{LocalError, RemoteError};
-use crate::object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
-use crate::serde_bytes;
-use crate::session::SessionId;
-use crate::signing::Digest;
+use crate::{
+    echo::EchoRoundError,
+    error::{LocalError, RemoteError},
+    object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
+    serde_bytes,
+    session::SessionId,
+    signing::Digest,
+};
 
+#[derive(Debug)]
 pub struct ReceiveError<Id, P: Protocol>(pub(crate) ReceiveErrorType<Id, P>);
 
+#[derive(Debug)]
 pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
     Local(LocalError),
     InvalidDirectMessage(DirectMessageError),

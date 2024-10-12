@@ -1,4 +1,4 @@
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::Debug;
 
 use rand::Rng;
@@ -6,11 +6,13 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::message::MessageBundle;
-use crate::session::{CanFinalize, RoundAccumulator};
-use crate::signing::{DigestSigner, DigestVerifier, Keypair};
-use crate::transcript::SessionReport;
-use crate::{FirstRound, LocalError, Protocol, RoundOutcome, Session, SessionId};
+use crate::{
+    message::MessageBundle,
+    session::{CanFinalize, RoundAccumulator},
+    signing::{DigestSigner, DigestVerifier, Keypair},
+    transcript::SessionReport,
+    FirstRound, LocalError, Protocol, RoundOutcome, Session, SessionId,
+};
 
 enum State<P: Protocol, Signer, Verifier, S> {
     InProgress {

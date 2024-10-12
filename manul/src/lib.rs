@@ -1,3 +1,4 @@
+#![no_std]
 #![warn(
     clippy::mod_module_files,
     clippy::unwrap_used,
@@ -23,6 +24,9 @@ mod session;
 mod signing;
 pub mod testing;
 mod transcript;
+
+#[cfg(feature = "rustcrypto-traits")]
+mod signing_rustcrypto;
 
 pub use error::LocalError;
 pub use message::MessageBundle;

@@ -11,12 +11,15 @@ categories = ["cryptography", "no-std"]
 
 [dependencies]
 serde = { version = "1", default-features = false, features = ["alloc", "serde_derive"] }
-digest = "0.10"
-signature = { version = "2", features = ["digest"] }
-rand_core = "0.6.4"
-rand = "0.8"
-tracing = "0.1"
-displaydoc = "0.2"
+digest = { version = "0.10", default-features = false, optional = true }
+signature = { version = "2", default-features = false, features = ["digest"], optional = true }
+rand_core = { version = "0.6.4", default-features = false }
+rand = { version = "0.8", default-features = false }
+tracing = { version = "0.1", default-features = false }
+displaydoc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 impls = "1"
+
+[features]
+rustcrypto-traits = ["digest", "signature"]

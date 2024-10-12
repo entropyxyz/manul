@@ -1,4 +1,3 @@
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -23,29 +22,77 @@ impl Signer {
     }
 }
 
-impl<D: digest::Digest> signature::DigestSigner<D, Signature> for Signer {
-    fn try_sign_digest(&self, _digest: D) -> Result<Signature, signature::Error> {
-        Ok(Signature {
-            signed_by: self.0,
-            randomness: OsRng.next_u64(),
-        })
+// If `rustcrypto-traits` is not enabled, we can directly implement our traits for the testing Signers/Verifiers.
+// If it is, it will conflict with the generic impls for RustCrypto traits
+// (because they declare, basically, "if a RustCrypto trait is implemented for this, then our house trait is too").
+// So in this case we need to implement RustCrypto traits instead,
+// and rely on generic impls to implement the house traits.
+
+#[cfg(not(feature = "rustcrypto-traits"))]
+mod house_trait_impls {
+
+    use crate::{Digest, DigestSigner, DigestVerifier, Keypair};
+
+    use super::{Signature, Signer, Verifier};
+
+    impl<D: Digest> DigestSigner<D, Signature> for Signer {
+        type Error = ();
+        fn try_sign_digest(&self, _digest: D) -> Result<Signature, Self::Error> {
+            Ok(Signature {
+                signed_by: self.0,
+                randomness: 1, // TODO: real randomness
+            })
+        }
+    }
+
+    impl Keypair for Signer {
+        type VerifyingKey = Verifier;
+
+        fn verifying_key(&self) -> Self::VerifyingKey {
+            Verifier(self.0)
+        }
+    }
+
+    impl<D: Digest> DigestVerifier<D, Signature> for Verifier {
+        type Error = ();
+        fn verify_digest(&self, _digest: D, signature: &Signature) -> Result<(), Self::Error> {
+            if self.0 == signature.signed_by {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
     }
 }
 
-impl signature::Keypair for Signer {
-    type VerifyingKey = Verifier;
+#[cfg(feature = "rustcrypto-traits")]
+mod rustcrypto_trait_impls {
+    use super::{Signature, Signer, Verifier};
 
-    fn verifying_key(&self) -> Self::VerifyingKey {
-        Verifier(self.0)
+    impl<D: digest::Digest> signature::DigestSigner<D, Signature> for Signer {
+        fn try_sign_digest(&self, _digest: D) -> Result<Signature, signature::Error> {
+            Ok(Signature {
+                signed_by: self.0,
+                randomness: 1, // TODO: real randomness
+            })
+        }
     }
-}
 
-impl<D: digest::Digest> signature::DigestVerifier<D, Signature> for Verifier {
-    fn verify_digest(&self, _digest: D, signature: &Signature) -> Result<(), signature::Error> {
-        if self.0 == signature.signed_by {
-            Ok(())
-        } else {
-            Err(signature::Error::new())
+    impl signature::Keypair for Signer {
+        type VerifyingKey = Verifier;
+
+        fn verifying_key(&self) -> Self::VerifyingKey {
+            Verifier(self.0)
+        }
+    }
+
+    impl<D: digest::Digest> signature::DigestVerifier<D, Signature> for Verifier {
+        fn verify_digest(&self, _digest: D, signature: &Signature) -> Result<(), signature::Error> {
+            if self.0 == signature.signed_by {
+                Ok(())
+            } else {
+                Err(signature::Error::new())
+            }
         }
     }
 }

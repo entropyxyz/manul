@@ -1,10 +1,14 @@
+use alloc::format;
+
 use serde::{Deserialize, Serialize};
 
-use crate::error::LocalError;
-use crate::round::{DirectMessage, EchoBroadcast, RoundId};
-use crate::session::SessionId;
-use crate::signing::{Digest, DigestSigner, DigestVerifier};
-use crate::Protocol;
+use crate::{
+    error::LocalError,
+    round::{DirectMessage, EchoBroadcast, RoundId},
+    session::SessionId,
+    signing::{Digest, DigestSigner, DigestVerifier},
+    Protocol,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageVerificationError {

@@ -1,12 +1,18 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    format,
+};
 use core::marker::PhantomData;
 
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
-use crate::error::LocalError;
-use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
-    RoundId,
+use crate::{
+    error::LocalError,
+    round::{
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
+        RoundId,
+    },
 };
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,

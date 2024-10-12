@@ -1,23 +1,30 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    format,
+    vec::Vec,
+};
 use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::echo::EchoRound;
-use crate::error::{LocalError, RemoteError};
-use crate::evidence::Evidence;
-use crate::message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle};
-use crate::object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
-use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload, ReceiveError,
-    ReceiveErrorType, RoundId,
+use crate::{
+    echo::EchoRound,
+    error::{LocalError, RemoteError},
+    evidence::Evidence,
+    message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle},
+    object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
+    round::{
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload, ReceiveError,
+        ReceiveErrorType, RoundId,
+    },
+    serde_bytes,
+    signing::{DigestSigner, DigestVerifier, Keypair},
+    transcript::{SessionOutcome, SessionReport, Transcript},
+    Protocol, Round,
 };
-use crate::serde_bytes;
-use crate::signing::{DigestSigner, DigestVerifier, Keypair};
-use crate::transcript::{SessionOutcome, SessionReport, Transcript};
-use crate::{Protocol, Round};
 
 /// A session identifier shared between the parties.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -304,10 +311,7 @@ where
             accum.unprovable_errors,
             accum.still_have_not_sent_messages,
         )?;
-        Ok(SessionReport::new(
-            SessionOutcome::NotEnoughMessages,
-            transcript,
-        ))
+        Ok(SessionReport::new(SessionOutcome::NotEnoughMessages, transcript))
     }
 
     pub fn finalize_round(
@@ -614,14 +618,14 @@ fn filter_messages<Verifier, S>(
 
 #[cfg(test)]
 mod tests {
-    use alloc::collections::BTreeMap;
+    use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
 
     use impls::impls;
     use serde::{Deserialize, Serialize};
 
     use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
-    use crate::testing::{Signature, Signer, Verifier};
     use crate::{
+        testing::{Signature, Signer, Verifier},
         DeserializationError, Digest, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
         ProtocolValidationError, RoundId,
     };

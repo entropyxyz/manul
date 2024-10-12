@@ -1,5 +1,6 @@
 //! A simple helper to support serialization of `Box<[u8]>` in `serde`.
 
+use alloc::boxed::Box;
 use core::fmt;
 
 use serde::{de, Deserializer, Serializer};

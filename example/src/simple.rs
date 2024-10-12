@@ -358,8 +358,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
 mod tests {
     use alloc::collections::BTreeSet;
 
-    use manul::testing::{run_sync, Signature, Signer, Verifier};
-    use manul::{Keypair, SessionOutcome};
+    use manul::{
+        testing::{run_sync, Signature, Signer, Verifier},
+        Keypair, SessionOutcome,
+    };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
 

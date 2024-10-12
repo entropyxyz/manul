@@ -2,8 +2,10 @@ use alloc::collections::BTreeMap;
 
 use rand_core::CryptoRngCore;
 
-use crate::round::{Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Round};
-use crate::LocalError;
+use crate::{
+    round::{Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Round},
+    LocalError,
+};
 
 pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
     type InnerRound: Round<Id>;

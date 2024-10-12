@@ -1,18 +1,25 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+    boxed::Box,
+    collections::{BTreeMap, BTreeSet},
+    format,
+    vec::Vec,
+};
 use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use crate::error::LocalError;
-use crate::message::{MessageVerificationError, SignedMessage};
-use crate::object_safe::ObjectSafeRound;
-use crate::round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
-    RoundId,
+use crate::{
+    error::LocalError,
+    message::{MessageVerificationError, SignedMessage},
+    object_safe::ObjectSafeRound,
+    round::{
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
+        RoundId,
+    },
+    DigestVerifier,
 };
-use crate::DigestVerifier;
 
 #[derive(Debug)]
 pub(crate) enum EchoRoundError<Id> {

@@ -1,16 +1,18 @@
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use core::fmt::Debug;
 
 use serde::Deserialize;
 
-use crate::echo::{EchoRoundError, EchoRoundMessage};
-use crate::error::LocalError;
-use crate::message::{MessageVerificationError, SignedMessage};
-use crate::round::{
-    DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, ProtocolError,
+use crate::{
+    echo::{EchoRoundError, EchoRoundMessage},
+    error::LocalError,
+    message::{MessageVerificationError, SignedMessage},
+    round::{
+        DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, ProtocolError,
+    },
+    transcript::Transcript,
+    DigestVerifier, Protocol, ProtocolValidationError, RoundId,
 };
-use crate::transcript::Transcript;
-use crate::{DigestVerifier, Protocol, ProtocolValidationError, RoundId};
 
 #[derive(Debug, Clone)]
 pub enum EvidenceError {
