@@ -21,29 +21,29 @@ pub(crate) enum EchoRoundError<Id> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EchoRoundMessage<I: Ord, S> {
+pub struct EchoRoundMessage<Id: Ord, S> {
     // TODO: use `Vec` to support more serializers?
-    pub(crate) echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
+    pub(crate) echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
 }
 
-pub struct EchoRound<P, I, S> {
-    verifier: I,
-    echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
-    destinations: BTreeSet<I>,
-    expected_echos: BTreeSet<I>,
-    main_round: Box<dyn ObjectSafeRound<I, Protocol = P>>,
-    payloads: BTreeMap<I, Payload>,
-    artifacts: BTreeMap<I, Artifact>,
+pub struct EchoRound<P, Id, S> {
+    verifier: Id,
+    echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
+    destinations: BTreeSet<Id>,
+    expected_echos: BTreeSet<Id>,
+    main_round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
+    payloads: BTreeMap<Id, Payload>,
+    artifacts: BTreeMap<Id, Artifact>,
 }
 
-impl<P: Protocol, I: Debug + Clone + Ord, S> EchoRound<P, I, S> {
+impl<P: Protocol, Id: Debug + Clone + Ord, S> EchoRound<P, Id, S> {
     pub fn new(
-        verifier: I,
+        verifier: Id,
         my_echo_message: SignedMessage<S, EchoBroadcast>,
-        echo_messages: BTreeMap<I, SignedMessage<S, EchoBroadcast>>,
-        main_round: Box<dyn ObjectSafeRound<I, Protocol = P>>,
-        payloads: BTreeMap<I, Payload>,
-        artifacts: BTreeMap<I, Artifact>,
+        echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
+        main_round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
+        payloads: BTreeMap<Id, Payload>,
+        artifacts: BTreeMap<Id, Artifact>,
     ) -> Self {
         let destinations = echo_messages.keys().cloned().collect::<BTreeSet<_>>();
 
@@ -70,10 +70,10 @@ impl<P: Protocol, I: Debug + Clone + Ord, S> EchoRound<P, I, S> {
     }
 }
 
-impl<P, I, S> Round<I> for EchoRound<P, I, S>
+impl<P, Id, S> Round<Id> for EchoRound<P, Id, S>
 where
     P: 'static + Protocol,
-    I: 'static
+    Id: 'static
         + Debug
         + Clone
         + Ord
@@ -95,14 +95,14 @@ where
         self.main_round.possible_next_rounds()
     }
 
-    fn message_destinations(&self) -> &BTreeSet<I> {
+    fn message_destinations(&self) -> &BTreeSet<Id> {
         &self.destinations
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
-        destination: &I,
+        destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!(
             "{:?}: making echo round message for {:?}",
@@ -123,23 +123,23 @@ where
         Ok((dm, Artifact::empty()))
     }
 
-    fn expecting_messages_from(&self) -> &BTreeSet<I> {
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
         &self.destinations
     }
 
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
-        from: &I,
+        from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
-    ) -> Result<Payload, ReceiveError<I, Self::Protocol>> {
+    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!(
             "{:?}: received an echo message from {:?}",
             self.verifier, from
         );
 
-        let message = direct_message.try_deserialize::<P, EchoRoundMessage<I, S>>()?;
+        let message = direct_message.try_deserialize::<P, EchoRoundMessage<Id, S>>()?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.
@@ -219,9 +219,9 @@ where
     fn finalize(
         self,
         rng: &mut impl CryptoRngCore,
-        _payloads: BTreeMap<I, Payload>,
-        _artifacts: BTreeMap<I, Artifact>,
-    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>> {
+        _payloads: BTreeMap<Id, Payload>,
+        _artifacts: BTreeMap<Id, Artifact>,
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
         self.main_round.finalize(rng, self.payloads, self.artifacts)
     }
 }

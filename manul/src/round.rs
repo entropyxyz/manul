@@ -72,42 +72,42 @@ impl<Id, P: Protocol> From<EchoBroadcastError> for ReceiveError<Id, P> {
     }
 }
 
-pub enum FinalizeOutcome<I, P: Protocol> {
-    AnotherRound(AnotherRound<I, P>),
+pub enum FinalizeOutcome<Id, P: Protocol> {
+    AnotherRound(AnotherRound<Id, P>),
     Result(P::Result),
 }
 
-impl<I: 'static, P: Protocol + 'static> FinalizeOutcome<I, P> {
-    pub fn another_round(round: impl Round<I, Protocol = P>) -> Self {
+impl<Id: 'static, P: Protocol + 'static> FinalizeOutcome<Id, P> {
+    pub fn another_round(round: impl Round<Id, Protocol = P>) -> Self {
         Self::AnotherRound(AnotherRound::new(round))
     }
 }
 
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
-pub struct AnotherRound<I, P: Protocol>(Box<dyn ObjectSafeRound<I, Protocol = P>>);
+pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = P>>);
 
-impl<I: 'static, P: Protocol + 'static> AnotherRound<I, P> {
-    pub fn new(round: impl Round<I, Protocol = P>) -> Self {
+impl<Id: 'static, P: Protocol + 'static> AnotherRound<Id, P> {
+    pub fn new(round: impl Round<Id, Protocol = P>) -> Self {
         Self(Box::new(ObjectSafeRoundWrapper::new(round)))
     }
 
-    pub(crate) fn into_boxed(self) -> Box<dyn ObjectSafeRound<I, Protocol = P>> {
+    pub(crate) fn into_boxed(self) -> Box<dyn ObjectSafeRound<Id, Protocol = P>> {
         self.0
     }
 
-    pub fn downcast<T: Round<I>>(self) -> Result<T, LocalError> {
+    pub fn downcast<T: Round<Id>>(self) -> Result<T, LocalError> {
         self.0.downcast::<T>()
     }
 
-    pub fn try_downcast<T: Round<I>>(self) -> Result<T, Self> {
+    pub fn try_downcast<T: Round<Id>>(self) -> Result<T, Self> {
         self.0.try_downcast::<T>().map_err(Self)
     }
 }
 
-pub enum FinalizeError<I, P: Protocol> {
+pub enum FinalizeError<Id, P: Protocol> {
     Local(LocalError),
     Unattributable(P::CorrectnessProof),
-    Unprovable { party: I, error: RemoteError },
+    Unprovable { party: Id, error: RemoteError },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -340,29 +340,29 @@ impl Artifact {
     }
 }
 
-pub trait FirstRound<I: 'static>: Round<I> + Sized {
+pub trait FirstRound<Id: 'static>: Round<Id> + Sized {
     type Inputs;
     fn new(
         rng: &mut impl CryptoRngCore,
         session_id: &SessionId,
-        id: I,
+        id: Id,
         inputs: Self::Inputs,
     ) -> Result<Self, LocalError>;
 }
 
-pub trait Round<I>: 'static + Send + Sync {
+pub trait Round<Id>: 'static + Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
-    fn message_destinations(&self) -> &BTreeSet<I>;
+    fn message_destinations(&self) -> &BTreeSet<Id>;
 
     fn make_direct_message(
         &self,
         rng: &mut impl CryptoRngCore,
-        destination: &I,
+        destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError>;
 
     fn make_echo_broadcast(
@@ -375,17 +375,17 @@ pub trait Round<I>: 'static + Send + Sync {
     fn receive_message(
         &self,
         rng: &mut impl CryptoRngCore,
-        from: &I,
+        from: &Id,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
-    ) -> Result<Payload, ReceiveError<I, Self::Protocol>>;
+    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
     fn finalize(
         self,
         rng: &mut impl CryptoRngCore,
-        payloads: BTreeMap<I, Payload>,
-        artifacts: BTreeMap<I, Artifact>,
-    ) -> Result<FinalizeOutcome<I, Self::Protocol>, FinalizeError<I, Self::Protocol>>;
+        payloads: BTreeMap<Id, Payload>,
+        artifacts: BTreeMap<Id, Artifact>,
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>>;
 
-    fn expecting_messages_from(&self) -> &BTreeSet<I>;
+    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 }
