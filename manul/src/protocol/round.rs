@@ -185,8 +185,9 @@ pub enum MessageValidationError {
     Other(String),
 }
 
-/// Deserialization error: {0}
+/// An error that can be returned during deserialization error.
 #[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Deserialization error: {0}")]
 pub struct DeserializationError(String);
 
 impl DeserializationError {
@@ -276,12 +277,14 @@ pub trait ProtocolError: Debug + Clone + Send {
     ) -> Result<(), ProtocolValidationError>;
 }
 
-/// An error deserializing a direct message: {0}
+/// An error during deserialization of a direct message.
 #[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Direct message error: {0}")]
 pub struct DirectMessageError(DeserializationError);
 
-/// An error deserializing an echo broadcast: {0}
+/// An error during deserialization of an echo broadcast.
 #[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Echo broadcast error: {0}")]
 pub struct EchoBroadcastError(DeserializationError);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
