@@ -12,8 +12,8 @@ categories = ["cryptography", "no-std"]
 
 [dependencies]
 serde = { version = "1", default-features = false, features = ["alloc", "serde_derive"] }
-digest = { version = "0.10", default-features = false, optional = true }
-signature = { version = "2", default-features = false, features = ["digest", "rand_core"], optional = true }
+digest = { version = "0.10", default-features = false }
+signature = { version = "2", default-features = false, features = ["digest", "rand_core"] }
 rand_core = { version = "0.6.4", default-features = false }
 rand = { version = "0.8", default-features = false }
 tracing = { version = "0.1", default-features = false }
@@ -21,6 +21,8 @@ displaydoc = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 impls = "1"
+sha3 = "0.10"
 
-[features]
-rustcrypto-traits = ["digest", "signature"]
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

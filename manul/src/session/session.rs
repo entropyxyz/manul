@@ -8,13 +8,13 @@ use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
 use tracing::debug;
 
 use super::{
     echo::EchoRound,
     evidence::Evidence,
     message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle},
-    signing::{DigestVerifier, Keypair, RandomizedDigestSigner},
     transcript::{SessionOutcome, SessionReport, Transcript},
     LocalError, RemoteError,
 };
@@ -636,7 +636,6 @@ mod tests {
             DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
             ProtocolValidationError, RoundId,
         },
-        session::Digest,
         testing::{Signature, Signer, Verifier},
     };
 
@@ -656,17 +655,6 @@ mod tests {
         #[derive(Debug, Clone, Serialize, Deserialize)]
         struct DummyProtocolError;
 
-        struct DummyDigest;
-
-        impl Digest for DummyDigest {
-            fn new_with_prefix(_data: impl AsRef<[u8]>) -> Self {
-                unimplemented!()
-            }
-            fn chain_update(self, _data: impl AsRef<[u8]>) -> Self {
-                unimplemented!()
-            }
-        }
-
         impl ProtocolError for DummyProtocolError {
             fn verify_messages_constitute_error(
                 &self,
@@ -684,7 +672,7 @@ mod tests {
             type Result = ();
             type ProtocolError = DummyProtocolError;
             type CorrectnessProof = ();
-            type Digest = DummyDigest;
+            type Digest = sha3::Sha3_256;
             fn serialize<T>(_: T) -> Result<Box<[u8]>, LocalError>
             where
                 T: Serialize,

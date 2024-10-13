@@ -7,6 +7,7 @@ use alloc::{
 };
 use core::{any::Any, fmt::Debug};
 
+use digest::Digest;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +17,7 @@ use super::{
 };
 use crate::{
     serde_bytes,
-    session::{Digest, EchoRoundError, SessionId},
+    session::{EchoRoundError, SessionId},
 };
 
 #[derive(Debug)]

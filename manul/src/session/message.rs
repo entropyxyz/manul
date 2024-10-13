@@ -1,13 +1,11 @@
 use alloc::format;
 
+use digest::Digest;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use signature::{DigestVerifier, RandomizedDigestSigner};
 
-use super::{
-    session::SessionId,
-    signing::{Digest, DigestVerifier, RandomizedDigestSigner},
-    LocalError,
-};
+use super::{session::SessionId, LocalError};
 use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
 #[derive(Debug, Clone)]

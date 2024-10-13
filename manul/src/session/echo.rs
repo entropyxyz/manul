@@ -8,11 +8,11 @@ use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use signature::DigestVerifier;
 use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessage},
-    signing::DigestVerifier,
     LocalError,
 };
 use crate::protocol::{

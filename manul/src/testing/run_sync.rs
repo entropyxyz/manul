@@ -4,13 +4,13 @@ use core::fmt::Debug;
 use rand::Rng;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
 use tracing::debug;
 
 use crate::{
     protocol::{FirstRound, Protocol},
     session::{
-        CanFinalize, DigestVerifier, Keypair, LocalError, MessageBundle, RandomizedDigestSigner, RoundAccumulator,
-        RoundOutcome, Session, SessionId, SessionReport,
+        CanFinalize, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId, SessionReport,
     },
 };
 

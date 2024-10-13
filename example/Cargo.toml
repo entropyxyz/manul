@@ -9,7 +9,7 @@ repository = "https://github.com/entropyxyz/manul/examples"
 readme = "README.md"
 
 [dependencies]
-manul = { path = "../manul", features = ["rustcrypto-traits"] }
+manul = { path = "../manul" }
 bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
 serde = "1"
 sha3 = "0.10"

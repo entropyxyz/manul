@@ -12,3 +12,5 @@ pub use round::{
 
 pub(crate) use object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
 pub(crate) use round::ReceiveErrorType;
+
+pub use digest::Digest;

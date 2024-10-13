@@ -2,11 +2,11 @@ use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
+use signature::DigestVerifier;
 
 use super::{
     echo::{EchoRoundError, EchoRoundMessage},
     message::{MessageVerificationError, SignedMessage},
-    signing::DigestVerifier,
     transcript::Transcript,
     LocalError,
 };
