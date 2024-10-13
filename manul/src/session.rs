@@ -1,3 +1,9 @@
+/*!
+API for protocol users.
+
+This is some description.
+*/
+
 mod echo;
 mod evidence;
 mod message;
@@ -12,4 +18,4 @@ pub use transcript::{SessionOutcome, SessionReport};
 
 pub(crate) use echo::EchoRoundError;
 
-pub use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
+pub use signature;

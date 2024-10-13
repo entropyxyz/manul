@@ -93,7 +93,7 @@ impl Protocol for SimpleProtocol {
         if round_id == RoundId::new(1) {
             return message.verify_is_invalid::<Self, Round1Message>();
         }
-        Err(MessageValidationError::Other("Invalid round number".into()))?
+        Err(MessageValidationError::InvalidEvidence("Invalid round number".into()))?
     }
 }
 
@@ -223,7 +223,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
             self.context.id,
@@ -327,7 +327,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
             self.context.id,
@@ -359,7 +359,7 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::{
-        session::{Keypair, SessionOutcome},
+        session::{signature::Keypair, SessionOutcome},
         testing::{run_sync, Signature, Signer, Verifier},
     };
     use rand_core::OsRng;

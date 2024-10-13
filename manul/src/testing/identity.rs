@@ -2,12 +2,15 @@ use digest::generic_array::typenum;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
+/// A simple signer for testing purposes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Signer(u8);
 
+/// A verifier corresponding to [`Signer`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Verifier(u8);
 
+/// A signature produced by [`Signer`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Signature {
     signed_by: u8,
@@ -15,12 +18,9 @@ pub struct Signature {
 }
 
 impl Signer {
+    /// Creates a new signer.
     pub fn new(id: u8) -> Self {
         Self(id)
-    }
-
-    pub fn as_integer(&self) -> u8 {
-        self.0
     }
 }
 
@@ -55,6 +55,8 @@ impl<D: digest::Digest> signature::DigestVerifier<D, Signature> for Verifier {
     }
 }
 
+/// A very simple hasher for testing purposes.
+/// Not in any way secure.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Hasher {
     cursor: usize,

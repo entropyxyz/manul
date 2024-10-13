@@ -1,3 +1,7 @@
+/*!
+Utilities for testing protocols.
+*/
+
 mod identity;
 mod macros;
 mod run_sync;

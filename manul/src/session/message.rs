@@ -127,6 +127,9 @@ impl<S, M> VerifiedMessage<S, M> {
     }
 }
 
+/// A message bundle to be sent to another node.
+///
+/// Note that this is already signed.
 #[derive(Clone, Debug)]
 pub struct MessageBundle<S> {
     direct_message: SignedMessage<S, DirectMessage>,

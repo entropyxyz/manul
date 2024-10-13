@@ -5,7 +5,7 @@ use manul::{
     protocol::{
         Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round, SessionId,
     },
-    session::Keypair,
+    session::signature::Keypair,
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signature, Signer, Verifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -85,7 +85,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<
         FinalizeOutcome<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
-        FinalizeError<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
+        FinalizeError<<<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
     > {
         let behavior = self.behavior;
         let outcome = self.inner_round().finalize(rng, payloads, artifacts)?;

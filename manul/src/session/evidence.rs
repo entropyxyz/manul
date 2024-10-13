@@ -40,7 +40,7 @@ impl From<MessageValidationError> for EvidenceError {
     fn from(error: MessageValidationError) -> Self {
         match error {
             MessageValidationError::Local(error) => Self::Local(error),
-            MessageValidationError::Other(error) => Self::InvalidEvidence(error),
+            MessageValidationError::InvalidEvidence(error) => Self::InvalidEvidence(error),
         }
     }
 }
@@ -49,7 +49,7 @@ impl From<ProtocolValidationError> for EvidenceError {
     fn from(error: ProtocolValidationError) -> Self {
         match error {
             ProtocolValidationError::Local(error) => Self::Local(error),
-            ProtocolValidationError::Other(error) => Self::InvalidEvidence(error),
+            ProtocolValidationError::InvalidEvidence(error) => Self::InvalidEvidence(error),
         }
     }
 }

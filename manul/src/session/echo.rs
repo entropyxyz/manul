@@ -217,7 +217,7 @@ where
         rng: &mut impl CryptoRngCore,
         _payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
         self.main_round.finalize(rng, self.payloads, self.artifacts)
     }
 }

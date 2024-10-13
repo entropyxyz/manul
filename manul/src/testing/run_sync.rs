@@ -98,6 +98,8 @@ where
     Ok((state, messages))
 }
 
+/// Execute sessions for multiple nodes concurrently, given the the inputs
+/// for the first round `R` and the signer for each node.
 #[allow(clippy::type_complexity)]
 pub fn run_sync<R, Signer, Verifier, S>(
     rng: &mut impl CryptoRngCore,

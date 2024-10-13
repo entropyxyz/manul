@@ -7,6 +7,7 @@ use core::fmt::Debug;
 pub struct LocalError(String);
 
 impl LocalError {
+    /// Creates a new error from anything castable to string.
     pub fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }
@@ -18,6 +19,7 @@ impl LocalError {
 pub struct RemoteError(String);
 
 impl RemoteError {
+    /// Creates a new error from anything castable to string.
     pub fn new(message: impl Into<String>) -> Self {
         Self(message.into())
     }

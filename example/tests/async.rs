@@ -4,7 +4,9 @@ use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
     protocol::{Protocol, Round},
-    session::{CanFinalize, Keypair, LocalError, MessageBundle, RoundOutcome, Session, SessionId, SessionReport},
+    session::{
+        signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId, SessionReport,
+    },
     testing::{Signature, Signer, Verifier},
 };
 use manul_example::simple::{Inputs, Round1};

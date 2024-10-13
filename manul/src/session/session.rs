@@ -30,13 +30,20 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct SessionId(#[serde(with = "serde_bytes")] Box<[u8]>);
 
+/// A session ID.
+///
+/// This must be the same for all nodes executing a session.
+///
+/// Must be created uniquely for each session execution, otherwise there is a danger of replay attacks.
 impl SessionId {
+    /// Creates a random session identifier.
     pub fn random(rng: &mut impl CryptoRngCore) -> Self {
         let mut buffer = [0u8; 256];
         rng.fill_bytes(&mut buffer);
         Self(buffer.into())
     }
 
+    /// Creates a session identifier from the given bytestring.
     pub fn new(bytes: &[u8]) -> Self {
         Self(bytes.into())
     }
@@ -48,6 +55,8 @@ impl AsRef<[u8]> for SessionId {
     }
 }
 
+/// An object encapsulating the currently active round, transport protocol,
+/// and the database of messages and errors from the previous rounds.
 pub struct Session<P: Protocol, Signer, Verifier, S> {
     session_id: SessionId,
     signer: Signer,
@@ -59,10 +68,15 @@ pub struct Session<P: Protocol, Signer, Verifier, S> {
     transcript: Transcript<P, Verifier, S>,
 }
 
+/// Possible non-erroneous results of finalizing a round.
 pub enum RoundOutcome<P: Protocol, Signer, Verifier, S> {
+    /// The execution is finished.
     Finished(SessionReport<P, Verifier, S>),
+    /// Transitioned to another round.
     AnotherRound {
+        /// The session object for the new round.
         session: Session<P, Signer, Verifier, S>,
+        /// The messages intended for the new round cached during the previous round.
         cached_messages: Vec<VerifiedMessageBundle<Verifier, S>>,
     },
 }
@@ -83,6 +97,7 @@ where
         + Sync,
     S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
 {
+    /// Initializes a new session.
     pub fn new<R>(
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
@@ -135,18 +150,24 @@ where
         })
     }
 
+    /// Returns the verifier corresponding to the session's signer.
     pub fn verifier(&self) -> Verifier {
         self.verifier.clone()
     }
 
+    /// Returns the session ID.
     pub fn session_id(&self) -> &SessionId {
         &self.session_id
     }
 
+    /// Returns the set of message destinations for the current round.
     pub fn message_destinations(&self) -> &BTreeSet<Verifier> {
         &self.message_destinations
     }
 
+    /// Creates the message to be sent to the given destination.
+    ///
+    /// The destination must be one of those returned by [`message_destinations`](`Self::message_destinations`).
     pub fn make_message(
         &self,
         rng: &mut impl CryptoRngCore,
@@ -172,6 +193,7 @@ where
         ))
     }
 
+    /// Adds the artifact from [`make_message`](`Self::make_message`) to the accumulator.
     pub fn add_artifact(
         &self,
         accum: &mut RoundAccumulator<P, Verifier, S>,
@@ -180,10 +202,12 @@ where
         accum.add_artifact(processed)
     }
 
+    /// Returns the ID of the current round.
     pub fn round_id(&self) -> RoundId {
         self.round.id()
     }
 
+    /// Performs some preliminary checks on the message to verify its integrity.
     pub fn preprocess_message(
         &self,
         accum: &mut RoundAccumulator<P, Verifier, S>,
@@ -271,6 +295,9 @@ where
         }
     }
 
+    /// Processes a verified message.
+    ///
+    /// This can be called in a spawned task if it is known to take a long time.
     pub fn process_message(
         &self,
         rng: &mut impl CryptoRngCore,
@@ -287,6 +314,7 @@ where
         ProcessedMessage { message, processed }
     }
 
+    /// Adds a result of [`process_message`](`Self::process_message`) to the accumulator.
     pub fn add_processed_message(
         &self,
         accum: &mut RoundAccumulator<P, Verifier, S>,
@@ -295,10 +323,12 @@ where
         accum.add_processed_message(&self.transcript, processed)
     }
 
+    /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, Verifier, S> {
         RoundAccumulator::new(self.round.expecting_messages_from())
     }
 
+    /// Terminates the session.
     pub fn terminate(
         self,
         accum: RoundAccumulator<P, Verifier, S>,
@@ -315,6 +345,7 @@ where
         Ok(SessionReport::new(SessionOutcome::NotEnoughMessages, transcript))
     }
 
+    /// Attempts to finalize the current round.
     pub fn finalize_round(
         self,
         rng: &mut impl CryptoRngCore,
@@ -384,20 +415,17 @@ where
                     SessionOutcome::StalledWithProof(correctness_proof),
                     transcript,
                 )),
-                FinalizeError::Unprovable { party, error } => {
-                    let mut transcript = transcript;
-                    transcript.register_unprovable_error(&party, error)?;
-                    RoundOutcome::Finished(SessionReport::new(SessionOutcome::UnprovableError, transcript))
-                }
             }),
         }
     }
 
+    /// Checks if the round can be finalized.
     pub fn can_finalize(&self, accum: &RoundAccumulator<P, Verifier, S>) -> CanFinalize {
         accum.can_finalize()
     }
 }
 
+/// Possible answers to whether the round can be finalized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CanFinalize {
     /// There are enough messages successfully processed to finalize the round.
@@ -409,6 +437,7 @@ pub enum CanFinalize {
     Never,
 }
 
+/// A mutable accumulator for collecting the results and errors from processing messages for a single round.
 pub struct RoundAccumulator<P: Protocol, Verifier, S> {
     still_have_not_sent_messages: BTreeSet<Verifier>,
     expecting_messages_from: BTreeSet<Verifier>,

@@ -70,7 +70,7 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>>;
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>>;
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 
@@ -145,7 +145,7 @@ where
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.finalize(&mut boxed_rng, payloads, artifacts)
     }

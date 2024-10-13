@@ -136,30 +136,31 @@ where
             .cloned()
             .ok_or_else(|| LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript")))
     }
-
-    pub fn register_unprovable_error(&mut self, from: &Verifier, error: RemoteError) -> Result<(), LocalError> {
-        if self.unprovable_errors.insert(from.clone(), error).is_some() {
-            return Err(LocalError::new(format!(
-                "An unprovable errors entry for {from:?} already exists"
-            )));
-        }
-        Ok(())
-    }
 }
 
+/// Possible outcomes of running a session.
 #[derive(Debug)]
 pub enum SessionOutcome<P: Protocol> {
+    /// The protocol successfully produced a result.
     Result(P::Result),
+    /// The execution stalled because of an unattributable error,
+    /// but the protocol created a proof that this node performed its duties correctly.
+    ///
+    /// This protocol is supposed to be passed to a third party for adjudication.
     StalledWithProof(P::CorrectnessProof),
+    /// The execution stalled because not enough messages were received to finalize the round.
     NotEnoughMessages,
-    ProvableError,
-    UnprovableError,
 }
 
+/// The report of a session execution.
 pub struct SessionReport<P: Protocol, Verifier, S> {
+    /// The session outcome.
     pub outcome: SessionOutcome<P>,
+    /// The provable errors collected during the execution, as the evidences that can be published to prove them.
     pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
+    /// The unprovable errors collected during the execution.
     pub unprovable_errors: BTreeMap<Verifier, RemoteError>,
+    /// The nodes that did not send their messages in time for the corresponding round.
     pub missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
 }
 
