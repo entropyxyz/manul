@@ -318,6 +318,16 @@ impl EchoBroadcast {
         P::serialize(message).map(Self)
     }
 
+    pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
+        if self.try_deserialize::<P, T>().is_err() {
+            Ok(())
+        } else {
+            Err(MessageValidationError::Other(
+                "Message deserialized successfully".into(),
+            ))
+        }
+    }
+
     pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, EchoBroadcastError> {
         P::deserialize(&self.0).map_err(EchoBroadcastError)
     }
