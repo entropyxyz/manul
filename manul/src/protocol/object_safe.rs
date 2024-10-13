@@ -75,12 +75,10 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 
     /// Returns the type ID of the implementing type.
-    ///
-    /// **Warning:** this is not a part of the public API.
-    #[doc(hidden)]
-    fn __get_type_id(&self) -> core::any::TypeId;
+    fn get_type_id(&self) -> core::any::TypeId;
 }
 
+// The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be `Send + Sync`.
 pub(crate) struct ObjectSafeRoundWrapper<Id, R> {
     round: R,
     phantom: PhantomData<fn(Id) -> Id>,
@@ -154,8 +152,7 @@ where
         self.round.expecting_messages_from()
     }
 
-    #[doc(hidden)]
-    fn __get_type_id(&self) -> core::any::TypeId {
+    fn get_type_id(&self) -> core::any::TypeId {
         core::any::TypeId::of::<Self>()
     }
 }
@@ -173,7 +170,8 @@ where
     P: 'static + Protocol,
 {
     pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
-        if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.__get_type_id() {
+        if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.get_type_id() {
+            // This should be safe since we just checked that we are casting to a correct type.
             let boxed_downcast = unsafe {
                 Box::<ObjectSafeRoundWrapper<Id, T>>::from_raw(Box::into_raw(self) as *mut ObjectSafeRoundWrapper<Id, T>)
             };
