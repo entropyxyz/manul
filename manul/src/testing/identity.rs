@@ -1,3 +1,4 @@
+use digest::generic_array::typenum;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
@@ -51,5 +52,45 @@ impl<D: digest::Digest> signature::DigestVerifier<D, Signature> for Verifier {
         } else {
             Err(signature::Error::new())
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Hasher {
+    cursor: usize,
+    buffer: [u8; 32],
+}
+
+impl digest::HashMarker for Hasher {}
+
+impl digest::Update for Hasher {
+    fn update(&mut self, data: &[u8]) {
+        // A very simple algorithm for testing, just xor the data in buffer-sized chunks.
+        for byte in data {
+            *self.buffer.get_mut(self.cursor).expect("index within bounds") ^= byte;
+            self.cursor = (self.cursor + 1) % 32;
+        }
+    }
+}
+
+impl digest::FixedOutput for Hasher {
+    fn finalize_into(self, out: &mut digest::Output<Self>) {
+        AsMut::<[u8]>::as_mut(out).copy_from_slice(&self.buffer)
+    }
+}
+
+impl digest::OutputSizeUser for Hasher {
+    type OutputSize = typenum::U8;
+}
+
+#[cfg(test)]
+mod tests {
+    use impls::impls;
+
+    use super::Hasher;
+
+    #[test]
+    fn test_hasher_bounds() {
+        assert!(impls!(Hasher: digest::Digest));
     }
 }

@@ -636,7 +636,7 @@ mod tests {
             DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
             ProtocolValidationError, RoundId,
         },
-        testing::{Signature, Signer, Verifier},
+        testing::{Hasher, Signature, Signer, Verifier},
     };
 
     #[test]
@@ -672,7 +672,7 @@ mod tests {
             type Result = ();
             type ProtocolError = DummyProtocolError;
             type CorrectnessProof = ();
-            type Digest = sha3::Sha3_256;
+            type Digest = Hasher;
             fn serialize<T>(_: T) -> Result<Box<[u8]>, LocalError>
             where
                 T: Serialize,
