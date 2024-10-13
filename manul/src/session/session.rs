@@ -355,11 +355,17 @@ where
                     RoundOutcome::Finished(SessionReport::new(SessionOutcome::Result(result), transcript))
                 }
                 FinalizeOutcome::AnotherRound(another_round) => {
+                    let round = another_round.into_boxed();
+
+                    // Protecting against common bugs
+                    if !self.possible_next_rounds.contains(&round.id()) {
+                        return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
+                    }
+
                     // These messages could have been cached before
                     // processing messages from the same node for the current round.
                     // So there might have been some new errors, and we need to check again
                     // if the sender is already banned.
-                    let round = another_round.into_boxed();
                     let cached_messages = filter_messages(accum.cached, round.id())
                         .into_iter()
                         .filter(|message| !transcript.is_banned(message.from()))
