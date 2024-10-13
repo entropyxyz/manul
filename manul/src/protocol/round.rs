@@ -204,8 +204,8 @@ impl From<LocalError> for MessageValidationError {
 
 pub trait Protocol: Debug + Sized {
     type Result;
-    type ProtocolError: ProtocolError;
-    type CorrectnessProof: Send;
+    type ProtocolError: ProtocolError + Serialize + for<'de> Deserialize<'de>;
+    type CorrectnessProof: Send + Serialize + for<'de> Deserialize<'de>;
     type Digest: Digest;
 
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;

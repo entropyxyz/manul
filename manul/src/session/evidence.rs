@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use core::fmt::Debug;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     echo::{EchoRoundError, EchoRoundMessage},
@@ -54,7 +54,7 @@ impl From<ProtocolValidationError> for EvidenceError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Evidence<P: Protocol, Verifier, S> {
     guilty_party: Verifier,
     description: String,
@@ -218,7 +218,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum EvidenceEnum<P: Protocol, Verifier, S> {
     Protocol(ProtocolEvidence<P, S>),
     InvalidDirectMessage(InvalidDirectMessageEvidence<P, S>),
@@ -227,7 +227,7 @@ enum EvidenceEnum<P: Protocol, Verifier, S> {
     MismatchedBroadcasts(MismatchedBroadcastsEvidence<P, S>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidEchoPackEvidence<P: Protocol, Verifier, S> {
     direct_message: SignedMessage<S, DirectMessage>,
     invalid_echo_sender: Verifier,
@@ -274,7 +274,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MismatchedBroadcastsEvidence<P: Protocol, S> {
     we_received: SignedMessage<S, EchoBroadcast>,
     echoed_to_us: SignedMessage<S, EchoBroadcast>,
@@ -303,7 +303,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidDirectMessageEvidence<P: Protocol, S> {
     direct_message: SignedMessage<S, DirectMessage>,
     phantom: core::marker::PhantomData<P>,
@@ -326,7 +326,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidEchoBroadcastEvidence<P: Protocol, S> {
     echo_broadcast: SignedMessage<S, EchoBroadcast>,
     phantom: core::marker::PhantomData<P>,
@@ -349,7 +349,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ProtocolEvidence<P: Protocol, S> {
     error: P::ProtocolError,
     direct_message: SignedMessage<S, DirectMessage>,

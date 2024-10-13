@@ -10,7 +10,7 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct SimpleProtocol;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SimpleProtocolError {
     Round1InvalidPosition,
     Round2InvalidPosition,

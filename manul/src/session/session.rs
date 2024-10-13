@@ -647,7 +647,7 @@ mod tests {
         #[derive(Debug)]
         struct DummyProtocol;
 
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, Serialize, Deserialize)]
         struct DummyProtocolError;
 
         struct DummyDigest;
