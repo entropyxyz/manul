@@ -139,7 +139,7 @@ where
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
-        let message = direct_message.try_deserialize::<P, EchoRoundMessage<Id, S>>()?;
+        let message = direct_message.deserialize::<P, EchoRoundMessage<Id, S>>()?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.

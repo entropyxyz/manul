@@ -146,7 +146,7 @@ where
 
                 let deserialized = direct_message
                     .payload()
-                    .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()
+                    .deserialize::<P, EchoRoundMessage<Verifier, S>>()
                     .map_err(|error| {
                         LocalError::new(format!("Failed to deserialize the given direct message: {:?}", error))
                     })?;
@@ -242,9 +242,7 @@ where
 {
     fn verify(&self, verifier: &Verifier) -> Result<(), EvidenceError> {
         let verified = self.direct_message.clone().verify::<P, _>(verifier)?;
-        let deserialized = verified
-            .payload()
-            .try_deserialize::<P, EchoRoundMessage<Verifier, S>>()?;
+        let deserialized = verified.payload().deserialize::<P, EchoRoundMessage<Verifier, S>>()?;
         let invalid_echo = deserialized
             .echo_messages
             .get(&self.invalid_echo_sender)
@@ -418,7 +416,7 @@ where
                 ));
             }
             let echo_set =
-                DirectMessage::try_deserialize::<P, EchoRoundMessage<Verifier, S>>(verified_combined_echo.payload())?;
+                DirectMessage::deserialize::<P, EchoRoundMessage<Verifier, S>>(verified_combined_echo.payload())?;
 
             let mut verified_echo_set = Vec::new();
             for (other_verifier, echo_broadcast) in echo_set.echo_messages.iter() {

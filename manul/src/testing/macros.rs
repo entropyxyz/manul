@@ -90,7 +90,10 @@ macro_rules! round_override {
                 rng: &mut impl CryptoRngCore,
                 payloads: ::alloc::collections::BTreeMap<Id, $crate::protocol::Payload>,
                 artifacts: ::alloc::collections::BTreeMap<Id, $crate::protocol::Artifact>,
-            ) -> Result<$crate::protocol::FinalizeOutcome<Id, Self::Protocol>, $crate::protocol::FinalizeError<Id, Self::Protocol>> {
+            ) -> Result<
+                    $crate::protocol::FinalizeOutcome<Id, Self::Protocol>,
+                    $crate::protocol::FinalizeError<Id, Self::Protocol>
+            > {
                 <Self as RoundOverride<Id>>::finalize(self, rng, payloads, artifacts)
             }
 

@@ -291,12 +291,12 @@ pub struct EchoBroadcastError(DeserializationError);
 pub struct DirectMessage(#[serde(with = "serde_bytes")] Box<[u8]>);
 
 impl DirectMessage {
-    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, LocalError> {
+    pub fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
         P::serialize(message).map(Self)
     }
 
     pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
-        if self.try_deserialize::<P, T>().is_err() {
+        if self.deserialize::<P, T>().is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::Other(
@@ -305,7 +305,7 @@ impl DirectMessage {
         }
     }
 
-    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, DirectMessageError> {
+    pub fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, DirectMessageError> {
         P::deserialize(&self.0).map_err(DirectMessageError)
     }
 }
@@ -314,12 +314,12 @@ impl DirectMessage {
 pub struct EchoBroadcast(#[serde(with = "serde_bytes")] Box<[u8]>);
 
 impl EchoBroadcast {
-    pub fn new<P: Protocol, T: Serialize>(message: &T) -> Result<Self, LocalError> {
+    pub fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
         P::serialize(message).map(Self)
     }
 
     pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
-        if self.try_deserialize::<P, T>().is_err() {
+        if self.deserialize::<P, T>().is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::Other(
@@ -328,7 +328,7 @@ impl EchoBroadcast {
         }
     }
 
-    pub fn try_deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, EchoBroadcastError> {
+    pub fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, EchoBroadcastError> {
         P::deserialize(&self.0).map_err(EchoBroadcastError)
     }
 }
@@ -419,4 +419,12 @@ pub trait Round<Id>: 'static + Send + Sync {
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Id, Self::Protocol>>;
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
+
+    fn serialize_echo_broadcast(message: impl Serialize) -> Result<EchoBroadcast, LocalError> {
+        EchoBroadcast::new::<Self::Protocol, _>(message)
+    }
+
+    fn serialize_direct_message(message: impl Serialize) -> Result<DirectMessage, LocalError> {
+        DirectMessage::new::<Self::Protocol, _>(message)
+    }
 }

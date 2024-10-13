@@ -45,12 +45,12 @@ impl ProtocolError for SimpleProtocolError {
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
-                let _message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
+                let _message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
                 // Message contents would be checked here
                 Ok(())
             }
             SimpleProtocolError::Round2InvalidPosition => {
-                let _r1_message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
+                let _r1_message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
                 let r1_echos_serialized = combined_echos
                     .get(&RoundId::new(1))
                     .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
@@ -58,7 +58,7 @@ impl ProtocolError for SimpleProtocolError {
                 // Deserialize the echos
                 let _r1_echos = r1_echos_serialized
                     .iter()
-                    .map(|echo| echo.try_deserialize::<SimpleProtocol, Round1Echo>())
+                    .map(|echo| echo.deserialize::<SimpleProtocol, Round1Echo>())
                     .collect::<Result<Vec<_>, _>>()?;
 
                 // Message contents would be checked here
@@ -179,7 +179,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
 
-        Some(EchoBroadcast::new::<SimpleProtocol, _>(&message))
+        Some(Self::serialize_echo_broadcast(message))
     }
 
     fn make_direct_message(
@@ -193,7 +193,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = DirectMessage::new::<SimpleProtocol, _>(&message)?;
+        let dm = Self::serialize_direct_message(message)?;
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }
@@ -207,7 +207,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
+        let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -283,7 +283,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
 
-        Some(EchoBroadcast::new::<SimpleProtocol, _>(&message))
+        Some(Self::serialize_echo_broadcast(message))
     }
 
     fn make_direct_message(
@@ -297,7 +297,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = DirectMessage::new::<SimpleProtocol, _>(&message)?;
+        let dm = Self::serialize_direct_message(message)?;
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }
@@ -311,7 +311,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let message = direct_message.try_deserialize::<SimpleProtocol, Round1Message>()?;
+        let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
