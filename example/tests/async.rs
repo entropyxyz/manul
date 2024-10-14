@@ -29,7 +29,6 @@ async fn run_session<P>(
 ) -> Result<SessionReport<P, Verifier, Signature>, LocalError>
 where
     P: Protocol + 'static,
-    P::Digest: digest::Digest,
 {
     let rng = &mut OsRng;
 
@@ -152,7 +151,6 @@ async fn run_nodes<P>(
 ) -> Vec<SessionReport<P, Verifier, Signature>>
 where
     P: Protocol + Send + 'static,
-    P::Digest: digest::Digest,
     P::Result: Send,
 {
     let num_parties = sessions.len();
@@ -218,7 +216,6 @@ async fn async_run() {
         .finish()
         .try_init()
         .unwrap();
-    //tracing::subscriber::set_global_default(subscriber).unwrap();
-    //.set_default();
+
     run_nodes(sessions).await;
 }
