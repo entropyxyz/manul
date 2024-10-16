@@ -16,6 +16,5 @@
 extern crate alloc;
 
 pub mod protocol;
-mod serde_bytes;
 pub mod session;
 pub mod testing;
