@@ -17,4 +17,6 @@ extern crate alloc;
 
 pub mod protocol;
 pub mod session;
+
+#[cfg(any(test, feature = "testing"))]
 pub mod testing;

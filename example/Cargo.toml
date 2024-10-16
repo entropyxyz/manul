@@ -21,3 +21,4 @@ tracing = "0.1"
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 rand = "0.8"
 digest = "0.10"
+manul = { path = "../manul", features = ["testing"] }
