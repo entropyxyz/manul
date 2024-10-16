@@ -34,7 +34,7 @@ We try to find the balance between supporting the majority of protocols and keep
 [docs-image]: https://docs.rs/manul/badge.svg
 [docs-link]: https://docs.rs/manul/
 [license-image]: https://img.shields.io/crates/l/manul
-[build-image]: https://github.com/entropyxyz/manul/actions/workflows/manul.yml/badge.svg?branch=master&event=push
-[build-link]: https://github.com/entropyxyz/manul/actions?query=workflow%3Amanul
+[build-image]: https://github.com/entropyxyz/manul/actions/workflows/ci.yml/badge.svg?branch=master&event=push
+[build-link]: https://github.com/entropyxyz/manul/actions?query=workflow%3Aci
 [coverage-image]: https://codecov.io/gh/entropyxyz/manul/branch/master/graph/badge.svg
 [coverage-link]: https://codecov.io/gh/entropyxyz/manul
