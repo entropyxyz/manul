@@ -1,4 +1,4 @@
-name: manul
+name: ci
 on:
   workflow_dispatch:
   pull_request:
