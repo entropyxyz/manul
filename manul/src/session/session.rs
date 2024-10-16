@@ -8,6 +8,7 @@ use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use serde_encoded_bytes::{Base64, SliceLike};
 use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
 use tracing::debug;
 
@@ -18,17 +19,14 @@ use super::{
     transcript::{SessionOutcome, SessionReport, Transcript},
     LocalError, RemoteError,
 };
-use crate::{
-    protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, ObjectSafeRound,
-        ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
-    },
-    serde_bytes,
+use crate::protocol::{
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, ObjectSafeRound,
+    ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
 };
 
 /// A session identifier shared between the parties.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct SessionId(#[serde(with = "serde_bytes")] Box<[u8]>);
+pub struct SessionId(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 /// A session ID.
 ///

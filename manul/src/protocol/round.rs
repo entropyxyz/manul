@@ -10,15 +10,13 @@ use core::{any::Any, fmt::Debug};
 use digest::Digest;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use serde_encoded_bytes::{Base64, SliceLike};
 
 use super::{
     error::{LocalError, RemoteError},
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
 };
-use crate::{
-    serde_bytes,
-    session::{EchoRoundError, SessionId},
-};
+use crate::session::{EchoRoundError, SessionId};
 
 /// An error that can be returned from [`Round::receive_message`].
 #[derive(Debug)]
@@ -383,7 +381,7 @@ pub struct EchoBroadcastError(DeserializationError);
 
 /// A serialized direct message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DirectMessage(#[serde(with = "serde_bytes")] Box<[u8]>);
+pub struct DirectMessage(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 impl DirectMessage {
     /// Creates a new serialized direct message.
@@ -412,7 +410,7 @@ impl DirectMessage {
 
 /// A serialized echo broadcast.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EchoBroadcast(#[serde(with = "serde_bytes")] Box<[u8]>);
+pub struct EchoBroadcast(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 impl EchoBroadcast {
     /// Creates a new serialized echo broadcast.
