@@ -16,13 +16,17 @@ serde-encoded-bytes = { version = "0.1", default-features = false, features = ["
 digest = { version = "0.10", default-features = false }
 signature = { version = "2", default-features = false, features = ["digest", "rand_core"] }
 rand_core = { version = "0.6.4", default-features = false }
-rand = { version = "0.8", default-features = false }
 tracing = { version = "0.1", default-features = false }
 displaydoc = { version = "0.2", default-features = false }
+rand = { version = "0.8", default-features = false, optional = true }
 
 [dev-dependencies]
 impls = "1"
 sha3 = "0.10"
+rand = { version = "0.8", default-features = false }
+
+[features]
+testing = ["rand"]
 
 [package.metadata.docs.rs]
 all-features = true
