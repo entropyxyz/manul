@@ -10,9 +10,12 @@ use super::{
     transcript::Transcript,
     LocalError,
 };
-use crate::protocol::{
-    DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, Protocol,
-    ProtocolError, ProtocolValidationError, RoundId,
+use crate::{
+    protocol::{
+        DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, Protocol,
+        ProtocolError, ProtocolValidationError, RoundId,
+    },
+    utils::SerializableMap,
 };
 
 #[derive(Debug, Clone)]
@@ -113,9 +116,9 @@ where
                 error,
                 direct_message,
                 echo_broadcast,
-                direct_messages,
-                echo_broadcasts,
-                combined_echos,
+                direct_messages: direct_messages.into(),
+                echo_broadcasts: echo_broadcasts.into(),
+                combined_echos: combined_echos.into(),
             }),
         })
     }
@@ -352,9 +355,9 @@ struct ProtocolEvidence<P: Protocol, S> {
     error: P::ProtocolError,
     direct_message: SignedMessage<S, DirectMessage>,
     echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
-    direct_messages: BTreeMap<RoundId, SignedMessage<S, DirectMessage>>,
-    echo_broadcasts: BTreeMap<RoundId, SignedMessage<S, EchoBroadcast>>,
-    combined_echos: BTreeMap<RoundId, SignedMessage<S, DirectMessage>>,
+    direct_messages: SerializableMap<RoundId, SignedMessage<S, DirectMessage>>,
+    echo_broadcasts: SerializableMap<RoundId, SignedMessage<S, EchoBroadcast>>,
+    combined_echos: SerializableMap<RoundId, SignedMessage<S, DirectMessage>>,
 }
 
 impl<P, S> ProtocolEvidence<P, S>
