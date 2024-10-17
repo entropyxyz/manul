@@ -10,8 +10,8 @@ readme = "README.md"
 
 [dependencies]
 manul = { path = "../manul" }
-bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
 serde = "1"
+serde_asn1_der = "0.8"
 sha3 = "0.10"
 rand_core = "0.6"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

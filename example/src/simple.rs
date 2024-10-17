@@ -76,14 +76,13 @@ impl Protocol for SimpleProtocol {
     type Digest = Sha3_256;
 
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
-        bincode::serde::encode_to_vec(value, bincode::config::standard())
+        serde_asn1_der::to_vec(&value)
             .map(|vec| vec.into())
             .map_err(|err| LocalError::new(err.to_string()))
     }
 
     fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError> {
-        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
-            .map_err(|err| DeserializationError::new(err.to_string()))
+        serde_asn1_der::from_bytes(bytes).map_err(|err| DeserializationError::new(err.to_string()))
     }
 
     fn verify_direct_message_is_invalid(
