@@ -15,9 +15,12 @@ use super::{
     message::{MessageVerificationError, SignedMessage},
     LocalError,
 };
-use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
-    ReceiveError, Round, RoundId,
+use crate::{
+    protocol::{
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
+        ReceiveError, Round, RoundId,
+    },
+    utils::SerializableMap,
 };
 
 #[derive(Debug)]
@@ -27,8 +30,8 @@ pub(crate) enum EchoRoundError<Id> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EchoRoundMessage<Id: Ord, S> {
-    pub(crate) echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
+pub struct EchoRoundMessage<Id: Debug + Clone + Ord, S> {
+    pub(crate) echo_messages: SerializableMap<Id, SignedMessage<S, EchoBroadcast>>,
 }
 
 pub struct EchoRound<P, Id, S> {
@@ -121,7 +124,9 @@ where
             )));
         }
 
-        let message = EchoRoundMessage { echo_messages };
+        let message = EchoRoundMessage {
+            echo_messages: echo_messages.into(),
+        };
         let dm = DirectMessage::new::<P, _>(&message)?;
         Ok((dm, Artifact::empty()))
     }
