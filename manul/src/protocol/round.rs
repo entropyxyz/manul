@@ -161,6 +161,12 @@ pub enum FinalizeError<P: Protocol> {
     Unattributable(P::CorrectnessProof),
 }
 
+impl<P: Protocol> From<LocalError> for FinalizeError<P> {
+    fn from(error: LocalError) -> Self {
+        Self::Local(error)
+    }
+}
+
 /// A round identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RoundId {
