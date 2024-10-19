@@ -5,6 +5,8 @@
 ![License][license-image]
 [![Build Status][build-image]][build-link]
 [![Coverage][coverage-image]][coverage-link]
+[![Coveralls][coveralls-image]][coveralls-link]
+
 
 *The body is round*
 
@@ -38,3 +40,5 @@ We try to find the balance between supporting the majority of protocols and keep
 [build-link]: https://github.com/entropyxyz/manul/actions?query=workflow%3Aci
 [coverage-image]: https://codecov.io/gh/entropyxyz/manul/branch/master/graph/badge.svg
 [coverage-link]: https://codecov.io/gh/entropyxyz/manul
+[coveralls-image]: https://coveralls.io/repos/github/entropyxyz/manul/badge.svg?branch=master
+[coveralls-link]: https://coveralls.io/github/entropyxyz/manul?branch=master
