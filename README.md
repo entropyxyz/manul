@@ -4,7 +4,6 @@
 [![Docs][docs-image]][docs-link]
 ![License][license-image]
 [![Build Status][build-image]][build-link]
-[![Coverage][coverage-image]][coverage-link]
 [![Coveralls][coveralls-image]][coveralls-link]
 
 
@@ -38,7 +37,5 @@ We try to find the balance between supporting the majority of protocols and keep
 [license-image]: https://img.shields.io/crates/l/manul
 [build-image]: https://github.com/entropyxyz/manul/actions/workflows/ci.yml/badge.svg?branch=master&event=push
 [build-link]: https://github.com/entropyxyz/manul/actions?query=workflow%3Aci
-[coverage-image]: https://codecov.io/gh/entropyxyz/manul/branch/master/graph/badge.svg
-[coverage-link]: https://codecov.io/gh/entropyxyz/manul
 [coveralls-image]: https://coveralls.io/repos/github/entropyxyz/manul/badge.svg?branch=master
 [coveralls-link]: https://coveralls.io/github/entropyxyz/manul?branch=master
