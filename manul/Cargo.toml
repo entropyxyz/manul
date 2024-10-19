@@ -24,6 +24,8 @@ rand = { version = "0.8", default-features = false, optional = true }
 impls = "1"
 sha3 = "0.10"
 rand = { version = "0.8", default-features = false }
+bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
+criterion = "0.5"
 
 [features]
 testing = ["rand"]
@@ -31,3 +33,8 @@ testing = ["rand"]
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[[bench]]
+name = "empty_rounds"
+harness = false
+required-features = ["testing"]
