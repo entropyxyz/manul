@@ -7,10 +7,9 @@ use core::fmt::Debug;
 use super::{evidence::Evidence, message::SignedMessage, session::SessionParameters, LocalError, RemoteError};
 use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
-#[allow(clippy::type_complexity)]
 pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
-    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>>,
-    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<SP::Signature, DirectMessage>>>,
+    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>>,
+    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
     missing_messages: BTreeMap<RoundId, BTreeSet<SP::Verifier>>,
@@ -34,8 +33,8 @@ where
     pub fn update(
         self,
         round_id: RoundId,
-        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>,
-        direct_messages: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, DirectMessage>>,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+        direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
         provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
         unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
         missing_messages: BTreeSet<SP::Verifier>,
@@ -101,7 +100,7 @@ where
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<SP::Signature, EchoBroadcast>, LocalError> {
+    ) -> Result<SignedMessage<EchoBroadcast>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {round_id:?}")))?
@@ -114,7 +113,7 @@ where
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<SP::Signature, DirectMessage>, LocalError> {
+    ) -> Result<SignedMessage<DirectMessage>, LocalError> {
         self.direct_messages
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {round_id:?}")))?
@@ -127,11 +126,10 @@ where
         self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
     }
 
-    #[allow(clippy::type_complexity)]
     pub fn echo_broadcasts(
         &self,
         round_id: RoundId,
-    ) -> Result<BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>, LocalError> {
+    ) -> Result<BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .cloned()

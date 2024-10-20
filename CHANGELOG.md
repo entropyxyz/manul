@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `Session` is now generic over `SessionParameters` instead of a bunch of separate types. ([#36])
+- `MessageBundle` is not generic anymore. ([#36])
 
 
 ### Added

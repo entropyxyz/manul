@@ -89,7 +89,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
-    echo_message: Option<SignedMessage<SP::Signature, EchoBroadcast>>,
+    echo_message: Option<SignedMessage<EchoBroadcast>>,
     possible_next_rounds: BTreeSet<RoundId>,
     transcript: Transcript<P, SP>,
 }
@@ -187,10 +187,10 @@ where
         &self,
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
-    ) -> Result<(MessageBundle<SP>, ProcessedArtifact<SP::Verifier>), LocalError> {
+    ) -> Result<(MessageBundle, ProcessedArtifact<SP::Verifier>), LocalError> {
         let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
 
-        let bundle = MessageBundle::new::<P>(
+        let bundle = MessageBundle::new::<P, SP>(
             rng,
             &self.signer,
             &self.session_id,
@@ -227,7 +227,7 @@ where
         &self,
         accum: &mut RoundAccumulator<P, SP>,
         from: &SP::Verifier,
-        message: MessageBundle<SP>,
+        message: MessageBundle,
     ) -> Result<Option<VerifiedMessageBundle<SP>>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
 
@@ -278,7 +278,7 @@ where
 
         // Verify the signature now
 
-        let verified_message = match checked_message.verify::<P>(from) {
+        let verified_message = match checked_message.verify::<P, SP>(from) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
                 accum.register_unprovable_error(from, RemoteError::new("Message verification failed"))?;
@@ -457,8 +457,8 @@ pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
     cached: BTreeMap<SP::Verifier, BTreeMap<RoundId, VerifiedMessageBundle<SP>>>,
-    echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>,
-    direct_messages: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, DirectMessage>>,
+    echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
 }
@@ -730,7 +730,7 @@ mod tests {
         assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Sync));
 
         // These objects are sent to/from message processing tasks
-        assert!(impls!(MessageBundle<TestingSessionParams>: Send));
+        assert!(impls!(MessageBundle: Send));
         assert!(impls!(ProcessedArtifact<Verifier>: Send));
         assert!(impls!(VerifiedMessageBundle<TestingSessionParams>: Send));
         assert!(impls!(ProcessedMessage<DummyProtocol, TestingSessionParams>: Send));

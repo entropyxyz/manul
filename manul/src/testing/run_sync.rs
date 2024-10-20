@@ -24,7 +24,7 @@ enum State<P: Protocol, SP: SessionParameters> {
 struct Message<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: MessageBundle<SP>,
+    message: MessageBundle,
 }
 
 #[allow(clippy::type_complexity)]

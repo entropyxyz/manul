@@ -31,12 +31,12 @@ pub(crate) enum EchoRoundError<Id> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EchoRoundMessage<SP: SessionParameters> {
-    pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>,
+    pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
 pub struct EchoRound<P, SP: SessionParameters> {
     verifier: SP::Verifier,
-    echo_messages: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>,
+    echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
     destinations: BTreeSet<SP::Verifier>,
     expected_echos: BTreeSet<SP::Verifier>,
     main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
@@ -51,8 +51,8 @@ where
 {
     pub fn new(
         verifier: SP::Verifier,
-        my_echo_message: SignedMessage<SP::Signature, EchoBroadcast>,
-        echo_messages: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>,
+        my_echo_message: SignedMessage<EchoBroadcast>,
+        echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
         main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,

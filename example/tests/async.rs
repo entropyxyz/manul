@@ -23,12 +23,12 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: MessageBundle<SP>,
+    message: MessageBundle,
 }
 
 struct MessageIn<SP: SessionParameters> {
     from: SP::Verifier,
-    message: MessageBundle<SP>,
+    message: MessageBundle,
 }
 
 async fn run_session<P, SP>(
@@ -185,8 +185,7 @@ where
     let (dispatcher_tx, dispatcher_rx) = mpsc::channel::<MessageOut<SP>>(100);
 
     let channels = (0..num_parties).map(|_| mpsc::channel::<MessageIn<SP>>(100));
-    #[allow(clippy::type_complexity)]
-    let (txs, rxs): (Vec<mpsc::Sender<MessageIn<SP>>>, Vec<mpsc::Receiver<MessageIn<SP>>>) = channels.unzip();
+    let (txs, rxs): (Vec<_>, Vec<_>) = channels.unzip();
     let tx_map = sessions
         .iter()
         .map(|session| session.verifier())

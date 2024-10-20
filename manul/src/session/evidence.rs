@@ -71,8 +71,8 @@ where
 {
     pub(crate) fn new_protocol_error(
         verifier: &SP::Verifier,
-        echo_broadcast: Option<SignedMessage<SP::Signature, EchoBroadcast>>,
-        direct_message: SignedMessage<SP::Signature, DirectMessage>,
+        echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+        direct_message: SignedMessage<DirectMessage>,
         error: P::ProtocolError,
         transcript: &Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
@@ -124,7 +124,7 @@ where
 
     pub(crate) fn new_echo_round_error(
         verifier: &SP::Verifier,
-        direct_message: SignedMessage<SP::Signature, DirectMessage>,
+        direct_message: SignedMessage<DirectMessage>,
         error: EchoRoundError<SP::Verifier>,
         transcript: &Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
@@ -173,7 +173,7 @@ where
 
     pub(crate) fn new_invalid_direct_message(
         verifier: &SP::Verifier,
-        direct_message: SignedMessage<SP::Signature, DirectMessage>,
+        direct_message: SignedMessage<DirectMessage>,
         error: DirectMessageError,
     ) -> Self {
         Self {
@@ -188,7 +188,7 @@ where
 
     pub(crate) fn new_invalid_echo_broadcast(
         verifier: &SP::Verifier,
-        echo_broadcast: SignedMessage<SP::Signature, EchoBroadcast>,
+        echo_broadcast: SignedMessage<EchoBroadcast>,
         error: EchoBroadcastError,
     ) -> Self {
         Self {
@@ -211,27 +211,27 @@ where
 
     pub fn verify(&self, party: &SP::Verifier) -> Result<(), EvidenceError> {
         match &self.evidence {
-            EvidenceEnum::Protocol(evidence) => evidence.verify(party),
-            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify(party),
-            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify(party),
+            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(party),
+            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(party),
+            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(party),
             EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party),
-            EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify(party),
+            EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(party),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum EvidenceEnum<P: Protocol, SP: SessionParameters> {
-    Protocol(ProtocolEvidence<P, SP>),
-    InvalidDirectMessage(InvalidDirectMessageEvidence<P, SP>),
-    InvalidEchoBroadcast(InvalidEchoBroadcastEvidence<P, SP>),
+    Protocol(ProtocolEvidence<P>),
+    InvalidDirectMessage(InvalidDirectMessageEvidence<P>),
+    InvalidEchoBroadcast(InvalidEchoBroadcastEvidence<P>),
     InvalidEchoPack(InvalidEchoPackEvidence<P, SP>),
-    MismatchedBroadcasts(MismatchedBroadcastsEvidence<P, SP>),
+    MismatchedBroadcasts(MismatchedBroadcastsEvidence<P>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidEchoPackEvidence<P: Protocol, SP: SessionParameters> {
-    direct_message: SignedMessage<SP::Signature, DirectMessage>,
+    direct_message: SignedMessage<DirectMessage>,
     invalid_echo_sender: SP::Verifier,
     phantom: core::marker::PhantomData<P>,
 }
@@ -274,18 +274,20 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MismatchedBroadcastsEvidence<P: Protocol, SP: SessionParameters> {
-    we_received: SignedMessage<SP::Signature, EchoBroadcast>,
-    echoed_to_us: SignedMessage<SP::Signature, EchoBroadcast>,
+pub struct MismatchedBroadcastsEvidence<P: Protocol> {
+    we_received: SignedMessage<EchoBroadcast>,
+    echoed_to_us: SignedMessage<EchoBroadcast>,
     phantom: core::marker::PhantomData<P>,
 }
 
-impl<P, SP> MismatchedBroadcastsEvidence<P, SP>
+impl<P> MismatchedBroadcastsEvidence<P>
 where
     P: Protocol,
-    SP: SessionParameters,
 {
-    fn verify(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError> {
+    fn verify<SP>(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError>
+    where
+        SP: SessionParameters,
+    {
         let we_received = self.we_received.clone().verify::<P, SP>(verifier)?;
         let echoed_to_us = self.echoed_to_us.clone().verify::<P, SP>(verifier)?;
 
@@ -300,17 +302,19 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InvalidDirectMessageEvidence<P: Protocol, SP: SessionParameters> {
-    direct_message: SignedMessage<SP::Signature, DirectMessage>,
+pub struct InvalidDirectMessageEvidence<P: Protocol> {
+    direct_message: SignedMessage<DirectMessage>,
     phantom: core::marker::PhantomData<P>,
 }
 
-impl<P, SP> InvalidDirectMessageEvidence<P, SP>
+impl<P> InvalidDirectMessageEvidence<P>
 where
     P: Protocol,
-    SP: SessionParameters,
 {
-    fn verify(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError> {
+    fn verify<SP>(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError>
+    where
+        SP: SessionParameters,
+    {
         let verified_direct_message = self.direct_message.clone().verify::<P, SP>(verifier)?;
         Ok(P::verify_direct_message_is_invalid(
             self.direct_message.metadata().round_id(),
@@ -320,17 +324,19 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InvalidEchoBroadcastEvidence<P: Protocol, SP: SessionParameters> {
-    echo_broadcast: SignedMessage<SP::Signature, EchoBroadcast>,
+pub struct InvalidEchoBroadcastEvidence<P: Protocol> {
+    echo_broadcast: SignedMessage<EchoBroadcast>,
     phantom: core::marker::PhantomData<P>,
 }
 
-impl<P, SP> InvalidEchoBroadcastEvidence<P, SP>
+impl<P> InvalidEchoBroadcastEvidence<P>
 where
     P: Protocol,
-    SP: SessionParameters,
 {
-    fn verify(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError> {
+    fn verify<SP>(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError>
+    where
+        SP: SessionParameters,
+    {
         let verified_echo_broadcast = self.echo_broadcast.clone().verify::<P, SP>(verifier)?;
         Ok(P::verify_echo_broadcast_is_invalid(
             self.echo_broadcast.metadata().round_id(),
@@ -340,21 +346,23 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ProtocolEvidence<P: Protocol, SP: SessionParameters> {
+struct ProtocolEvidence<P: Protocol> {
     error: P::ProtocolError,
-    direct_message: SignedMessage<SP::Signature, DirectMessage>,
-    echo_broadcast: Option<SignedMessage<SP::Signature, EchoBroadcast>>,
-    direct_messages: SerializableMap<RoundId, SignedMessage<SP::Signature, DirectMessage>>,
-    echo_broadcasts: SerializableMap<RoundId, SignedMessage<SP::Signature, EchoBroadcast>>,
-    combined_echos: SerializableMap<RoundId, SignedMessage<SP::Signature, DirectMessage>>,
+    direct_message: SignedMessage<DirectMessage>,
+    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+    direct_messages: SerializableMap<RoundId, SignedMessage<DirectMessage>>,
+    echo_broadcasts: SerializableMap<RoundId, SignedMessage<EchoBroadcast>>,
+    combined_echos: SerializableMap<RoundId, SignedMessage<DirectMessage>>,
 }
 
-impl<P, SP> ProtocolEvidence<P, SP>
+impl<P> ProtocolEvidence<P>
 where
     P: Protocol,
-    SP: SessionParameters,
 {
-    fn verify(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError> {
+    fn verify<SP>(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError>
+    where
+        SP: SessionParameters,
+    {
         let session_id = self.direct_message.metadata().session_id();
 
         let verified_direct_message = self.direct_message.clone().verify::<P, SP>(verifier)?.payload().clone();
