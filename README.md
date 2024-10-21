@@ -1,5 +1,12 @@
 # Round-based distributed protocols
 
+[![crate][crate-image]][crate-link]
+[![Docs][docs-image]][docs-link]
+![License][license-image]
+[![Build Status][build-image]][build-link]
+[![Coveralls][coveralls-image]][coveralls-link]
+
+
 *The body is round*
 
 ## Goals
@@ -21,3 +28,14 @@ We try to find the balance between supporting the majority of protocols and keep
 - On finalization, a round can return the result, halt with an error, or continue to another round.
 - A round can generate several direct messages (each going to a specific party).
 - Additionally, a round can generate one echo-broadcasted message, for which it will be ensured that each party received the same message.
+
+
+[crate-image]: https://img.shields.io/crates/v/manul.svg
+[crate-link]: https://crates.io/crates/manul
+[docs-image]: https://docs.rs/manul/badge.svg
+[docs-link]: https://docs.rs/manul/
+[license-image]: https://img.shields.io/crates/l/manul
+[build-image]: https://github.com/entropyxyz/manul/actions/workflows/ci.yml/badge.svg?branch=master&event=push
+[build-link]: https://github.com/entropyxyz/manul/actions?query=workflow%3Aci
+[coveralls-image]: https://coveralls.io/repos/github/entropyxyz/manul/badge.svg?branch=master
+[coveralls-link]: https://coveralls.io/github/entropyxyz/manul?branch=master

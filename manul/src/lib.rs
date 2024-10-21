@@ -1,20 +1,23 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
+#![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![doc = include_str!("../../README.md")]
+#![warn(
+    clippy::mod_module_files,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    missing_docs,
+    missing_copy_implementations,
+    rust_2018_idioms,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications
+)]
 
 extern crate alloc;
 
-mod error;
-mod message;
-mod round;
-mod serde_bytes;
-mod session;
-mod signing;
-pub mod test_utils;
+pub mod protocol;
+pub mod session;
+pub(crate) mod utils;
 
-pub use error::{Error, LocalError};
-pub use round::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, Payload,
-    Protocol, ProtocolError, ReceiveError, Round, RoundId,
-};
-pub use session::{RoundOutcome, Session};
-pub use signing::{Digest, DigestSigner, DigestVerifier, Keypair};
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;

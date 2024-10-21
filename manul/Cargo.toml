@@ -1,7 +1,8 @@
 [package]
 name = "manul"
-version = "0.1.0"
+version = "0.0.2-dev"
 edition = "2021"
+rust-version = "1.81"
 authors = ['Entropy Cryptography <engineering@entropy.xyz>']
 license = "AGPL-3.0-or-later"
 description = "Generic library for round-based protocols"
@@ -10,6 +11,31 @@ readme = "../README.md"
 categories = ["cryptography", "no-std"]
 
 [dependencies]
-serde = { version = "1", default-features = false, features = ["serde_derive"] }
-digest = "0.10"
-signature = { version = "2", features = ["digest"] }
+serde = { version = "1", default-features = false, features = ["alloc", "serde_derive"] }
+serde-encoded-bytes = { version = "0.1", default-features = false, features = ["hex", "base64"] }
+digest = { version = "0.10", default-features = false }
+signature = { version = "2", default-features = false, features = ["digest", "rand_core"] }
+rand_core = { version = "0.6.4", default-features = false }
+tracing = { version = "0.1", default-features = false }
+displaydoc = { version = "0.2", default-features = false }
+rand = { version = "0.8", default-features = false, optional = true }
+
+[dev-dependencies]
+impls = "1"
+rand = { version = "0.8", default-features = false }
+bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
+serde_asn1_der = "0.8"
+serde_json = "1"
+criterion = "0.5"
+
+[features]
+testing = ["rand"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[[bench]]
+name = "empty_rounds"
+harness = false
+required-features = ["testing"]
