@@ -187,7 +187,7 @@ where
         &self,
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
-    ) -> Result<(MessageBundle, ProcessedArtifact<SP::Verifier>), LocalError> {
+    ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
         let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
 
         let bundle = MessageBundle::new::<P, SP>(
@@ -212,7 +212,7 @@ where
     pub fn add_artifact(
         &self,
         accum: &mut RoundAccumulator<P, SP>,
-        processed: ProcessedArtifact<SP::Verifier>,
+        processed: ProcessedArtifact<SP>,
     ) -> Result<(), LocalError> {
         accum.add_artifact(processed)
     }
@@ -546,7 +546,7 @@ where
         }
     }
 
-    fn add_artifact(&mut self, processed: ProcessedArtifact<SP::Verifier>) -> Result<(), LocalError> {
+    fn add_artifact(&mut self, processed: ProcessedArtifact<SP>) -> Result<(), LocalError> {
         if self
             .artifacts
             .insert(processed.destination.clone(), processed.artifact)
@@ -639,8 +639,8 @@ where
     }
 }
 
-pub struct ProcessedArtifact<Verifier> {
-    destination: Verifier,
+pub struct ProcessedArtifact<SP: SessionParameters> {
+    destination: SP::Verifier,
     artifact: Artifact,
 }
 
@@ -672,7 +672,7 @@ mod tests {
             DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
             ProtocolValidationError, RoundId,
         },
-        testing::{TestingSessionParams, Verifier},
+        testing::TestingSessionParams,
     };
 
     #[test]
@@ -731,7 +731,7 @@ mod tests {
 
         // These objects are sent to/from message processing tasks
         assert!(impls!(MessageBundle: Send));
-        assert!(impls!(ProcessedArtifact<Verifier>: Send));
+        assert!(impls!(ProcessedArtifact<TestingSessionParams>: Send));
         assert!(impls!(VerifiedMessageBundle<TestingSessionParams>: Send));
         assert!(impls!(ProcessedMessage<DummyProtocol, TestingSessionParams>: Send));
     }
