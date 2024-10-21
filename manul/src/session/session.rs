@@ -48,7 +48,7 @@ pub trait SessionParameters {
         + Send
         + Sync;
 
-    /// The signature type corresponding to [`Signer`] and [`Verifier`].
+    /// The signature type corresponding to [`Signer`](`Self::Signer`) and [`Verifier`](`Self::Verifier`).
     type Signature: 'static + Debug + Clone + Eq + Serialize + for<'de> Deserialize<'de> + Send + Sync;
 }
 
