@@ -8,11 +8,8 @@ use core::marker::PhantomData;
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
-    error::LocalError,
-    round::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, Payload, Protocol, ReceiveError, Round,
-        RoundId,
-    },
+    errors::{FinalizeError, LocalError, ReceiveError},
+    round::{Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, Payload, Protocol, Round, RoundId},
 };
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,

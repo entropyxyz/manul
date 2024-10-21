@@ -11,19 +11,21 @@ to be executed by a [`Session`](`crate::session::Session`).
 For more details, see the documentation of the mentioned traits.
 */
 
-mod error;
+mod errors;
 mod object_safe;
 mod round;
 
 pub use crate::session::SessionId;
-pub use error::{LocalError, RemoteError};
+pub use errors::{
+    DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
+    ProtocolValidationError, ReceiveError, RemoteError,
+};
 pub use round::{
-    AnotherRound, Artifact, DeserializationError, DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError,
-    FinalizeError, FinalizeOutcome, FirstRound, MessageValidationError, Payload, Protocol, ProtocolError,
-    ProtocolValidationError, ReceiveError, Round, RoundId,
+    AnotherRound, Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, FirstRound, Payload, Protocol,
+    ProtocolError, Round, RoundId,
 };
 
+pub(crate) use errors::ReceiveErrorType;
 pub(crate) use object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
-pub(crate) use round::ReceiveErrorType;
 
 pub use digest;
