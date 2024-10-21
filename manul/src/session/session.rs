@@ -2,6 +2,7 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
+    string::ToString,
     vec::Vec,
 };
 use core::fmt::Debug;
@@ -21,9 +22,45 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, ObjectSafeRound,
-    ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
+    Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
+    ObjectSafeRound, ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
 };
+
+/// A (de)serializer that will be used for the protocol messages.
+pub trait Format {
+    /// Serializes the given object into a bytestring.
+    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
+
+    /// Tries to deserialize the given bytestring as an object of type `T`.
+    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError>;
+}
+
+/// [temporary serializer]
+#[derive(Debug, Clone, Copy)]
+pub struct Serializer;
+
+impl Serializer {
+    // TODO: temporary implementation, should be made via `erased_serde`
+    /// Serializes the given object into a bytestring.
+    pub fn serialize<T: Serialize>(&self, value: T) -> Result<Box<[u8]>, LocalError> {
+        bincode::serde::encode_to_vec(value, bincode::config::standard())
+            .map(|vec| vec.into())
+            .map_err(|err| LocalError::new(err.to_string()))
+    }
+}
+
+/// [temporary deserializer]
+#[derive(Debug, Clone, Copy)]
+pub struct Deserializer;
+
+impl Deserializer {
+    // TODO: temporary implementation, should be made via `erased_serde`
+    /// Tries to deserialize the given bytestring as an object of type `T`.
+    pub fn deserialize<'de, T: Deserialize<'de>>(&self, bytes: &'de [u8]) -> Result<T, DeserializationError> {
+        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
+            .map_err(|err| DeserializationError::new(err.to_string()))
+    }
+}
 
 /// A set of types needed to execute a session.
 ///
@@ -48,6 +85,9 @@ pub trait SessionParameters {
 
     /// The signature type corresponding to [`Signer`](`Self::Signer`) and [`Verifier`](`Self::Verifier`).
     type Signature: Serialize + for<'de> Deserialize<'de>;
+
+    /// The type used to (de)serialize messages.
+    type Format: Format;
 }
 
 /// A session identifier shared between the parties.
@@ -139,9 +179,9 @@ where
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
         let echo_message = round
-            .make_echo_broadcast(rng)
+            .make_echo_broadcast(rng, &Serializer)
             .transpose()?
-            .map(|echo| SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), echo))
+            .map(|echo| SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), echo))
             .transpose()?;
         let message_destinations = round.message_destinations().clone();
 
@@ -186,9 +226,9 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
+        let (direct_message, artifact) = self.round.make_direct_message(rng, &Serializer, destination)?;
 
-        let bundle = MessageBundle::new::<P, SP>(
+        let bundle = MessageBundle::new::<SP>(
             rng,
             &self.signer,
             &self.session_id,
@@ -276,7 +316,7 @@ where
 
         // Verify the signature now
 
-        let verified_message = match checked_message.verify::<P, SP>(from) {
+        let verified_message = match checked_message.verify::<SP>(from) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
                 accum.register_unprovable_error(from, RemoteError::new("The signature could not be deserialized"))?;
@@ -322,6 +362,7 @@ where
     ) -> ProcessedMessage<P, SP> {
         let processed = self.round.receive_message(
             rng,
+            &Deserializer,
             message.from(),
             message.echo_broadcast().cloned(),
             message.direct_message().clone(),
@@ -620,7 +661,7 @@ where
             }
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence = Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
+                let evidence = Evidence::new_echo_round_error(&from, &Deserializer, direct_message, error, transcript)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),
@@ -668,7 +709,9 @@ mod tests {
     use impls::impls;
     use serde::{Deserialize, Serialize};
 
-    use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
+    use super::{
+        Deserializer, Format, MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle,
+    };
     use crate::{
         protocol::{
             DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
@@ -696,6 +739,7 @@ mod tests {
         impl ProtocolError for DummyProtocolError {
             fn verify_messages_constitute_error(
                 &self,
+                _deserializer: &Deserializer,
                 _echo_broadcast: &Option<EchoBroadcast>,
                 _direct_message: &DirectMessage,
                 _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
@@ -710,6 +754,11 @@ mod tests {
             type Result = ();
             type ProtocolError = DummyProtocolError;
             type CorrectnessProof = ();
+        }
+
+        struct DummyFormat;
+
+        impl Format for DummyFormat {
             fn serialize<T>(_: T) -> Result<Box<[u8]>, LocalError>
             where
                 T: Serialize,
@@ -724,17 +773,19 @@ mod tests {
             }
         }
 
+        type SP = TestingSessionParams<DummyFormat>;
+
         // We need `Session` to be `Send` so that we send a `Session` object to a task
         // to run the loop there.
-        assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Send));
+        assert!(impls!(Session<DummyProtocol, SP>: Send));
 
         // This is needed so that message processing offloaded to a task could use `&Session`.
-        assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Sync));
+        assert!(impls!(Session<DummyProtocol, SP>: Sync));
 
         // These objects are sent to/from message processing tasks
         assert!(impls!(MessageBundle: Send));
-        assert!(impls!(ProcessedArtifact<TestingSessionParams>: Send));
-        assert!(impls!(VerifiedMessageBundle<TestingSessionParams>: Send));
-        assert!(impls!(ProcessedMessage<DummyProtocol, TestingSessionParams>: Send));
+        assert!(impls!(ProcessedArtifact<SP>: Send));
+        assert!(impls!(VerifiedMessageBundle<SP>: Send));
+        assert!(impls!(ProcessedMessage<DummyProtocol, SP>: Send));
     }
 }

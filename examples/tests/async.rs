@@ -10,7 +10,10 @@ use manul::{
     },
     testing::{Signer, TestingSessionParams, Verifier},
 };
-use manul_example::simple::{Inputs, Round1};
+use manul_example::{
+    simple::{Inputs, Round1},
+    Bincode,
+};
 use rand::Rng;
 use rand_core::OsRng;
 use tokio::{
@@ -231,8 +234,13 @@ async fn async_run() {
             let inputs = Inputs {
                 all_ids: all_ids.clone(),
             };
-            Session::<_, TestingSessionParams>::new::<Round1<Verifier>>(&mut OsRng, session_id.clone(), signer, inputs)
-                .unwrap()
+            Session::<_, TestingSessionParams<Bincode>>::new::<Round1<Verifier>>(
+                &mut OsRng,
+                session_id.clone(),
+                signer,
+                inputs,
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>();
 

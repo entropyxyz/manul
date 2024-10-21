@@ -11,6 +11,7 @@ use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
     round::{Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, Payload, Protocol, Round, RoundId},
 };
+use crate::session::{Deserializer, Serializer};
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
 /// this structure wraps the dynamic object and exposes a `CryptoRngCore` interface,
@@ -49,14 +50,20 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
+        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError>;
 
-    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>>;
+    fn make_echo_broadcast(
+        &self,
+        rng: &mut dyn CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Option<Result<EchoBroadcast, LocalError>>;
 
     fn receive_message(
         &self,
         rng: &mut dyn CryptoRngCore,
+        deserializer: &Deserializer,
         from: &Id,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -112,27 +119,33 @@ where
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
+        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.make_direct_message(&mut boxed_rng, destination)
+        self.round.make_direct_message(&mut boxed_rng, serializer, destination)
     }
 
-    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(
+        &self,
+        rng: &mut dyn CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Option<Result<EchoBroadcast, LocalError>> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.make_echo_broadcast(&mut boxed_rng)
+        self.round.make_echo_broadcast(&mut boxed_rng, serializer)
     }
 
     fn receive_message(
         &self,
         rng: &mut dyn CryptoRngCore,
+        deserializer: &Deserializer,
         from: &Id,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);
         self.round
-            .receive_message(&mut boxed_rng, from, echo_broadcast, direct_message)
+            .receive_message(&mut boxed_rng, deserializer, from, echo_broadcast, direct_message)
     }
 
     fn finalize(
