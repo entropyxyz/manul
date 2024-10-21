@@ -37,10 +37,8 @@ pub trait SessionParameters {
     type Digest: Digest;
 
     /// The verifier type, which will also serve as a node identifier.
-    type Verifier: 'static
-        + Debug
+    type Verifier: Debug
         + Clone
-        + Eq
         + Ord
         + DigestVerifier<Self::Digest, Self::Signature>
         + Serialize
@@ -49,7 +47,7 @@ pub trait SessionParameters {
         + Sync;
 
     /// The signature type corresponding to [`Signer`](`Self::Signer`) and [`Verifier`](`Self::Verifier`).
-    type Signature: 'static + Debug + Clone + Eq + Serialize + for<'de> Deserialize<'de> + Send + Sync;
+    type Signature: Serialize + for<'de> Deserialize<'de>;
 }
 
 /// A session identifier shared between the parties.
