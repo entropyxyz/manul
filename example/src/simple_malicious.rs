@@ -6,7 +6,7 @@ use manul::{
         Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round, SessionId,
     },
     session::signature::Keypair,
-    testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signature, Signer, Verifier},
+    testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signer, TestingSessionParams, Verifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
@@ -172,7 +172,7 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<Verifier>, TestingSessionParams>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -218,7 +218,7 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<Verifier>, TestingSessionParams>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -264,7 +264,7 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<Verifier>, TestingSessionParams>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();

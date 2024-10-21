@@ -7,7 +7,6 @@ use alloc::{
 };
 use core::{any::Any, fmt::Debug};
 
-use digest::Digest;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use serde_encoded_bytes::{Base64, SliceLike};
@@ -254,11 +253,6 @@ pub trait Protocol: Debug + Sized {
     ///
     /// It proves that the node did its job correctly, to be adjudicated by a third party.
     type CorrectnessProof: Send + Serialize + for<'de> Deserialize<'de>;
-
-    /// The hasher used by this protocol.
-    ///
-    /// This will be used to generate message signatures.
-    type Digest: Digest;
 
     /// Serializes the given object into a bytestring.
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;

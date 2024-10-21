@@ -8,11 +8,11 @@ use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use signature::DigestVerifier;
 use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessage},
+    session::SessionParameters,
     LocalError,
 };
 use crate::{
@@ -30,32 +30,32 @@ pub(crate) enum EchoRoundError<Id> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EchoRoundMessage<Id: Debug + Clone + Ord, S> {
-    pub(crate) echo_messages: SerializableMap<Id, SignedMessage<S, EchoBroadcast>>,
+pub struct EchoRoundMessage<SP: SessionParameters> {
+    pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
-pub struct EchoRound<P, Id, S> {
-    verifier: Id,
-    echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
-    destinations: BTreeSet<Id>,
-    expected_echos: BTreeSet<Id>,
-    main_round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
-    payloads: BTreeMap<Id, Payload>,
-    artifacts: BTreeMap<Id, Artifact>,
+pub struct EchoRound<P, SP: SessionParameters> {
+    verifier: SP::Verifier,
+    echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    destinations: BTreeSet<SP::Verifier>,
+    expected_echos: BTreeSet<SP::Verifier>,
+    main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+    payloads: BTreeMap<SP::Verifier, Payload>,
+    artifacts: BTreeMap<SP::Verifier, Artifact>,
 }
 
-impl<P, Id, S> EchoRound<P, Id, S>
+impl<P, SP> EchoRound<P, SP>
 where
     P: Protocol,
-    Id: Debug + Clone + Ord,
+    SP: SessionParameters,
 {
     pub fn new(
-        verifier: Id,
-        my_echo_message: SignedMessage<S, EchoBroadcast>,
-        echo_messages: BTreeMap<Id, SignedMessage<S, EchoBroadcast>>,
-        main_round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
-        payloads: BTreeMap<Id, Payload>,
-        artifacts: BTreeMap<Id, Artifact>,
+        verifier: SP::Verifier,
+        my_echo_message: SignedMessage<EchoBroadcast>,
+        echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+        main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+        payloads: BTreeMap<SP::Verifier, Payload>,
+        artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
         let destinations = echo_messages.keys().cloned().collect::<BTreeSet<_>>();
 
@@ -79,20 +79,10 @@ where
     }
 }
 
-impl<P, Id, S> Round<Id> for EchoRound<P, Id, S>
+impl<P, SP> Round<SP::Verifier> for EchoRound<P, SP>
 where
     P: 'static + Protocol,
-    Id: 'static
-        + Debug
-        + Clone
-        + Ord
-        + Serialize
-        + for<'de> Deserialize<'de>
-        + Eq
-        + Send
-        + Sync
-        + DigestVerifier<P::Digest, S>,
-    S: 'static + Debug + Clone + Serialize + for<'de> Deserialize<'de> + Eq + Send + Sync,
+    SP: 'static + SessionParameters,
 {
     type Protocol = P;
 
@@ -104,14 +94,14 @@ where
         self.main_round.possible_next_rounds()
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
+    fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
         &self.destinations
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
-        destination: &Id,
+        destination: &SP::Verifier,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
 
@@ -124,27 +114,27 @@ where
             )));
         }
 
-        let message = EchoRoundMessage {
+        let message = EchoRoundMessage::<SP> {
             echo_messages: echo_messages.into(),
         };
         let dm = DirectMessage::new::<P, _>(&message)?;
         Ok((dm, Artifact::empty()))
     }
 
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+    fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
         &self.destinations
     }
 
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
-        from: &Id,
+        from: &SP::Verifier,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
-    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
+    ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
-        let message = direct_message.deserialize::<P, EchoRoundMessage<Id, S>>()?;
+        let message = direct_message.deserialize::<P, EchoRoundMessage<SP>>()?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.
@@ -191,7 +181,7 @@ where
                 continue;
             }
 
-            let verified_echo = match echo.clone().verify::<P, _>(sender) {
+            let verified_echo = match echo.clone().verify::<P, SP>(sender) {
                 Ok(echo) => echo,
                 Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.
@@ -220,9 +210,9 @@ where
     fn finalize(
         self,
         rng: &mut impl CryptoRngCore,
-        _payloads: BTreeMap<Id, Payload>,
-        _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+        _payloads: BTreeMap<SP::Verifier, Payload>,
+        _artifacts: BTreeMap<SP::Verifier, Artifact>,
+    ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, FinalizeError<Self::Protocol>> {
         self.main_round.finalize(rng, self.payloads, self.artifacts)
     }
 }

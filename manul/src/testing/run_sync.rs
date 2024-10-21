@@ -1,53 +1,41 @@
 use alloc::{collections::BTreeMap, vec::Vec};
-use core::fmt::Debug;
 
 use rand::Rng;
 use rand_core::CryptoRngCore;
-use serde::{Deserialize, Serialize};
-use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
+use signature::Keypair;
 use tracing::debug;
 
 use crate::{
     protocol::{FirstRound, Protocol},
     session::{
-        CanFinalize, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId, SessionReport,
+        CanFinalize, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
+        SessionReport,
     },
 };
 
-enum State<P: Protocol, Signer, Verifier, S> {
+enum State<P: Protocol, SP: SessionParameters> {
     InProgress {
-        session: Session<P, Signer, Verifier, S>,
-        accum: RoundAccumulator<P, Verifier, S>,
+        session: Session<P, SP>,
+        accum: RoundAccumulator<P, SP>,
     },
-    Finished(SessionReport<P, Verifier, S>),
+    Finished(SessionReport<P, SP>),
 }
 
-struct Message<Verifier, S> {
-    from: Verifier,
-    to: Verifier,
-    message: MessageBundle<S>,
+struct Message<SP: SessionParameters> {
+    from: SP::Verifier,
+    to: SP::Verifier,
+    message: MessageBundle,
 }
 
 #[allow(clippy::type_complexity)]
-fn propagate<P, Signer, Verifier, S>(
+fn propagate<P, SP>(
     rng: &mut impl CryptoRngCore,
-    session: Session<P, Signer, Verifier, S>,
-    accum: RoundAccumulator<P, Verifier, S>,
-) -> Result<(State<P, Signer, Verifier, S>, Vec<Message<Verifier, S>>), LocalError>
+    session: Session<P, SP>,
+    accum: RoundAccumulator<P, SP>,
+) -> Result<(State<P, SP>, Vec<Message<SP>>), LocalError>
 where
-    P: Protocol + 'static,
-    Signer: RandomizedDigestSigner<P::Digest, S> + Keypair<VerifyingKey = Verifier>,
-    Verifier: Debug
-        + Clone
-        + Eq
-        + Ord
-        + DigestVerifier<P::Digest, S>
-        + 'static
-        + Serialize
-        + for<'de> Deserialize<'de>
-        + Send
-        + Sync,
-    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
+    P: 'static + Protocol,
+    SP: 'static + SessionParameters,
 {
     let mut messages = Vec::new();
 
@@ -101,24 +89,13 @@ where
 /// Execute sessions for multiple nodes concurrently, given the the inputs
 /// for the first round `R` and the signer for each node.
 #[allow(clippy::type_complexity)]
-pub fn run_sync<R, Signer, Verifier, S>(
+pub fn run_sync<R, SP>(
     rng: &mut impl CryptoRngCore,
-    inputs: Vec<(Signer, R::Inputs)>,
-) -> Result<BTreeMap<Verifier, SessionReport<R::Protocol, Verifier, S>>, LocalError>
+    inputs: Vec<(SP::Signer, R::Inputs)>,
+) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
 where
-    R: FirstRound<Verifier> + 'static,
-    Signer: RandomizedDigestSigner<<R::Protocol as Protocol>::Digest, S> + Keypair<VerifyingKey = Verifier>,
-    Verifier: Debug
-        + Clone
-        + Eq
-        + Ord
-        + DigestVerifier<<R::Protocol as Protocol>::Digest, S>
-        + 'static
-        + Serialize
-        + for<'de> Deserialize<'de>
-        + Send
-        + Sync,
-    S: Debug + Clone + Eq + 'static + Serialize + for<'de> Deserialize<'de> + Send + Sync,
+    R: 'static + FirstRound<SP::Verifier>,
+    SP: 'static + SessionParameters,
 {
     let session_id = SessionId::random(rng);
 
@@ -127,7 +104,7 @@ where
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, Signer, Verifier, S>::new::<R>(rng, session_id.clone(), signer, inputs)?;
+        let session = Session::<R::Protocol, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();
