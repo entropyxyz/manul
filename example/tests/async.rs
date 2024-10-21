@@ -3,11 +3,12 @@ extern crate alloc;
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
-    protocol::{Protocol, Round},
+    protocol::Protocol,
     session::{
-        signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId, SessionReport,
+        signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId,
+        SessionParameters, SessionReport,
     },
-    testing::{Signature, Signer, Verifier},
+    testing::{Signer, TestingSessionParams, Verifier},
 };
 use manul_example::simple::{Inputs, Round1};
 use rand::Rng;
@@ -19,16 +20,25 @@ use tokio::{
 use tracing::debug;
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 
-type MessageOut = (Verifier, Verifier, MessageBundle<Signature>);
-type MessageIn = (Verifier, MessageBundle<Signature>);
+struct MessageOut<SP: SessionParameters> {
+    from: SP::Verifier,
+    to: SP::Verifier,
+    message: MessageBundle<SP>,
+}
 
-async fn run_session<P>(
-    tx: mpsc::Sender<MessageOut>,
-    rx: mpsc::Receiver<MessageIn>,
-    session: Session<P, Signer, Verifier, Signature>,
-) -> Result<SessionReport<P, Verifier, Signature>, LocalError>
+struct MessageIn<SP: SessionParameters> {
+    from: SP::Verifier,
+    message: MessageBundle<SP>,
+}
+
+async fn run_session<P, SP>(
+    tx: mpsc::Sender<MessageOut<SP>>,
+    rx: mpsc::Receiver<MessageIn<SP>>,
+    session: Session<P, SP>,
+) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: Protocol + 'static,
+    P: 'static + Protocol,
+    SP: 'static + SessionParameters,
 {
     let rng = &mut OsRng;
 
@@ -58,7 +68,13 @@ where
             // to be added to the accumulator.
             let (message, artifact) = session.make_message(rng, destination)?;
             debug!("{key:?}: sending a message to {destination:?}",);
-            tx.send((key, *destination, message)).await.unwrap();
+            tx.send(MessageOut {
+                from: key.clone(),
+                to: destination.clone(),
+                message,
+            })
+            .await
+            .unwrap();
 
             // This will happen in a host task
             session.add_artifact(&mut accum, artifact)?;
@@ -84,14 +100,14 @@ where
             }
 
             debug!("{key:?}: waiting for a message");
-            let (from, message) = rx.recv().await.unwrap();
+            let incoming = rx.recv().await.unwrap();
 
             // Perform quick checks before proceeding with the verification.
-            let preprocessed = session.preprocess_message(&mut accum, &from, message)?;
+            let preprocessed = session.preprocess_message(&mut accum, &incoming.from, incoming.message)?;
 
             if let Some(preprocessed) = preprocessed {
                 // In production usage, this will happen in a spawned task.
-                debug!("{key:?}: applying a message from {from:?}");
+                debug!("{key:?}: applying a message from {:?}", incoming.from);
                 let processed = session.process_message(rng, preprocessed);
 
                 // This will happen in a host task.
@@ -114,9 +130,14 @@ where
     }
 }
 
-async fn message_dispatcher(txs: BTreeMap<Verifier, mpsc::Sender<MessageIn>>, rx: mpsc::Receiver<MessageOut>) {
+async fn message_dispatcher<SP>(
+    txs: BTreeMap<SP::Verifier, mpsc::Sender<MessageIn<SP>>>,
+    rx: mpsc::Receiver<MessageOut<SP>>,
+) where
+    SP: SessionParameters,
+{
     let mut rx = rx;
-    let mut messages = Vec::<MessageOut>::new();
+    let mut messages = Vec::<MessageOut<SP>>::new();
     loop {
         let msg = match rx.recv().await {
             Some(msg) => msg,
@@ -132,9 +153,15 @@ async fn message_dispatcher(txs: BTreeMap<Verifier, mpsc::Sender<MessageIn>>, rx
             // Pull a random message from the list,
             // to increase the chances that they are delivered out of order.
             let message_idx = rand::thread_rng().gen_range(0..messages.len());
-            let (id_from, id_to, message) = messages.swap_remove(message_idx);
+            let outgoing = messages.swap_remove(message_idx);
 
-            txs[&id_to].send((id_from, message)).await.unwrap();
+            txs[&outgoing.to]
+                .send(MessageIn {
+                    from: outgoing.from,
+                    message: outgoing.message,
+                })
+                .await
+                .unwrap();
 
             // Give up execution so that the tasks could process messages.
             sleep(Duration::from_millis(0)).await;
@@ -146,19 +173,20 @@ async fn message_dispatcher(txs: BTreeMap<Verifier, mpsc::Sender<MessageIn>>, rx
     }
 }
 
-async fn run_nodes<P>(
-    sessions: Vec<Session<P, Signer, Verifier, Signature>>,
-) -> Vec<SessionReport<P, Verifier, Signature>>
+async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: Protocol + Send + 'static,
+    P: 'static + Protocol + Send,
+    SP: 'static + SessionParameters,
     P::Result: Send,
+    SP::Signer: Send,
 {
     let num_parties = sessions.len();
 
-    let (dispatcher_tx, dispatcher_rx) = mpsc::channel::<MessageOut>(100);
+    let (dispatcher_tx, dispatcher_rx) = mpsc::channel::<MessageOut<SP>>(100);
 
-    let channels = (0..num_parties).map(|_| mpsc::channel::<MessageIn>(100));
-    let (txs, rxs): (Vec<mpsc::Sender<MessageIn>>, Vec<mpsc::Receiver<MessageIn>>) = channels.unzip();
+    let channels = (0..num_parties).map(|_| mpsc::channel::<MessageIn<SP>>(100));
+    #[allow(clippy::type_complexity)]
+    let (txs, rxs): (Vec<mpsc::Sender<MessageIn<SP>>>, Vec<mpsc::Receiver<MessageIn<SP>>>) = channels.unzip();
     let tx_map = sessions
         .iter()
         .map(|session| session.verifier())
@@ -204,10 +232,8 @@ async fn async_run() {
             let inputs = Inputs {
                 all_ids: all_ids.clone(),
             };
-            Session::<<Round1<Verifier> as Round<Verifier>>::Protocol, Signer, Verifier, Signature>::new::<
-                Round1<Verifier>,
-            >(&mut OsRng, session_id.clone(), signer, inputs)
-            .unwrap()
+            Session::<_, TestingSessionParams>::new::<Round1<Verifier>>(&mut OsRng, session_id.clone(), signer, inputs)
+                .unwrap()
         })
         .collect::<Vec<_>>();
 

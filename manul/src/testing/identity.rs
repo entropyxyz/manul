@@ -2,6 +2,8 @@ use digest::generic_array::typenum;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
+use crate::session::SessionParameters;
+
 /// A simple signer for testing purposes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Signer(u8);
@@ -83,6 +85,17 @@ impl digest::FixedOutput for Hasher {
 
 impl digest::OutputSizeUser for Hasher {
     type OutputSize = typenum::U8;
+}
+
+/// An implementation of [`SessionParameters`] using the testing signer/verifier types.
+#[derive(Debug, Clone, Copy)]
+pub struct TestingSessionParams;
+
+impl SessionParameters for TestingSessionParams {
+    type Signer = Signer;
+    type Verifier = Verifier;
+    type Signature = Signature;
+    type Digest = Hasher;
 }
 
 #[cfg(test)]

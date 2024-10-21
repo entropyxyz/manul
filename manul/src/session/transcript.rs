@@ -4,22 +4,22 @@ use alloc::{
 };
 use core::fmt::Debug;
 
-use super::{evidence::Evidence, message::SignedMessage, LocalError, RemoteError};
+use super::{evidence::Evidence, message::SignedMessage, session::SessionParameters, LocalError, RemoteError};
 use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
-pub(crate) struct Transcript<P: Protocol, Verifier, S> {
-    echo_broadcasts: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>>,
-    direct_messages: BTreeMap<RoundId, BTreeMap<Verifier, SignedMessage<S, DirectMessage>>>,
-    provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
-    unprovable_errors: BTreeMap<Verifier, RemoteError>,
-    missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
+#[allow(clippy::type_complexity)]
+pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
+    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>>,
+    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<SP::Signature, DirectMessage>>>,
+    provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
+    unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
+    missing_messages: BTreeMap<RoundId, BTreeSet<SP::Verifier>>,
 }
 
-impl<P, Verifier, S> Transcript<P, Verifier, S>
+impl<P, SP> Transcript<P, SP>
 where
     P: Protocol,
-    Verifier: Debug + Clone + Ord,
-    S: Clone,
+    SP: SessionParameters,
 {
     pub fn new() -> Self {
         Self {
@@ -34,11 +34,11 @@ where
     pub fn update(
         self,
         round_id: RoundId,
-        echo_broadcasts: BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>,
-        direct_messages: BTreeMap<Verifier, SignedMessage<S, DirectMessage>>,
-        provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
-        unprovable_errors: BTreeMap<Verifier, RemoteError>,
-        missing_messages: BTreeSet<Verifier>,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>,
+        direct_messages: BTreeMap<SP::Verifier, SignedMessage<SP::Signature, DirectMessage>>,
+        provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
+        unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
+        missing_messages: BTreeSet<SP::Verifier>,
     ) -> Result<Self, LocalError> {
         let mut all_echo_broadcasts = self.echo_broadcasts;
         match all_echo_broadcasts.entry(round_id) {
@@ -100,8 +100,8 @@ where
     pub fn get_echo_broadcast(
         &self,
         round_id: RoundId,
-        from: &Verifier,
-    ) -> Result<SignedMessage<S, EchoBroadcast>, LocalError> {
+        from: &SP::Verifier,
+    ) -> Result<SignedMessage<SP::Signature, EchoBroadcast>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {round_id:?}")))?
@@ -113,8 +113,8 @@ where
     pub fn get_direct_message(
         &self,
         round_id: RoundId,
-        from: &Verifier,
-    ) -> Result<SignedMessage<S, DirectMessage>, LocalError> {
+        from: &SP::Verifier,
+    ) -> Result<SignedMessage<SP::Signature, DirectMessage>, LocalError> {
         self.direct_messages
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {round_id:?}")))?
@@ -123,14 +123,15 @@ where
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {from:?} in {round_id:?}")))
     }
 
-    pub fn is_banned(&self, from: &Verifier) -> bool {
+    pub fn is_banned(&self, from: &SP::Verifier) -> bool {
         self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn echo_broadcasts(
         &self,
         round_id: RoundId,
-    ) -> Result<BTreeMap<Verifier, SignedMessage<S, EchoBroadcast>>, LocalError> {
+    ) -> Result<BTreeMap<SP::Verifier, SignedMessage<SP::Signature, EchoBroadcast>>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .cloned()
@@ -153,22 +154,23 @@ pub enum SessionOutcome<P: Protocol> {
 }
 
 /// The report of a session execution.
-pub struct SessionReport<P: Protocol, Verifier, S> {
+pub struct SessionReport<P: Protocol, SP: SessionParameters> {
     /// The session outcome.
     pub outcome: SessionOutcome<P>,
     /// The provable errors collected during the execution, as the evidences that can be published to prove them.
-    pub provable_errors: BTreeMap<Verifier, Evidence<P, Verifier, S>>,
+    pub provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     /// The unprovable errors collected during the execution.
-    pub unprovable_errors: BTreeMap<Verifier, RemoteError>,
+    pub unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
     /// The nodes that did not send their messages in time for the corresponding round.
-    pub missing_messages: BTreeMap<RoundId, BTreeSet<Verifier>>,
+    pub missing_messages: BTreeMap<RoundId, BTreeSet<SP::Verifier>>,
 }
 
-impl<P, Verifier, S> SessionReport<P, Verifier, S>
+impl<P, SP> SessionReport<P, SP>
 where
     P: Protocol,
+    SP: SessionParameters,
 {
-    pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, Verifier, S>) -> Self {
+    pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, SP>) -> Self {
         Self {
             outcome,
             provable_errors: transcript.provable_errors,

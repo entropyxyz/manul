@@ -10,7 +10,7 @@ use manul::{
         LocalError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
     },
     session::{signature::Keypair, SessionId, SessionOutcome},
-    testing::{run_sync, Hasher, Signature, Signer, Verifier},
+    testing::{run_sync, Signer, TestingSessionParams, Verifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -38,8 +38,6 @@ impl Protocol for EmptyProtocol {
     type Result = ();
     type ProtocolError = EmptyProtocolError;
     type CorrectnessProof = ();
-
-    type Digest = Hasher;
 
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
         bincode::serde::encode_to_vec(value, bincode::config::standard())
@@ -206,7 +204,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs_no_echo.clone())
+                run_sync::<EmptyRound<Verifier>, TestingSessionParams>(&mut OsRng, inputs_no_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
@@ -236,7 +234,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs_echo.clone())
+                run_sync::<EmptyRound<Verifier>, TestingSessionParams>(&mut OsRng, inputs_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))

@@ -4,7 +4,6 @@ use core::fmt::Debug;
 use manul::protocol::*;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use sha3::Sha3_256;
 use tracing::debug;
 
 #[derive(Debug)]
@@ -72,8 +71,6 @@ impl Protocol for SimpleProtocol {
     type Result = u8;
     type ProtocolError = SimpleProtocolError;
     type CorrectnessProof = ();
-
-    type Digest = Sha3_256;
 
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
         bincode::serde::encode_to_vec(value, bincode::config::standard())
@@ -359,7 +356,7 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, Signature, Signer, Verifier},
+        testing::{run_sync, Signer, TestingSessionParams, Verifier},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
@@ -389,7 +386,7 @@ mod tests {
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<Verifier>, Signer, Verifier, Signature>(&mut OsRng, inputs).unwrap()
+            run_sync::<Round1<Verifier>, TestingSessionParams>(&mut OsRng, inputs).unwrap()
         });
 
         for (_id, report) in reports {

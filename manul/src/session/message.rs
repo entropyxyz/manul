@@ -5,7 +5,10 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use signature::{DigestVerifier, RandomizedDigestSigner};
 
-use super::{session::SessionId, LocalError};
+use super::{
+    session::{SessionId, SessionParameters},
+    LocalError,
+};
 use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
 #[derive(Debug, Clone)]
@@ -53,20 +56,21 @@ impl<S, M> SignedMessage<S, M>
 where
     M: Serialize,
 {
-    pub fn new<P: Protocol, Signer>(
+    pub fn new<P, SP>(
         rng: &mut impl CryptoRngCore,
-        signer: &Signer,
+        signer: &SP::Signer,
         session_id: &SessionId,
         round_id: RoundId,
         message: M,
     ) -> Result<Self, LocalError>
     where
-        Signer: RandomizedDigestSigner<P::Digest, S>,
+        P: Protocol,
+        SP: SessionParameters<Signature = S>,
     {
         let metadata = MessageMetadata::new(session_id, round_id);
         let message_with_metadata = MessageWithMetadata { metadata, message };
         let message_bytes = P::serialize(&message_with_metadata)?;
-        let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = signer
             .try_sign_digest_with_rng(rng, digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
@@ -84,15 +88,16 @@ where
         &self.message_with_metadata.message
     }
 
-    pub(crate) fn verify<P: Protocol, Verifier>(
+    pub(crate) fn verify<P, SP>(
         self,
-        verifier: &Verifier,
+        verifier: &SP::Verifier,
     ) -> Result<VerifiedMessage<S, M>, MessageVerificationError>
     where
-        Verifier: Clone + DigestVerifier<P::Digest, S>,
+        P: Protocol,
+        SP: SessionParameters<Signature = S>,
     {
         let message_bytes = P::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
-        let digest = P::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         if verifier.verify_digest(digest, &self.signature).is_ok() {
             Ok(VerifiedMessage {
                 signature: self.signature,
@@ -131,35 +136,34 @@ impl<S, M> VerifiedMessage<S, M> {
 ///
 /// Note that this is already signed.
 #[derive(Clone, Debug)]
-pub struct MessageBundle<S> {
-    direct_message: SignedMessage<S, DirectMessage>,
-    echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
+pub struct MessageBundle<SP: SessionParameters> {
+    direct_message: SignedMessage<SP::Signature, DirectMessage>,
+    echo_broadcast: Option<SignedMessage<SP::Signature, EchoBroadcast>>,
 }
 
-impl<S> MessageBundle<S>
+impl<SP> MessageBundle<SP>
 where
-    S: PartialEq + Clone,
+    SP: SessionParameters,
 {
-    pub(crate) fn new<P, Signer>(
+    pub(crate) fn new<P>(
         rng: &mut impl CryptoRngCore,
-        signer: &Signer,
+        signer: &SP::Signer,
         session_id: &SessionId,
         round_id: RoundId,
         direct_message: DirectMessage,
-        echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
+        echo_broadcast: Option<SignedMessage<SP::Signature, EchoBroadcast>>,
     ) -> Result<Self, LocalError>
     where
         P: Protocol,
-        Signer: RandomizedDigestSigner<P::Digest, S>,
     {
-        let direct_message = SignedMessage::new::<P, _>(rng, signer, session_id, round_id, direct_message)?;
+        let direct_message = SignedMessage::new::<P, SP>(rng, signer, session_id, round_id, direct_message)?;
         Ok(Self {
             direct_message,
             echo_broadcast,
         })
     }
 
-    pub(crate) fn unify_metadata(self) -> Option<CheckedMessageBundle<S>> {
+    pub(crate) fn unify_metadata(self) -> Option<CheckedMessageBundle<SP>> {
         let metadata = self.direct_message.message_with_metadata.metadata.clone();
         if !self
             .echo_broadcast
@@ -179,28 +183,28 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct CheckedMessageBundle<S> {
+pub(crate) struct CheckedMessageBundle<SP: SessionParameters> {
     metadata: MessageMetadata,
-    direct_message: SignedMessage<S, DirectMessage>,
-    echo_broadcast: Option<SignedMessage<S, EchoBroadcast>>,
+    direct_message: SignedMessage<SP::Signature, DirectMessage>,
+    echo_broadcast: Option<SignedMessage<SP::Signature, EchoBroadcast>>,
 }
 
-impl<S> CheckedMessageBundle<S> {
+impl<SP> CheckedMessageBundle<SP>
+where
+    SP: SessionParameters,
+{
     pub fn metadata(&self) -> &MessageMetadata {
         &self.metadata
     }
 
-    pub fn verify<P: Protocol, Verifier>(
+    pub fn verify<P: Protocol>(
         self,
-        verifier: &Verifier,
-    ) -> Result<VerifiedMessageBundle<Verifier, S>, MessageVerificationError>
-    where
-        Verifier: Clone + DigestVerifier<P::Digest, S>,
-    {
-        let direct_message = self.direct_message.verify::<P, _>(verifier)?;
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessageBundle<SP>, MessageVerificationError> {
+        let direct_message = self.direct_message.verify::<P, SP>(verifier)?;
         let echo_broadcast = self
             .echo_broadcast
-            .map(|echo| echo.verify::<P, _>(verifier))
+            .map(|echo| echo.verify::<P, SP>(verifier))
             .transpose()?;
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),
@@ -212,19 +216,22 @@ impl<S> CheckedMessageBundle<S> {
 }
 
 #[derive(Clone, Debug)]
-pub struct VerifiedMessageBundle<Verifier, S> {
-    from: Verifier,
+pub struct VerifiedMessageBundle<SP: SessionParameters> {
+    from: SP::Verifier,
     metadata: MessageMetadata,
-    direct_message: VerifiedMessage<S, DirectMessage>,
-    echo_broadcast: Option<VerifiedMessage<S, EchoBroadcast>>,
+    direct_message: VerifiedMessage<SP::Signature, DirectMessage>,
+    echo_broadcast: Option<VerifiedMessage<SP::Signature, EchoBroadcast>>,
 }
 
-impl<Verifier, S> VerifiedMessageBundle<Verifier, S> {
+impl<SP> VerifiedMessageBundle<SP>
+where
+    SP: SessionParameters,
+{
     pub(crate) fn metadata(&self) -> &MessageMetadata {
         &self.metadata
     }
 
-    pub(crate) fn from(&self) -> &Verifier {
+    pub(crate) fn from(&self) -> &SP::Verifier {
         &self.from
     }
 
@@ -232,7 +239,13 @@ impl<Verifier, S> VerifiedMessageBundle<Verifier, S> {
         self.direct_message.payload()
     }
 
-    pub(crate) fn into_unverified(self) -> (Option<SignedMessage<S, EchoBroadcast>>, SignedMessage<S, DirectMessage>) {
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn into_unverified(
+        self,
+    ) -> (
+        Option<SignedMessage<SP::Signature, EchoBroadcast>>,
+        SignedMessage<SP::Signature, DirectMessage>,
+    ) {
         let direct_message = self.direct_message.into_unverified();
         let echo_broadcast = self.echo_broadcast.map(|echo| echo.into_unverified());
         (echo_broadcast, direct_message)
