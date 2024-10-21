@@ -36,6 +36,7 @@ impl ProtocolError for SimpleProtocolError {
 
     fn verify_messages_constitute_error(
         &self,
+        deserializer: &Deserializer,
         _echo_broadcast: &Option<EchoBroadcast>,
         direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
@@ -44,12 +45,12 @@ impl ProtocolError for SimpleProtocolError {
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
-                let _message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
+                let _message = direct_message.deserialize::<Round1Message>(deserializer)?;
                 // Message contents would be checked here
                 Ok(())
             }
             SimpleProtocolError::Round2InvalidPosition => {
-                let _r1_message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
+                let _r1_message = direct_message.deserialize::<Round1Message>(deserializer)?;
                 let r1_echos_serialized = combined_echos
                     .get(&RoundId::new(1))
                     .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
@@ -57,7 +58,7 @@ impl ProtocolError for SimpleProtocolError {
                 // Deserialize the echos
                 let _r1_echos = r1_echos_serialized
                     .iter()
-                    .map(|echo| echo.deserialize::<SimpleProtocol, Round1Echo>())
+                    .map(|echo| echo.deserialize::<Round1Echo>(deserializer))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 // Message contents would be checked here
@@ -72,23 +73,13 @@ impl Protocol for SimpleProtocol {
     type ProtocolError = SimpleProtocolError;
     type CorrectnessProof = ();
 
-    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
-        bincode::serde::encode_to_vec(value, bincode::config::standard())
-            .map(|vec| vec.into())
-            .map_err(|err| LocalError::new(err.to_string()))
-    }
-
-    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError> {
-        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
-            .map_err(|err| DeserializationError::new(err.to_string()))
-    }
-
     fn verify_direct_message_is_invalid(
+        deserializer: &Deserializer,
         round_id: RoundId,
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         if round_id == RoundId::new(1) {
-            return message.verify_is_invalid::<Self, Round1Message>();
+            return message.verify_is_invalid::<Round1Message>(deserializer);
         }
         Err(MessageValidationError::InvalidEvidence("Invalid round number".into()))?
     }
@@ -169,19 +160,24 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
 
-        Some(Self::serialize_echo_broadcast(message))
+        Some(EchoBroadcast::new(serializer, message))
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
@@ -190,7 +186,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = Self::serialize_direct_message(message)?;
+        let dm = DirectMessage::new(serializer, message)?;
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }
@@ -198,13 +194,14 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
+        let message = direct_message.deserialize::<Round1Message>(deserializer)?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -272,19 +269,24 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Option<Result<EchoBroadcast, LocalError>> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
 
-        Some(Self::serialize_echo_broadcast(message))
+        Some(EchoBroadcast::new(serializer, message))
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
@@ -293,7 +295,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = Self::serialize_direct_message(message)?;
+        let dm = DirectMessage::new(serializer, message)?;
         let artifact = Artifact::empty();
         Ok((dm, artifact))
     }
@@ -301,13 +303,14 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         from: &Id,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
+        let message = direct_message.deserialize::<Round1Message>(deserializer)?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -362,6 +365,7 @@ mod tests {
     use tracing_subscriber::EnvFilter;
 
     use super::{Inputs, Round1};
+    use crate::Bincode;
 
     #[test]
     fn round() {
@@ -386,7 +390,7 @@ mod tests {
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<Verifier>, TestingSessionParams>(&mut OsRng, inputs).unwrap()
+            run_sync::<Round1<Verifier>, TestingSessionParams<Bincode>>(&mut OsRng, inputs).unwrap()
         });
 
         for (_id, report) in reports {

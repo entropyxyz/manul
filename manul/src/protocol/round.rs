@@ -12,12 +12,12 @@ use serde_encoded_bytes::{Base64, SliceLike};
 
 use super::{
     errors::{
-        DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError,
-        MessageValidationError, ProtocolValidationError, ReceiveError,
+        DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
+        ProtocolValidationError, ReceiveError,
     },
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
 };
-use crate::session::SessionId;
+use crate::session::{Deserializer, Serializer, SessionId};
 
 /// Possible successful outcomes of [`Round::finalize`].
 pub enum FinalizeOutcome<Id, P: Protocol> {
@@ -129,17 +129,12 @@ pub trait Protocol: Debug + Sized {
     /// It proves that the node did its job correctly, to be adjudicated by a third party.
     type CorrectnessProof: Send + Serialize + for<'de> Deserialize<'de>;
 
-    /// Serializes the given object into a bytestring.
-    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
-
-    /// Tries to deserialize the given bytestring as an object of type `T`.
-    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError>;
-
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
     ///
     /// Normally one would use [`DirectMessage::verify_is_invalid`] when implementing this.
     fn verify_direct_message_is_invalid(
+        #[allow(unused_variables)] deserializer: &Deserializer,
         round_id: RoundId,
         #[allow(unused_variables)] message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
@@ -153,6 +148,7 @@ pub trait Protocol: Debug + Sized {
     ///
     /// Normally one would use [`EchoBroadcast::verify_is_invalid`] when implementing this.
     fn verify_echo_broadcast_is_invalid(
+        #[allow(unused_variables)] deserializer: &Deserializer,
         round_id: RoundId,
         #[allow(unused_variables)] message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
@@ -205,6 +201,7 @@ pub trait ProtocolError: Debug + Clone + Send {
     /// as requested by [`required_combined_echos`](`Self::required_combined_echos`).
     fn verify_messages_constitute_error(
         &self,
+        deserializer: &Deserializer,
         echo_broadcast: &Option<EchoBroadcast>,
         direct_message: &DirectMessage,
         echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
@@ -219,15 +216,18 @@ pub struct DirectMessage(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 impl DirectMessage {
     /// Creates a new serialized direct message.
-    pub fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
-        P::serialize(message).map(Self)
+    pub fn new<T: Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
+        serializer.serialize(message).map(Self)
     }
 
     /// Returns `Ok(())` if the message cannot be deserialized into `T`.
     ///
     /// This is intended to be used in the implementations of [`Protocol::verify_direct_message_is_invalid`].
-    pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
-        if self.deserialize::<P, T>().is_err() {
+    pub fn verify_is_invalid<T: for<'de> Deserialize<'de>>(
+        &self,
+        deserializer: &Deserializer,
+    ) -> Result<(), MessageValidationError> {
+        if self.deserialize::<T>(deserializer).is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::InvalidEvidence(
@@ -237,8 +237,11 @@ impl DirectMessage {
     }
 
     /// Deserializes the direct message.
-    pub fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, DirectMessageError> {
-        P::deserialize(&self.0).map_err(DirectMessageError::new)
+    pub fn deserialize<T: for<'de> Deserialize<'de>>(
+        &self,
+        deserializer: &Deserializer,
+    ) -> Result<T, DirectMessageError> {
+        deserializer.deserialize(&self.0).map_err(DirectMessageError::new)
     }
 }
 
@@ -248,15 +251,18 @@ pub struct EchoBroadcast(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 impl EchoBroadcast {
     /// Creates a new serialized echo broadcast.
-    pub fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
-        P::serialize(message).map(Self)
+    pub fn new<T: Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
+        serializer.serialize(message).map(Self)
     }
 
     /// Returns `Ok(())` if the message cannot be deserialized into `T`.
     ///
     /// This is intended to be used in the implementations of [`Protocol::verify_direct_message_is_invalid`].
-    pub fn verify_is_invalid<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
-        if self.deserialize::<P, T>().is_err() {
+    pub fn verify_is_invalid<T: for<'de> Deserialize<'de>>(
+        &self,
+        deserializer: &Deserializer,
+    ) -> Result<(), MessageValidationError> {
+        if self.deserialize::<T>(deserializer).is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::InvalidEvidence(
@@ -266,8 +272,11 @@ impl EchoBroadcast {
     }
 
     /// Deserializes the echo broadcast.
-    pub fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, EchoBroadcastError> {
-        P::deserialize(&self.0).map_err(EchoBroadcastError::new)
+    pub fn deserialize<T: for<'de> Deserialize<'de>>(
+        &self,
+        deserializer: &Deserializer,
+    ) -> Result<T, EchoBroadcastError> {
+        deserializer.deserialize(&self.0).map_err(EchoBroadcastError::new)
     }
 }
 
@@ -389,6 +398,7 @@ pub trait Round<Id>: 'static + Send + Sync {
     fn make_direct_message(
         &self,
         rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Artifact), LocalError>;
 
@@ -402,6 +412,7 @@ pub trait Round<Id>: 'static + Send + Sync {
     fn make_echo_broadcast(
         &self,
         #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
+        #[allow(unused_variables)] serializer: &Serializer,
     ) -> Option<Result<EchoBroadcast, LocalError>> {
         None
     }
@@ -413,6 +424,7 @@ pub trait Round<Id>: 'static + Send + Sync {
     fn receive_message(
         &self,
         rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         from: &Id,
         echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
@@ -434,16 +446,4 @@ pub trait Round<Id>: 'static + Send + Sync {
     /// The execution layer will not call [`finalize`](`Self::finalize`) until all these nodes have responded
     /// (and the corresponding [`receive_message`](`Self::receive_message`) finished successfully).
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
-
-    /// A convenience method to create an [`EchoBroadcast`] object
-    /// to return in [`make_echo_broadcast`](`Self::make_echo_broadcast`).
-    fn serialize_echo_broadcast(message: impl Serialize) -> Result<EchoBroadcast, LocalError> {
-        EchoBroadcast::new::<Self::Protocol, _>(message)
-    }
-
-    /// A convenience method to create a [`DirectMessage`] object
-    /// to return in [`make_direct_message`](`Self::make_direct_message`).
-    fn serialize_direct_message(message: impl Serialize) -> Result<DirectMessage, LocalError> {
-        DirectMessage::new::<Self::Protocol, _>(message)
-    }
 }

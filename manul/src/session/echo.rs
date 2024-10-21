@@ -12,7 +12,7 @@ use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessage},
-    session::SessionParameters,
+    session::{Deserializer, Serializer, SessionParameters},
     LocalError,
 };
 use crate::{
@@ -101,6 +101,7 @@ where
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
         destination: &SP::Verifier,
     ) -> Result<(DirectMessage, Artifact), LocalError> {
         debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
@@ -117,7 +118,7 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_messages: echo_messages.into(),
         };
-        let dm = DirectMessage::new::<P, _>(&message)?;
+        let dm = DirectMessage::new(serializer, &message)?;
         Ok((dm, Artifact::empty()))
     }
 
@@ -128,13 +129,14 @@ where
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         from: &SP::Verifier,
         _echo_broadcast: Option<EchoBroadcast>,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
-        let message = direct_message.deserialize::<P, EchoRoundMessage<SP>>()?;
+        let message = direct_message.deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.
@@ -181,7 +183,7 @@ where
                 continue;
             }
 
-            let verified_echo = match echo.clone().verify::<P, SP>(sender) {
+            let verified_echo = match echo.clone().verify::<SP>(sender) {
                 Ok(echo) => echo,
                 Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.

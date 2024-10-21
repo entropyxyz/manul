@@ -13,7 +13,10 @@ mod transcript;
 
 pub use crate::protocol::{LocalError, RemoteError};
 pub use message::MessageBundle;
-pub use session::{CanFinalize, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters};
+pub use session::{
+    CanFinalize, Deserializer, Format, RoundAccumulator, RoundOutcome, Serializer, Session, SessionId,
+    SessionParameters,
+};
 pub use transcript::{SessionOutcome, SessionReport};
 
 pub(crate) use echo::EchoRoundError;
