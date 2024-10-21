@@ -28,7 +28,7 @@ impl RemoteError {
     }
 }
 
-/// An error that can be returned from [`Round::receive_message`].
+/// An error that can be returned from [`Round::receive_message`](`super::Round::receive_message`).
 #[derive(Debug)]
 pub struct ReceiveError<Id, P: Protocol>(pub(crate) ReceiveErrorType<Id, P>);
 
@@ -113,7 +113,7 @@ where
     }
 }
 
-/// An error that can occur during [`Round::finalize`].
+/// An error that can occur during [`Round::finalize`](`super::Round::finalize`).
 pub enum FinalizeError<P: Protocol> {
     /// A local error, usually indicating a bug in the implementation.
     Local(LocalError),
