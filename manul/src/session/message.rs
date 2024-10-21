@@ -7,29 +7,27 @@ use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, RandomizedDigestSigner};
 
 use super::{
-    session::{SessionId, SessionParameters},
+    session::{Format, SessionId, SessionParameters},
     LocalError,
 };
-use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId};
+use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, RoundId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
 
 impl SerializedSignature {
-    pub fn new<P, SP>(signature: &SP::Signature) -> Result<Self, LocalError>
+    pub fn new<SP>(signature: &SP::Signature) -> Result<Self, LocalError>
     where
-        P: Protocol,
         SP: SessionParameters,
     {
-        P::serialize(signature).map(Self)
+        SP::Format::serialize(signature).map(Self)
     }
 
-    pub fn deserialize<P, SP>(&self) -> Result<SP::Signature, DeserializationError>
+    pub fn deserialize<SP>(&self) -> Result<SP::Signature, DeserializationError>
     where
-        P: Protocol,
         SP: SessionParameters,
     {
-        P::deserialize::<SP::Signature>(&self.0)
+        SP::Format::deserialize::<SP::Signature>(&self.0)
     }
 }
 
@@ -81,7 +79,7 @@ impl<M> SignedMessage<M>
 where
     M: Serialize,
 {
-    pub fn new<P, SP>(
+    pub fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
         session_id: &SessionId,
@@ -89,18 +87,17 @@ where
         message: M,
     ) -> Result<Self, LocalError>
     where
-        P: Protocol,
         SP: SessionParameters,
     {
         let metadata = MessageMetadata::new(session_id, round_id);
         let message_with_metadata = MessageWithMetadata { metadata, message };
-        let message_bytes = P::serialize(&message_with_metadata)?;
+        let message_bytes = SP::Format::serialize(&message_with_metadata)?;
         let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = signer
             .try_sign_digest_with_rng(rng, digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
         Ok(Self {
-            signature: SerializedSignature::new::<P, SP>(&signature)?,
+            signature: SerializedSignature::new::<SP>(&signature)?,
             message_with_metadata,
         })
     }
@@ -113,16 +110,16 @@ where
         &self.message_with_metadata.message
     }
 
-    pub(crate) fn verify<P, SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<M>, MessageVerificationError>
+    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<M>, MessageVerificationError>
     where
-        P: Protocol,
         SP: SessionParameters,
     {
-        let message_bytes = P::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
+        let message_bytes =
+            SP::Format::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
         let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = self
             .signature
-            .deserialize::<P, SP>()
+            .deserialize::<SP>()
             .map_err(|_| MessageVerificationError::InvalidSignature)?;
         if verifier.verify_digest(digest, &signature).is_ok() {
             Ok(VerifiedMessage {
@@ -174,7 +171,7 @@ pub struct MessageBundle {
 }
 
 impl MessageBundle {
-    pub(crate) fn new<P, SP>(
+    pub(crate) fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
         session_id: &SessionId,
@@ -184,10 +181,9 @@ impl MessageBundle {
         normal_broadcast: SignedMessage<NormalBroadcast>,
     ) -> Result<Self, LocalError>
     where
-        P: Protocol,
         SP: SessionParameters,
     {
-        let direct_message = SignedMessage::new::<P, SP>(rng, signer, session_id, round_id, direct_message)?;
+        let direct_message = SignedMessage::new::<SP>(rng, signer, session_id, round_id, direct_message)?;
         Ok(Self {
             direct_message,
             echo_broadcast,
@@ -231,14 +227,14 @@ impl CheckedMessageBundle {
         &self.metadata
     }
 
-    pub fn verify<P, SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageBundle<SP>, MessageVerificationError>
+    pub fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageBundle<SP>, MessageVerificationError>
     where
-        P: Protocol,
         SP: SessionParameters,
     {
-        let direct_message = self.direct_message.verify::<P, SP>(verifier)?;
-        let echo_broadcast = self.echo_broadcast.verify::<P, SP>(verifier)?;
-        let normal_broadcast = self.normal_broadcast.verify::<P, SP>(verifier)?;
+        let direct_message = self.direct_message.verify::<SP>(verifier)?;
+        let echo_broadcast = self.echo_broadcast.verify::<SP>(verifier)?;
+        let normal_broadcast = self.normal_broadcast.verify::<SP>(verifier)?;
+
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),
             metadata: self.metadata,

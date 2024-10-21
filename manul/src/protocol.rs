@@ -16,6 +16,7 @@ mod message;
 mod object_safe;
 mod round;
 
+pub use crate::session::{Deserializer, Serializer, SessionId};
 pub use errors::{
     DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
     NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,

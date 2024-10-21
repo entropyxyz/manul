@@ -10,7 +10,7 @@ use manul::{
         LocalError, NormalBroadcast, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
         ReceiveError, Round, RoundId,
     },
-    session::{signature::Keypair, SessionOutcome},
+    session::{signature::Keypair, Deserializer, Format, Serializer, SessionOutcome},
     testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -25,6 +25,7 @@ pub struct EmptyProtocolError;
 impl ProtocolError for EmptyProtocolError {
     fn verify_messages_constitute_error(
         &self,
+        _deserializer: &Deserializer,
         _echo_broadcast: &EchoBroadcast,
         _normal_broadcast: &NormalBroadcast,
         _direct_message: &DirectMessage,
@@ -37,11 +38,10 @@ impl ProtocolError for EmptyProtocolError {
     }
 }
 
-impl Protocol for EmptyProtocol {
-    type Result = ();
-    type ProtocolError = EmptyProtocolError;
-    type CorrectnessProof = ();
+#[derive(Debug)]
+pub struct Bincode;
 
+impl Format for Bincode {
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
         bincode::serde::encode_to_vec(value, bincode::config::standard())
             .map(|vec| vec.into())
@@ -52,6 +52,12 @@ impl Protocol for EmptyProtocol {
         bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
             .map_err(|err| DeserializationError::new(err.to_string()))
     }
+}
+
+impl Protocol for EmptyProtocol {
+    type Result = ();
+    type ProtocolError = EmptyProtocolError;
+    type CorrectnessProof = ();
 }
 
 #[derive(Debug)]
@@ -111,9 +117,13 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         &self.inputs.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
-            Self::serialize_echo_broadcast(Round1EchoBroadcast)
+            EchoBroadcast::new(serializer, Round1EchoBroadcast)
         } else {
             Ok(EchoBroadcast::none())
         }
@@ -122,9 +132,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
     fn make_direct_message_with_artifact(
         &self,
         _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
         _destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = Self::serialize_direct_message(Round1DirectMessage)?;
+        let dm = DirectMessage::new(serializer, Round1DirectMessage)?;
         let artifact = Artifact::new(Round1Artifact);
         Ok((dm, Some(artifact)))
     }
@@ -132,18 +143,19 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         _from: &Id,
         echo_broadcast: EchoBroadcast,
         normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         if self.inputs.echo {
-            let _echo_broadcast = echo_broadcast.deserialize::<EmptyProtocol, Round1EchoBroadcast>()?;
+            let _echo_broadcast = echo_broadcast.deserialize::<Round1EchoBroadcast>(deserializer)?;
         } else {
             echo_broadcast.assert_is_none()?;
         }
         normal_broadcast.assert_is_none()?;
-        let _direct_message = direct_message.deserialize::<EmptyProtocol, Round1DirectMessage>()?;
+        let _direct_message = direct_message.deserialize::<Round1DirectMessage>(deserializer)?;
         Ok(Payload::new(Round1Payload))
     }
 
@@ -211,12 +223,13 @@ fn bench_empty_rounds(c: &mut Criterion) {
 
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
-            assert!(
-                run_sync::<EmptyRound<TestVerifier>, TestSessionParams>(&mut OsRng, inputs_no_echo.clone())
-                    .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+            assert!(run_sync::<EmptyRound<TestVerifier>, TestSessionParams<Bincode>>(
+                &mut OsRng,
+                inputs_no_echo.clone()
             )
+            .unwrap()
+            .values()
+            .all(|report| matches!(report.outcome, SessionOutcome::Result(_))))
         })
     });
 
@@ -242,7 +255,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<TestVerifier>, TestSessionParams>(&mut OsRng, inputs_echo.clone())
+                run_sync::<EmptyRound<TestVerifier>, TestSessionParams<Bincode>>(&mut OsRng, inputs_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))

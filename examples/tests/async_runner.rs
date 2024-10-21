@@ -12,7 +12,10 @@ use manul::{
     },
     testing::{TestSessionParams, TestSigner},
 };
-use manul_example::simple::{Inputs, Round1, SimpleProtocol};
+use manul_example::{
+    simple::{Inputs, Round1, SimpleProtocol},
+    Bincode,
+};
 use rand::Rng;
 use rand_core::OsRng;
 use tokio::{
@@ -241,7 +244,7 @@ where
 #[tokio::test]
 async fn async_run() {
     // The kind of Session we need to run the `SimpleProtocol`.
-    type SimpleSession = Session<SimpleProtocol, TestSessionParams>;
+    type SimpleSession = Session<SimpleProtocol, TestSessionParams<Bincode>>;
 
     // Create 4 parties
     let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
@@ -249,7 +252,7 @@ async fn async_run() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let session_id = SessionId::random::<TestSessionParams>(&mut OsRng);
+    let session_id = SessionId::random::<TestSessionParams<Bincode>>(&mut OsRng);
 
     // Create 4 `Session`s
     let sessions = signers
