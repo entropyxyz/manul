@@ -281,6 +281,10 @@ where
         let verified_message = match checked_message.verify::<P, SP>(from) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
+                accum.register_unprovable_error(from, RemoteError::new("The signature could not be deserialized"))?;
+                return Ok(None);
+            }
+            Err(MessageVerificationError::SignatureMismatch) => {
                 accum.register_unprovable_error(from, RemoteError::new("Message verification failed"))?;
                 return Ok(None);
             }

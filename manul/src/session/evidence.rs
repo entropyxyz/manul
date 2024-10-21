@@ -29,6 +29,9 @@ impl From<MessageVerificationError> for EvidenceError {
         match error {
             MessageVerificationError::Local(error) => Self::Local(error),
             MessageVerificationError::InvalidSignature => Self::InvalidEvidence("Invalid message signature".into()),
+            MessageVerificationError::SignatureMismatch => {
+                Self::InvalidEvidence("The signature does not match the payload".into())
+            }
         }
     }
 }
@@ -259,6 +262,7 @@ where
             Err(MessageVerificationError::Local(error)) => return Err(EvidenceError::Local(error)),
             // The message was indeed incorrectly signed - fault proven
             Err(MessageVerificationError::InvalidSignature) => return Ok(()),
+            Err(MessageVerificationError::SignatureMismatch) => return Ok(()),
         };
 
         // `from` sent us a correctly signed message but from another round or another session.

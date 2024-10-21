@@ -36,7 +36,10 @@ impl SerializedSignature {
 #[derive(Debug, Clone)]
 pub(crate) enum MessageVerificationError {
     Local(LocalError),
+    /// The signature could not be deserialized.
     InvalidSignature,
+    /// The signature does not match the signed payload.
+    SignatureMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,7 +130,7 @@ where
                 message_with_metadata: self.message_with_metadata,
             })
         } else {
-            Err(MessageVerificationError::InvalidSignature)
+            Err(MessageVerificationError::SignatureMismatch)
         }
     }
 }

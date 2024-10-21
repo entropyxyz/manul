@@ -189,6 +189,9 @@ where
                 Err(MessageVerificationError::InvalidSignature) => {
                     return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
                 }
+                Err(MessageVerificationError::SignatureMismatch) => {
+                    return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
+                }
             };
 
             // `from` sent us a correctly signed message but from another round or another session.
