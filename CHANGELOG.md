@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Session` is now generic over `SessionParameters` instead of a bunch of separate types. ([#36])
 - `MessageBundle` is not generic anymore. ([#36])
+- `ProcessedArtifact` is now also generic on `SessionParameters`. ([#37])
 
 
 ### Added
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
 [#36]: https://github.com/entropyxyz/manul/pull/36
+[#37]: https://github.com/entropyxyz/manul/pull/37
 
 
 ## [0.0.1] - 2024-10-12
