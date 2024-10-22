@@ -11,7 +11,7 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use serde_encoded_bytes::{Base64, SliceLike};
 use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::{
     echo::EchoRound,
@@ -221,11 +221,17 @@ where
     }
 
     /// Performs some preliminary checks on the message to verify its integrity.
-    /// Returns `Ok(Some(…))` if all the messages passes all checks
-    /// Returns `Ok(None)` when something goes wrong, either because there's a problem at the
+    ///
+    /// On the happy path, the return values are as follows:
+    ///     - `Ok(Some(…))` if the message passes all checks.
+    ///     - `Ok(None)` if the message passed all checks, but is not for this round. In this case
+    ///     the preprocessed message is buffered in the "cached" message and applied in the next round.
+    ///
+    /// On the unhappy path, the return values are:
+    ///     - `Ok(None)` when something goes wrong, either because there's a problem at the
     /// sending side or the message was received in the wrong context (e.g. wrong session, wrong
     /// round etc). In most cases a `RemoteError` is added to the `RoundAccumulator`.
-    /// Returns `Err` when there's a error with processesing the data locally (likely bugs or
+    ///     - `Err` means an error while processing the data locally (likely bugs or
     /// deserialization issues).
     pub fn preprocess_message(
         &self,
@@ -234,49 +240,48 @@ where
         message: MessageBundle,
     ) -> Result<Option<VerifiedMessageBundle<SP>>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
-
+        let key = self.verifier();
         if self.transcript.is_banned(from) || accum.is_banned(from) {
+            trace!("{key:?} Banned.");
             return Ok(None);
         }
 
         let checked_message = match message.unify_metadata() {
             Some(checked_message) => checked_message,
             None => {
-                accum.register_unprovable_error(from, RemoteError::new("Mismatched metadata in bundled messages"))?;
+                let err = "Mismatched metadata in bundled messages.";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
         };
         let message_round_id = checked_message.metadata().round_id();
 
         if checked_message.metadata().session_id() != &self.session_id {
-            accum.register_unprovable_error(
-                from,
-                RemoteError::new("The received message has an incorrect session ID"),
-            )?;
+            let err = "The received message has an incorrect session ID";
+            accum.register_unprovable_error(from, RemoteError::new(err))?;
+            trace!("{key:?} {err}");
             return Ok(None);
         }
 
         if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
-                accum.register_unprovable_error(
-                    from,
-                    RemoteError::new("Message from this party is already being processed"),
-                )?;
+                let err = "Message from this party is already being processed";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
         } else if self.possible_next_rounds.contains(&message_round_id) {
             if accum.message_is_cached(from, message_round_id) {
-                accum.register_unprovable_error(
-                    from,
-                    RemoteError::new(format!("Message for {:?} is already cached", message_round_id)),
-                )?;
+                let err = format!("Message for {:?} is already cached", message_round_id);
+                accum.register_unprovable_error(from, RemoteError::new(&err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
         } else {
-            accum.register_unprovable_error(
-                from,
-                RemoteError::new(format!("Unexpected message round ID: {:?}", message_round_id)),
-            )?;
+            let err = format!("Unexpected message round ID: {:?}", message_round_id);
+            accum.register_unprovable_error(from, RemoteError::new(&err))?;
+            trace!("{key:?} {err}");
             return Ok(None);
         }
 
@@ -285,18 +290,21 @@ where
         let verified_message = match checked_message.verify::<P, SP>(from) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
-                accum.register_unprovable_error(from, RemoteError::new("The signature could not be deserialized"))?;
+                let err = "The signature could not be deserialized.";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
             Err(MessageVerificationError::SignatureMismatch) => {
-                accum.register_unprovable_error(from, RemoteError::new("Message verification failed"))?;
+                let err = "Message verification failed.";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
         };
         debug!(
-            "{:?}: received {:?} message from {:?}",
-            self.verifier(),
+            "{key:?}: Received {:?} message from {:?}",
             verified_message.metadata().round_id(),
             from
         );
@@ -306,12 +314,13 @@ where
             Ok(Some(verified_message))
         } else if self.possible_next_rounds.contains(&message_round_id) {
             debug!(
-                "{:?}: caching message from {:?} for {:?}",
-                self.verifier(),
+                "{key:?}: Caching message from {:?} for {:?}",
                 verified_message.from(),
                 verified_message.metadata().round_id()
             );
             accum.cache_message(verified_message)?;
+            // TODO(dp): this is a bit awkward. It means "all good, but nothing to do here right
+            // now".
             Ok(None)
         } else {
             unreachable!()
@@ -458,6 +467,7 @@ pub enum CanFinalize {
 }
 
 /// A mutable accumulator for collecting the results and errors from processing messages for a single round.
+#[derive(Debug)]
 pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
     expecting_messages_from: BTreeSet<SP::Verifier>,
@@ -507,6 +517,14 @@ where
 
     fn is_banned(&self, from: &SP::Verifier) -> bool {
         self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
+    }
+
+    /// Returns `true` is there are any errors stored.
+    ///
+    /// *Note*: Errors may be registered in a later round so this method returns the information we
+    /// have *thus far* and does not guarantee there will not be errors once the round is finalized.
+    pub fn errors_present(&self) -> bool {
+        !(self.provable_errors.is_empty() || self.unprovable_errors.is_empty())
     }
 
     fn message_is_being_processed(&self, from: &SP::Verifier) -> bool {
@@ -591,7 +609,7 @@ where
 
         let error = match processed.processed {
             Ok(payload) => {
-                let (echo_broadcast, direct_message) = processed.message.into_unverified();
+                let (echo_broadcast, direct_message) = processed.message.into_parts();
                 if let Some(echo) = echo_broadcast {
                     self.echo_broadcasts.insert(from.clone(), echo);
                 }
@@ -604,19 +622,19 @@ where
 
         match error.0 {
             ReceiveErrorType::InvalidDirectMessage(error) => {
-                let (_echo_broadcast, direct_message) = processed.message.into_unverified();
+                let (_echo_broadcast, direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::InvalidEchoBroadcast(error) => {
-                let (echo_broadcast, _direct_message) = processed.message.into_unverified();
+                let (echo_broadcast, _direct_message) = processed.message.into_parts();
                 let echo_broadcast =
                     echo_broadcast.ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Protocol(error) => {
-                let (echo_broadcast, direct_message) = processed.message.into_unverified();
+                let (echo_broadcast, direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_protocol_error(&from, echo_broadcast, direct_message, error, transcript)?;
                 self.register_provable_error(&from, evidence)
             }
@@ -625,7 +643,7 @@ where
                 Ok(())
             }
             ReceiveErrorType::Echo(error) => {
-                let (_echo_broadcast, direct_message) = processed.message.into_unverified();
+                let (_echo_broadcast, direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
                 self.register_provable_error(&from, evidence)
             }
@@ -686,12 +704,12 @@ mod tests {
     #[test]
     fn test_concurrency_bounds() {
         // In order to support parallel message creation and processing we need that
-        // certain generic types could be Send and/or Sync.
+        // certain generic types be Send and/or Sync.
         //
         // Since they are generic, this depends on the exact type parameters supplied by the user,
-        // so if the user does not want parallelism, they may not use Send/Sync generic parameters.
-        // But we want to make sure that if the generic parameters are Send/Sync,
-        // our types are too.
+        // so if the user does not want parallelism, they can use generic parameters that are not
+        // Send/Sync generic parameters. But we want to make sure that if the generic parameters are
+        // Send/Sync, our types are too.
 
         #[derive(Debug)]
         struct DummyProtocol;
