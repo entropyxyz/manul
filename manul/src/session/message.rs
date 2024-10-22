@@ -158,7 +158,9 @@ impl<M> VerifiedMessage<M> {
     }
 }
 
-/// A message bundle to be sent to another node.
+/// A message bundle destined for another node.
+///
+/// During message pre-processing, a `MessageBundle` transitions to a [`CheckedMessageBundle`].
 ///
 /// Note that this is already signed.
 #[derive(Clone, Debug)]
@@ -188,7 +190,6 @@ impl MessageBundle {
     }
 
     pub(crate) fn unify_metadata(self) -> Option<CheckedMessageBundle> {
-        let metadata = self.direct_message.message_with_metadata.metadata.clone();
         if !self
             .echo_broadcast
             .as_ref()
@@ -198,6 +199,7 @@ impl MessageBundle {
             return None;
         }
 
+        let metadata = self.direct_message.message_with_metadata.metadata.clone();
         Some(CheckedMessageBundle {
             metadata,
             direct_message: self.direct_message,
@@ -206,6 +208,10 @@ impl MessageBundle {
     }
 }
 
+/// A `CheckedMessageBundle` is like a [`MessageBundle`] but where we have checked that the metadata
+/// (i.e. SessionId and RoundId) from the Echo message (if any) matches with that of the
+/// [`DirectMessage`].
+/// `CheckedMessageBundle`s can transition to [`VerifiedMessageBundle`].
 #[derive(Clone, Debug)]
 pub(crate) struct CheckedMessageBundle {
     metadata: MessageMetadata,
@@ -237,6 +243,9 @@ impl CheckedMessageBundle {
     }
 }
 
+/// A `VerifiedMessageBundle` is the final evolution of a [`MessageBundle`]. At this point in the
+/// process, the [`DirectMessage`] and an eventual [`EchoBroadcast`] have been fully checked and the
+/// signature on the [`SignedMessage`] from the original [`MessageBundle`] successfully verified.
 #[derive(Clone, Debug)]
 pub struct VerifiedMessageBundle<SP: SessionParameters> {
     from: SP::Verifier,
@@ -261,7 +270,10 @@ where
         self.direct_message.payload()
     }
 
-    pub(crate) fn into_unverified(self) -> (Option<SignedMessage<EchoBroadcast>>, SignedMessage<DirectMessage>) {
+    /// Split the `VerifiedMessage` into its constituent parts: the [`DirectMessage`] and (possibly)
+    /// the [`EchoBroadcast`] (depending on the protocol).
+    /// Consumes `self`.
+    pub(crate) fn into_parts(self) -> (Option<SignedMessage<EchoBroadcast>>, SignedMessage<DirectMessage>) {
         let direct_message = self.direct_message.into_unverified();
         let echo_broadcast = self.echo_broadcast.map(|echo| echo.into_unverified());
         (echo_broadcast, direct_message)
