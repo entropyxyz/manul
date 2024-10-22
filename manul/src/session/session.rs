@@ -221,6 +221,12 @@ where
     }
 
     /// Performs some preliminary checks on the message to verify its integrity.
+    /// Returns `Ok(Some(…))` if all the messages passes all checks
+    /// Returns `Ok(None)` when something goes wrong, either because there's a problem at the
+    /// sending side or the message was received in the wrong context (e.g. wrong session, wrong
+    /// round etc). In most cases a `RemoteError` is added to the `RoundAccumulator`.
+    /// Returns `Err` when there's a error with processesing the data locally (likely bugs or
+    /// deserialization issues).
     pub fn preprocess_message(
         &self,
         accum: &mut RoundAccumulator<P, SP>,
