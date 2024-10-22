@@ -272,6 +272,7 @@ impl EchoBroadcast {
 }
 
 /// Message payload created in [`Round::receive_message`].
+#[derive(Debug)]
 pub struct Payload(pub Box<dyn Any + Send + Sync>);
 
 impl Payload {
@@ -301,6 +302,7 @@ impl Payload {
 }
 
 /// Associated data created alongside a message in [`Round::make_direct_message`].
+#[derive(Debug)]
 pub struct Artifact(pub Box<dyn Any + Send + Sync>);
 
 impl Artifact {
