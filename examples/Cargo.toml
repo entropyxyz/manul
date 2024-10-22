@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 authors = ['Entropy Cryptography <engineering@entropy.xyz>']
 license = "MIT"
-description = "Examples of usage for `manul` crate"
+description = "Usage examples for `manul` crate"
 repository = "https://github.com/entropyxyz/manul/examples"
 readme = "README.md"
 
