@@ -17,9 +17,9 @@ use super::{
 /// to be passed to statically typed round methods.
 struct BoxedRng<'a>(&'a mut dyn CryptoRngCore);
 
-impl<'a> CryptoRng for BoxedRng<'a> {}
+impl CryptoRng for BoxedRng<'_> {}
 
-impl<'a> RngCore for BoxedRng<'a> {
+impl RngCore for BoxedRng<'_> {
     fn next_u32(&mut self) -> u32 {
         self.0.next_u32()
     }

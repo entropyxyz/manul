@@ -19,7 +19,7 @@ use tokio::{
     sync::mpsc,
     time::{sleep, Duration},
 };
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 
 struct MessageOut<SP: SessionParameters> {
