@@ -160,7 +160,7 @@ impl<M> VerifiedMessage<M> {
 
 /// A message bundle destined for another node.
 ///
-/// During message pre-processing, a `MessageBundle` transitions to a [`CheckedMessageBundle`].
+/// During message pre-processing, a `MessageBundle` transitions to a `CheckedMessageBundle`.
 ///
 /// Note that this is already signed.
 #[derive(Clone, Debug)]
