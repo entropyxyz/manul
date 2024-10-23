@@ -48,8 +48,8 @@ where
     let mut rx = rx;
 
     let mut session = session;
-    // Some rounds make use of messages from previous rounds. Such messages are stored here and
-    // applied after the messages for this round are sent.
+    // Some rounds can finalize early and put off sending messages to the next round. Such messages
+    // will be stored here and applied after the messages for this round are sent.
     let mut cached_messages = Vec::new();
 
     let key = session.verifier();
@@ -131,10 +131,7 @@ where
                     session.add_processed_message(&mut accum, processed)?;
                 }
                 None => {
-                    if accum.errors_present() {
-                        warn!("{key:?} Preprocessing was not successful. Check the accumulator for errors.");
-                        trace!("{key:?} Accum={accum:?}")
-                    }
+                    trace!("{key:?} Pre-processing complete. Current state: {accum:?}")
                 }
             }
         }
@@ -243,7 +240,7 @@ where
 
 #[tokio::test]
 async fn async_run() {
-    // Instantiation of the protocol we're running.
+    // The kind of Session we need to run the `SimpleProtocol`.
     type SimpleSession = Session<SimpleProtocol, TestingSessionParams>;
 
     // Create 4 parties
