@@ -519,14 +519,6 @@ where
         self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
     }
 
-    /// Returns `true` is there are any errors stored.
-    ///
-    /// *Note*: Errors may be registered in a later round so this method returns the information we
-    /// have *thus far* and does not guarantee there will not be errors once the round is finalized.
-    pub fn errors_present(&self) -> bool {
-        !(self.provable_errors.is_empty() || self.unprovable_errors.is_empty())
-    }
-
     fn message_is_being_processed(&self, from: &SP::Verifier) -> bool {
         self.processing.contains(from)
     }
@@ -708,7 +700,7 @@ mod tests {
         //
         // Since they are generic, this depends on the exact type parameters supplied by the user,
         // so if the user does not want parallelism, they can use generic parameters that are not
-        // Send/Sync generic parameters. But we want to make sure that if the generic parameters are
+        // Send/Sync. But we want to make sure that if the generic parameters are
         // Send/Sync, our types are too.
 
         #[derive(Debug)]
