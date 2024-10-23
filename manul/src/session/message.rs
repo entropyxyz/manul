@@ -270,7 +270,7 @@ where
         self.direct_message.payload()
     }
 
-    /// Split the `VerifiedMessage` into its constituent parts: the [`DirectMessage`] and (possibly)
+    /// Split the `VerifiedMessageBundle` into its constituent parts: the [`DirectMessage`] and (possibly)
     /// the [`EchoBroadcast`] (depending on the protocol).
     /// Consumes `self`.
     pub(crate) fn into_parts(self) -> (Option<SignedMessage<EchoBroadcast>>, SignedMessage<DirectMessage>) {
