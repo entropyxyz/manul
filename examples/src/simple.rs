@@ -359,7 +359,7 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, TestSigner, TestingSessionParams, TestVerifier},
+        testing::{run_sync, TestSigner, TestVerifier, TestingSessionParams},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;

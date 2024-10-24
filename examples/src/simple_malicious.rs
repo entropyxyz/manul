@@ -6,7 +6,7 @@ use manul::{
         Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round, SessionId,
     },
     session::signature::Keypair,
-    testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSigner, TestingSessionParams, TestVerifier},
+    testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSigner, TestVerifier, TestingSessionParams},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
