@@ -31,7 +31,7 @@ pub(crate) enum EchoRoundError<Id> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EchoRoundMessage<SP: SessionParameters> {
-    pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    pub(crate) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
 /// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
@@ -40,7 +40,7 @@ pub struct EchoRoundMessage<SP: SessionParameters> {
 #[derive(Debug)]
 pub struct EchoRound<P, SP: SessionParameters> {
     verifier: SP::Verifier,
-    echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
     destinations: BTreeSet<SP::Verifier>,
     expected_echos: BTreeSet<SP::Verifier>,
     main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
@@ -55,25 +55,25 @@ where
 {
     pub fn new(
         verifier: SP::Verifier,
-        my_echo_message: SignedMessage<EchoBroadcast>,
-        echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+        my_echo_broadcast: SignedMessage<EchoBroadcast>,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
         main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
-        let destinations = echo_messages.keys().cloned().collect::<BTreeSet<_>>();
+        let destinations = echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
 
         // Add our own echo message because we expect it to be sent back from other nodes.
         let mut expected_echos = destinations.clone();
         expected_echos.insert(verifier.clone());
 
-        let mut echo_messages = echo_messages;
-        echo_messages.insert(verifier.clone(), my_echo_message);
+        let mut echo_broadcasts = echo_broadcasts;
+        echo_broadcasts.insert(verifier.clone(), my_echo_broadcast);
 
         debug!("{:?}: initialized echo round with {:?}", verifier, destinations);
         Self {
             verifier,
-            echo_messages,
+            echo_broadcasts,
             destinations,
             expected_echos,
             main_round,
@@ -110,8 +110,8 @@ where
         debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
 
         // Don't send our own message the second time
-        let mut echo_messages = self.echo_messages.clone();
-        if echo_messages.remove(&self.verifier).is_none() {
+        let mut echo_broadcasts = self.echo_broadcasts.clone();
+        if echo_broadcasts.remove(&self.verifier).is_none() {
             return Err(LocalError::new(format!(
                 "Expected {:?} to be in the set of all echo messages",
                 self.verifier
@@ -119,7 +119,7 @@ where
         }
 
         let message = EchoRoundMessage::<SP> {
-            echo_messages: echo_messages.into(),
+            echo_broadcasts: echo_broadcasts.into(),
         };
         let dm = DirectMessage::new::<P, _>(&message)?;
         Ok((dm, Artifact::empty()))
@@ -150,7 +150,7 @@ where
                 self.destinations
             )));
         }
-        let message_keys = message.echo_messages.keys().cloned().collect::<BTreeSet<_>>();
+        let message_keys = message.echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
         if !missing_keys.is_empty() {
@@ -172,12 +172,12 @@ where
         // If there's a difference, it's a provable fault,
         // since we have both messages signed by `from`.
 
-        for (sender, echo) in message.echo_messages.iter() {
+        for (sender, echo) in message.echo_broadcasts.iter() {
             // We expect the key to be there since
-            // `message.echo_messages.keys()` is within `self.destinations`
-            // which was constructed as `self.echo_messages.keys()`.
+            // `message.echo_broadcasts.keys()` is within `self.destinations`
+            // which was constructed as `self.echo_broadcasts.keys()`.
             let previously_received_echo = self
-                .echo_messages
+                .echo_broadcasts
                 .get(sender)
                 .expect("the key is present by construction");
 

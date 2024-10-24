@@ -107,7 +107,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
-    echo_message: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
     possible_next_rounds: BTreeSet<RoundId>,
     transcript: Transcript<P, SP>,
 }
@@ -159,14 +159,14 @@ where
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
-        let echo_message = round
+        let echo_broadcast = round
             .make_echo_broadcast(rng)
             .transpose()?
             .map(|echo| SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), echo))
             .transpose()?;
         let message_destinations = round.message_destinations().clone();
 
-        let possible_next_rounds = if echo_message.is_none() {
+        let possible_next_rounds = if echo_broadcast.is_none() {
             round.possible_next_rounds()
         } else {
             BTreeSet::from([round.id().echo()])
@@ -177,7 +177,7 @@ where
             signer,
             verifier,
             round,
-            echo_message,
+            echo_broadcast,
             possible_next_rounds,
             message_destinations,
             transcript,
@@ -215,7 +215,7 @@ where
             &self.session_id,
             self.round.id(),
             direct_message,
-            self.echo_message.clone(),
+            self.echo_broadcast.clone(),
         )?;
 
         Ok((
@@ -413,10 +413,10 @@ where
             accum.still_have_not_sent_messages,
         )?;
 
-        if let Some(echo_message) = self.echo_message {
+        if let Some(echo_broadcast) = self.echo_broadcast {
             let round = Box::new(ObjectSafeRoundWrapper::new(EchoRound::<P, SP>::new(
                 verifier,
-                echo_message,
+                echo_broadcast,
                 transcript.echo_broadcasts(round_id)?,
                 self.round,
                 accum.payloads,

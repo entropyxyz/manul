@@ -155,7 +155,7 @@ where
                     .map_err(|error| {
                         LocalError::new(format!("Failed to deserialize the given direct message: {:?}", error))
                     })?;
-                let echoed_to_us = deserialized.echo_messages.get(&from).ok_or_else(|| {
+                let echoed_to_us = deserialized.echo_broadcasts.get(&from).ok_or_else(|| {
                     LocalError::new(format!(
                         "The echo message from {from:?} is missing from the echo packet"
                     ))
@@ -248,7 +248,7 @@ where
         let verified = self.direct_message.clone().verify::<P, SP>(verifier)?;
         let deserialized = verified.payload().deserialize::<P, EchoRoundMessage<SP>>()?;
         let invalid_echo = deserialized
-            .echo_messages
+            .echo_broadcasts
             .get(&self.invalid_echo_sender)
             .ok_or_else(|| {
                 EvidenceError::InvalidEvidence(format!(
@@ -419,7 +419,7 @@ where
             let echo_set = DirectMessage::deserialize::<P, EchoRoundMessage<SP>>(verified_combined_echo.payload())?;
 
             let mut verified_echo_set = Vec::new();
-            for (other_verifier, echo_broadcast) in echo_set.echo_messages.iter() {
+            for (other_verifier, echo_broadcast) in echo_set.echo_broadcasts.iter() {
                 let verified_echo_broadcast = echo_broadcast.clone().verify::<P, SP>(other_verifier)?;
                 let metadata = verified_echo_broadcast.metadata();
                 if metadata.session_id() != session_id || metadata.round_id() != *round_id {
