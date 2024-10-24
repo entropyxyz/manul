@@ -34,6 +34,9 @@ pub struct EchoRoundMessage<SP: SessionParameters> {
     pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
+/// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
+/// participants. The execution layer of the protocol guarantees that all participants have received
+/// the messages.
 #[derive(Debug)]
 pub struct EchoRound<P, SP: SessionParameters> {
     verifier: SP::Verifier,

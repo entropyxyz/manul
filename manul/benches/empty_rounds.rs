@@ -10,7 +10,7 @@ use manul::{
         LocalError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
     },
     session::{signature::Keypair, SessionId, SessionOutcome},
-    testing::{run_sync, Signer, TestingSessionParams, Verifier},
+    testing::{run_sync, TestSigner, TestVerifier, TestingSessionParams},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -179,7 +179,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     let nodes = 25;
     let rounds_num = 5;
 
-    let signers = (0..nodes).map(Signer::new).collect::<Vec<_>>();
+    let signers = (0..nodes).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
@@ -205,7 +205,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<Verifier>, TestingSessionParams>(&mut OsRng, inputs_no_echo.clone())
+                run_sync::<EmptyRound<TestVerifier>, TestingSessionParams>(&mut OsRng, inputs_no_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
@@ -235,7 +235,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<Verifier>, TestingSessionParams>(&mut OsRng, inputs_echo.clone())
+                run_sync::<EmptyRound<TestVerifier>, TestingSessionParams>(&mut OsRng, inputs_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))

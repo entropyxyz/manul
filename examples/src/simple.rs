@@ -359,7 +359,7 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, Signer, TestingSessionParams, Verifier},
+        testing::{run_sync, TestSigner, TestingSessionParams, TestVerifier},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn round() {
-        let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
+        let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
         let all_ids = signers
             .iter()
             .map(|signer| signer.verifying_key())
@@ -389,7 +389,7 @@ mod tests {
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<Verifier>, TestingSessionParams>(&mut OsRng, inputs).unwrap()
+            run_sync::<Round1<TestVerifier>, TestingSessionParams>(&mut OsRng, inputs).unwrap()
         });
 
         for (_id, report) in reports {
