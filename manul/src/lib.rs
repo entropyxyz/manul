@@ -10,7 +10,8 @@
     rust_2018_idioms,
     trivial_casts,
     trivial_numeric_casts,
-    unused_qualifications
+    unused_qualifications,
+    missing_debug_implementations
 )]
 
 extern crate alloc;

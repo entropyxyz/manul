@@ -18,11 +18,11 @@ pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
     fn inner_round(self) -> Self::InnerRound;
 }
 
-/// This trait defines overrides of some methods [`RoundWrapper::InnerRound`].
+/// This trait defines overrides of some methods of [`RoundWrapper::InnerRound`].
 ///
-/// Intended to be used with [`round_override`] to generate the [`Round`] implementation.
+/// Intended to be used with the [`round_override`] macro to generate the [`Round`] implementation.
 ///
-/// The blanket implementations default to the methods of the wrapped round.
+/// The blanket implementations delegate to the methods of the wrapped round.
 pub trait RoundOverride<Id>: RoundWrapper<Id> {
     /// An override for [`Round::make_direct_message`].
     fn make_direct_message(
@@ -56,14 +56,15 @@ pub trait RoundOverride<Id>: RoundWrapper<Id> {
 /// A macro for "inheriting" from a [`Round`]-implementing type, and overriding some of its behavior.
 ///
 /// The given `$round` must implement [`RoundOverride`], and is generally some type
-/// with one of its fiels implementing [`Round`].
-/// Then, using the macro will implement [`Round`] for `$round` by delegating non-overridden methods to
+/// with one of its fields implementing [`Round`].
+/// Then, the macro will implement the [`Round`] trait for `$round` by delegating non-overridden methods to
 /// the internal [`RoundWrapper::InnerRound`].
 #[macro_export]
 macro_rules! round_override {
     ($round: ident) => {
         impl<Id> Round<Id> for $round<Id>
         where
+            Id: Debug,
             $round<Id>: RoundOverride<Id>,
         {
             type Protocol =

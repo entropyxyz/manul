@@ -99,12 +99,14 @@ pub struct Inputs<Id> {
     pub all_ids: BTreeSet<Id>,
 }
 
+#[derive(Debug)]
 pub(crate) struct Context<Id> {
     pub(crate) id: Id,
     pub(crate) other_ids: BTreeSet<Id>,
     pub(crate) ids_to_positions: BTreeMap<Id, u8>,
 }
 
+#[derive(Debug)]
 pub struct Round1<Id> {
     pub(crate) context: Context<Id>,
 }
@@ -246,6 +248,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Round2<Id> {
     round1_sum: u8,
     pub(crate) context: Context<Id>,
@@ -356,7 +359,7 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, Signer, TestingSessionParams, Verifier},
+        testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
@@ -365,7 +368,7 @@ mod tests {
 
     #[test]
     fn round() {
-        let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
+        let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
         let all_ids = signers
             .iter()
             .map(|signer| signer.verifying_key())
@@ -386,7 +389,7 @@ mod tests {
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<Verifier>, TestingSessionParams>(&mut OsRng, inputs).unwrap()
+            run_sync::<Round1<TestVerifier>, TestSessionParams>(&mut OsRng, inputs).unwrap()
         });
 
         for (_id, report) in reports {
