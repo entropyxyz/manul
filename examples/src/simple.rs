@@ -99,12 +99,14 @@ pub struct Inputs<Id> {
     pub all_ids: BTreeSet<Id>,
 }
 
+#[derive(Debug)]
 pub(crate) struct Context<Id> {
     pub(crate) id: Id,
     pub(crate) other_ids: BTreeSet<Id>,
     pub(crate) ids_to_positions: BTreeMap<Id, u8>,
 }
 
+#[derive(Debug)]
 pub struct Round1<Id> {
     pub(crate) context: Context<Id>,
 }
@@ -246,6 +248,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Round2<Id> {
     round1_sum: u8,
     pub(crate) context: Context<Id>,

@@ -64,6 +64,7 @@ macro_rules! round_override {
     ($round: ident) => {
         impl<Id> Round<Id> for $round<Id>
         where
+            Id: Debug,
             $round<Id>: RoundOverride<Id>,
         {
             type Protocol =

@@ -3,7 +3,7 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
 };
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
@@ -37,7 +37,7 @@ impl RngCore for BoxedRng<'_> {
 // Since we want `Round` methods to take `&mut impl CryptoRngCore` arguments
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
-pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
+pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
@@ -75,7 +75,9 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
     fn get_type_id(&self) -> core::any::TypeId;
 }
 
-// The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be `Send + Sync`.
+// The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be
+// `Send + Sync`.
+#[derive(Debug)]
 pub(crate) struct ObjectSafeRoundWrapper<Id, R> {
     round: R,
     phantom: PhantomData<fn(Id) -> Id>,
@@ -92,7 +94,7 @@ impl<Id: 'static, R: Round<Id>> ObjectSafeRoundWrapper<Id, R> {
 
 impl<Id, R> ObjectSafeRound<Id> for ObjectSafeRoundWrapper<Id, R>
 where
-    Id: 'static,
+    Id: 'static + Debug,
     R: Round<Id>,
 {
     type Protocol = <R as Round<Id>>::Protocol;

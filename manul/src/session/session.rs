@@ -31,7 +31,7 @@ use crate::protocol::{
 /// is used in the network in which they are running the protocol.
 pub trait SessionParameters {
     /// The signer type.
-    type Signer: RandomizedDigestSigner<Self::Digest, Self::Signature> + Keypair<VerifyingKey = Self::Verifier>;
+    type Signer: Debug + RandomizedDigestSigner<Self::Digest, Self::Signature> + Keypair<VerifyingKey = Self::Verifier>;
 
     /// The hash type that will be used to pre-hash message payloads before signing.
     type Digest: Digest;
@@ -81,6 +81,7 @@ impl AsRef<[u8]> for SessionId {
 
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
+#[derive(Debug)]
 pub struct Session<P: Protocol, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
@@ -93,6 +94,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
 }
 
 /// Possible non-erroneous results of finalizing a round.
+#[derive(Debug)]
 pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
     /// The execution is finished.
     Finished(SessionReport<P, SP>),
@@ -108,7 +110,7 @@ pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
 impl<P, SP> Session<P, SP>
 where
     P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    SP: 'static + SessionParameters + Debug,
 {
     /// Initializes a new session.
     pub fn new<R>(
@@ -657,11 +659,13 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct ProcessedArtifact<SP: SessionParameters> {
     destination: SP::Verifier,
     artifact: Artifact,
 }
 
+#[derive(Debug)]
 pub struct ProcessedMessage<P: Protocol, SP: SessionParameters> {
     message: VerifiedMessageBundle<SP>,
     processed: Result<Payload, ReceiveError<SP::Verifier, P>>,

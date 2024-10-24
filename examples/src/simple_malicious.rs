@@ -26,6 +26,7 @@ struct MaliciousInputs<Id> {
     behavior: Behavior,
 }
 
+#[derive(Debug)]
 struct MaliciousRound1<Id> {
     round: Round1<Id>,
     behavior: Behavior,
@@ -105,6 +106,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
 
 round_override!(MaliciousRound1);
 
+#[derive(Debug)]
 struct MaliciousRound2<Id> {
     round: Round2<Id>,
     behavior: Behavior,

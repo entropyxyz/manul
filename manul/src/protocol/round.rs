@@ -20,6 +20,7 @@ use super::{
 use crate::session::SessionId;
 
 /// Possible successful outcomes of [`Round::finalize`].
+#[derive(Debug)]
 pub enum FinalizeOutcome<Id, P: Protocol> {
     /// Transition to a new round.
     AnotherRound(AnotherRound<Id, P>),
@@ -29,7 +30,7 @@ pub enum FinalizeOutcome<Id, P: Protocol> {
 
 impl<Id, P> FinalizeOutcome<Id, P>
 where
-    Id: 'static,
+    Id: 'static + Debug,
     P: 'static + Protocol,
 {
     /// A helper method to create an [`AnotherRound`](`Self::AnotherRound`) variant.
@@ -40,11 +41,12 @@ where
 
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
 /// A wrapped new round that may be returned by [`Round::finalize`].
+#[derive(Debug)]
 pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = P>>);
 
 impl<Id, P> AnotherRound<Id, P>
 where
-    Id: 'static,
+    Id: 'static + Debug,
     P: 'static + Protocol,
 {
     /// Wraps an object implementing [`Round`].
@@ -119,7 +121,7 @@ impl RoundId {
 /// A distributed protocol.
 pub trait Protocol: Debug + Sized {
     /// The successful result of an execution of this protocol.
-    type Result;
+    type Result: Debug;
 
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
     type ProtocolError: ProtocolError + Serialize + for<'de> Deserialize<'de>;
@@ -127,7 +129,7 @@ pub trait Protocol: Debug + Sized {
     /// An object of this type will be returned when an unattributable error happens during [`Round::finalize`].
     ///
     /// It proves that the node did its job correctly, to be adjudicated by a third party.
-    type CorrectnessProof: Send + Serialize + for<'de> Deserialize<'de>;
+    type CorrectnessProof: Send + Serialize + for<'de> Deserialize<'de> + Debug;
 
     /// Serializes the given object into a bytestring.
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
@@ -360,7 +362,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id>: 'static + Send + Sync {
+pub trait Round<Id>: 'static + Send + Sync + Debug {
     /// The protocol this round is a part of.
     type Protocol: Protocol;
 

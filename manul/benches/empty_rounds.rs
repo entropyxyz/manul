@@ -51,12 +51,13 @@ impl Protocol for EmptyProtocol {
     }
 }
 
+#[derive(Debug)]
 struct EmptyRound<Id> {
     round_counter: u8,
     inputs: Inputs<Id>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Inputs<Id> {
     rounds_num: u8,
     echo: bool,

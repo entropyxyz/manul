@@ -7,6 +7,7 @@ use core::fmt::Debug;
 use super::{evidence::Evidence, message::SignedMessage, session::SessionParameters, LocalError, RemoteError};
 use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
 
+#[derive(Debug)]
 pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
     echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>>,
     direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>>,
@@ -152,6 +153,7 @@ pub enum SessionOutcome<P: Protocol> {
 }
 
 /// The report of a session execution.
+#[derive(Debug)]
 pub struct SessionReport<P: Protocol, SP: SessionParameters> {
     /// The session outcome.
     pub outcome: SessionOutcome<P>,
