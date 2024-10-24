@@ -10,7 +10,7 @@ use manul::{
         signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId,
         SessionParameters, SessionReport,
     },
-    testing::{TestSigner, TestingSessionParams},
+    testing::{TestSessionParams, TestSigner},
 };
 use manul_example::simple::{Inputs, Round1, SimpleProtocol};
 use rand::Rng;
@@ -241,7 +241,7 @@ where
 #[tokio::test]
 async fn async_run() {
     // The kind of Session we need to run the `SimpleProtocol`.
-    type SimpleSession = Session<SimpleProtocol, TestingSessionParams>;
+    type SimpleSession = Session<SimpleProtocol, TestSessionParams>;
 
     // Create 4 parties
     let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();

@@ -359,7 +359,7 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, TestSigner, TestVerifier, TestingSessionParams},
+        testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
@@ -389,7 +389,7 @@ mod tests {
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<TestVerifier>, TestingSessionParams>(&mut OsRng, inputs).unwrap()
+            run_sync::<Round1<TestVerifier>, TestSessionParams>(&mut OsRng, inputs).unwrap()
         });
 
         for (_id, report) in reports {

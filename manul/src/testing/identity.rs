@@ -89,9 +89,9 @@ impl digest::OutputSizeUser for TestHasher {
 
 /// An implementation of [`SessionParameters`] using the testing signer/verifier types.
 #[derive(Debug, Clone, Copy)]
-pub struct TestingSessionParams;
+pub struct TestSessionParams;
 
-impl SessionParameters for TestingSessionParams {
+impl SessionParameters for TestSessionParams {
     type Signer = TestSigner;
     type Verifier = TestVerifier;
     type Signature = TestSignature;

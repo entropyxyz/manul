@@ -694,7 +694,7 @@ mod tests {
             DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
             ProtocolValidationError, RoundId,
         },
-        testing::TestingSessionParams,
+        testing::TestSessionParams,
     };
 
     #[test]
@@ -746,15 +746,15 @@ mod tests {
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task
         // to run the loop there.
-        assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Send));
+        assert!(impls!(Session<DummyProtocol, TestSessionParams>: Send));
 
         // This is needed so that message processing offloaded to a task could use `&Session`.
-        assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Sync));
+        assert!(impls!(Session<DummyProtocol, TestSessionParams>: Sync));
 
         // These objects are sent to/from message processing tasks
         assert!(impls!(MessageBundle: Send));
-        assert!(impls!(ProcessedArtifact<TestingSessionParams>: Send));
-        assert!(impls!(VerifiedMessageBundle<TestingSessionParams>: Send));
-        assert!(impls!(ProcessedMessage<DummyProtocol, TestingSessionParams>: Send));
+        assert!(impls!(ProcessedArtifact<TestSessionParams>: Send));
+        assert!(impls!(VerifiedMessageBundle<TestSessionParams>: Send));
+        assert!(impls!(ProcessedMessage<DummyProtocol, TestSessionParams>: Send));
     }
 }
