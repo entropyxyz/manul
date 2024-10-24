@@ -99,7 +99,7 @@ where
     R: 'static + FirstRound<SP::Verifier>,
     SP: 'static + SessionParameters + Debug,
 {
-    let session_id = SessionId::random(rng);
+    let session_id = SessionId::random::<SP>(rng);
 
     let mut messages = Vec::new();
     let mut states = BTreeMap::new();

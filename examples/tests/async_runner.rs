@@ -249,7 +249,7 @@ async fn async_run() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let session_id = SessionId::random(&mut OsRng);
+    let session_id = SessionId::random::<TestSessionParams>(&mut OsRng);
 
     // Create 4 `Session`s
     let sessions = signers
