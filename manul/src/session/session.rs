@@ -16,6 +16,7 @@ use tracing::debug;
 use super::{
     echo::EchoRound,
     evidence::Evidence,
+    format::{Deserializer, Format, Serializer},
     message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle},
     transcript::{SessionOutcome, SessionReport, Transcript},
     LocalError, RemoteError,
@@ -29,7 +30,7 @@ use crate::protocol::{
 ///
 /// These will be generally determined by the user, depending on what signature type
 /// is used in the network in which they are running the protocol.
-pub trait SessionParameters {
+pub trait SessionParameters: 'static {
     /// The signer type.
     type Signer: RandomizedDigestSigner<Self::Digest, Self::Signature> + Keypair<VerifyingKey = Self::Verifier>;
 
@@ -48,6 +49,9 @@ pub trait SessionParameters {
 
     /// The signature type corresponding to [`Signer`](`Self::Signer`) and [`Verifier`](`Self::Verifier`).
     type Signature: Serialize + for<'de> Deserialize<'de>;
+
+    /// The type used to (de)serialize messages.
+    type Format: Format;
 }
 
 /// A session identifier shared between the parties.
@@ -85,6 +89,8 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
     verifier: SP::Verifier,
+    serializer: Serializer,
+    deserializer: Deserializer,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
     echo_message: Option<SignedMessage<EchoBroadcast>>,
@@ -107,8 +113,8 @@ pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> Session<P, SP>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    P: Protocol,
+    SP: SessionParameters,
 {
     /// Initializes a new session.
     pub fn new<R>(
@@ -118,7 +124,8 @@ where
         inputs: R::Inputs,
     ) -> Result<Self, LocalError>
     where
-        R: FirstRound<SP::Verifier> + Round<SP::Verifier, Protocol = P> + 'static,
+        R: FirstRound<SP::Verifier> + Round<SP::Verifier, Protocol = P>,
+        for<'a, 'de> &'a mut <<SP as SessionParameters>::Format as Format>::Des<'de>: serde::Deserializer<'de>,
     {
         let verifier = signer.verifying_key();
         let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(
@@ -127,21 +134,33 @@ where
             verifier.clone(),
             inputs,
         )?));
-        Self::new_for_next_round(rng, session_id, signer, first_round, Transcript::new())
+        let serializer = Serializer::new::<SP::Format>();
+        let deserializer = Deserializer::new::<SP::Format>();
+        Self::new_for_next_round(
+            rng,
+            session_id,
+            signer,
+            serializer,
+            deserializer,
+            first_round,
+            Transcript::new(),
+        )
     }
 
     fn new_for_next_round(
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
         signer: SP::Signer,
+        serializer: Serializer,
+        deserializer: Deserializer,
         round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
         let echo_message = round
-            .make_echo_broadcast(rng)
+            .make_echo_broadcast(rng, &serializer)
             .transpose()?
-            .map(|echo| SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), echo))
+            .map(|echo| SignedMessage::new::<SP>(rng, &signer, &serializer, &session_id, round.id(), echo))
             .transpose()?;
         let message_destinations = round.message_destinations().clone();
 
@@ -155,6 +174,8 @@ where
             session_id,
             signer,
             verifier,
+            serializer,
+            deserializer,
             round,
             echo_message,
             possible_next_rounds,
@@ -186,11 +207,12 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
+        let (direct_message, artifact) = self.round.make_direct_message(rng, &self.serializer, destination)?;
 
-        let bundle = MessageBundle::new::<P, SP>(
+        let bundle = MessageBundle::new::<SP>(
             rng,
             &self.signer,
+            &self.serializer,
             &self.session_id,
             self.round.id(),
             direct_message,
@@ -276,7 +298,7 @@ where
 
         // Verify the signature now
 
-        let verified_message = match checked_message.verify::<P, SP>(from) {
+        let verified_message = match checked_message.verify::<SP>(from, &self.deserializer) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
                 accum.register_unprovable_error(from, RemoteError::new("The signature could not be deserialized"))?;
@@ -322,6 +344,7 @@ where
     ) -> ProcessedMessage<P, SP> {
         let processed = self.round.receive_message(
             rng,
+            &self.deserializer,
             message.from(),
             message.echo_broadcast().cloned(),
             message.direct_message().clone(),
@@ -337,7 +360,7 @@ where
         accum: &mut RoundAccumulator<P, SP>,
         processed: ProcessedMessage<P, SP>,
     ) -> Result<(), LocalError> {
-        accum.add_processed_message(&self.transcript, processed)
+        accum.add_processed_message(&self.deserializer, &self.transcript, processed)
     }
 
     /// Makes an accumulator for a new round.
@@ -387,7 +410,15 @@ where
                 accum.artifacts,
             )));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
+            let session = Session::new_for_next_round(
+                rng,
+                self.session_id,
+                self.signer,
+                self.serializer,
+                self.deserializer,
+                round,
+                transcript,
+            )?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -416,7 +447,15 @@ where
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();
 
-                    let session = Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
+                    let session = Session::new_for_next_round(
+                        rng,
+                        self.session_id,
+                        self.signer,
+                        self.serializer,
+                        self.deserializer,
+                        round,
+                        transcript,
+                    )?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,
@@ -564,6 +603,7 @@ where
 
     fn add_processed_message(
         &mut self,
+        deserializer: &Deserializer,
         transcript: &Transcript<P, SP>,
         processed: ProcessedMessage<P, SP>,
     ) -> Result<(), LocalError> {
@@ -620,7 +660,7 @@ where
             }
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence = Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
+                let evidence = Evidence::new_echo_round_error(&from, deserializer, direct_message, error, transcript)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),
@@ -663,7 +703,7 @@ fn filter_messages<SP: SessionParameters>(
 
 #[cfg(test)]
 mod tests {
-    use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
+    use alloc::{collections::BTreeMap, vec::Vec};
 
     use impls::impls;
     use serde::{Deserialize, Serialize};
@@ -671,10 +711,9 @@ mod tests {
     use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
     use crate::{
         protocol::{
-            DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
-            ProtocolValidationError, RoundId,
+            Deserializer, DirectMessage, EchoBroadcast, Protocol, ProtocolError, ProtocolValidationError, RoundId,
         },
-        testing::TestingSessionParams,
+        testing::{Binary, TestingSessionParams},
     };
 
     #[test]
@@ -696,6 +735,7 @@ mod tests {
         impl ProtocolError for DummyProtocolError {
             fn verify_messages_constitute_error(
                 &self,
+                _deserializer: &Deserializer,
                 _echo_broadcast: &Option<EchoBroadcast>,
                 _direct_message: &DirectMessage,
                 _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
@@ -710,31 +750,21 @@ mod tests {
             type Result = ();
             type ProtocolError = DummyProtocolError;
             type CorrectnessProof = ();
-            fn serialize<T>(_: T) -> Result<Box<[u8]>, LocalError>
-            where
-                T: Serialize,
-            {
-                unimplemented!()
-            }
-            fn deserialize<'de, T>(_: &[u8]) -> Result<T, DeserializationError>
-            where
-                T: Deserialize<'de>,
-            {
-                unimplemented!()
-            }
         }
+
+        type SP = TestingSessionParams<Binary>;
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task
         // to run the loop there.
-        assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Send));
+        assert!(impls!(Session<DummyProtocol, SP>: Send));
 
         // This is needed so that message processing offloaded to a task could use `&Session`.
-        assert!(impls!(Session<DummyProtocol, TestingSessionParams>: Sync));
+        assert!(impls!(Session<DummyProtocol, SP>: Sync));
 
         // These objects are sent to/from message processing tasks
         assert!(impls!(MessageBundle: Send));
-        assert!(impls!(ProcessedArtifact<TestingSessionParams>: Send));
-        assert!(impls!(VerifiedMessageBundle<TestingSessionParams>: Send));
-        assert!(impls!(ProcessedMessage<DummyProtocol, TestingSessionParams>: Send));
+        assert!(impls!(ProcessedArtifact<SP>: Send));
+        assert!(impls!(VerifiedMessageBundle<SP>: Send));
+        assert!(impls!(ProcessedMessage<DummyProtocol, SP>: Send));
     }
 }

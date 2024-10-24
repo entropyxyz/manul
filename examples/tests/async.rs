@@ -10,7 +10,10 @@ use manul::{
     },
     testing::{Signer, TestingSessionParams, Verifier},
 };
-use manul_example::simple::{Inputs, Round1};
+use manul_example::{
+    simple::{Inputs, Round1},
+    Binary,
+};
 use rand::Rng;
 use rand_core::OsRng;
 use tokio::{
@@ -37,8 +40,8 @@ async fn run_session<P, SP>(
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    P: Protocol,
+    SP: SessionParameters,
 {
     let rng = &mut OsRng;
 
@@ -175,8 +178,8 @@ async fn message_dispatcher<SP>(
 
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: 'static + Protocol + Send,
-    SP: 'static + SessionParameters,
+    P: Protocol + Send,
+    SP: SessionParameters,
     P::Result: Send,
     SP::Signer: Send,
 {
@@ -231,8 +234,13 @@ async fn async_run() {
             let inputs = Inputs {
                 all_ids: all_ids.clone(),
             };
-            Session::<_, TestingSessionParams>::new::<Round1<Verifier>>(&mut OsRng, session_id.clone(), signer, inputs)
-                .unwrap()
+            Session::<_, TestingSessionParams<Binary>>::new::<Round1<Verifier>>(
+                &mut OsRng,
+                session_id.clone(),
+                signer,
+                inputs,
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>();
 

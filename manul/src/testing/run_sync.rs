@@ -8,8 +8,8 @@ use tracing::debug;
 use crate::{
     protocol::{FirstRound, Protocol},
     session::{
-        CanFinalize, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
-        SessionReport,
+        CanFinalize, Format, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId,
+        SessionParameters, SessionReport,
     },
 };
 
@@ -96,6 +96,7 @@ pub fn run_sync<R, SP>(
 where
     R: 'static + FirstRound<SP::Verifier>,
     SP: 'static + SessionParameters,
+    for<'a, 'de> &'a mut <<SP as SessionParameters>::Format as Format>::Des<'de>: serde::Deserializer<'de>,
 {
     let session_id = SessionId::random(rng);
 
