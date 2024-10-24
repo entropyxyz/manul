@@ -9,7 +9,7 @@ use core::fmt::Debug;
 use digest::Digest;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use serde_encoded_bytes::{Base64, SliceLike};
+use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
 use tracing::{debug, trace};
 
@@ -52,7 +52,7 @@ pub trait SessionParameters {
 
 /// A session identifier shared between the parties.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct SessionId(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
+pub struct SessionId(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
 
 /// A session ID.
 ///
@@ -61,15 +61,34 @@ pub struct SessionId(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 /// Must be created uniquely for each session execution, otherwise there is a danger of replay attacks.
 impl SessionId {
     /// Creates a random session identifier.
-    pub fn random(rng: &mut impl CryptoRngCore) -> Self {
-        let mut buffer = [0u8; 256];
+    ///
+    /// **Warning:** this should generally be used for testing; creating a random session ID in a centralized way
+    /// usually defeats the purpose of having a distributed protocol.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn random<SP: SessionParameters>(rng: &mut impl CryptoRngCore) -> Self {
+        let mut buffer = digest::Output::<SP::Digest>::default();
         rng.fill_bytes(&mut buffer);
-        Self(buffer.into())
+        Self(buffer.as_ref().into())
     }
 
-    /// Creates a session identifier from the given bytestring.
-    pub fn new(bytes: &[u8]) -> Self {
-        Self(bytes.into())
+    /// Creates a session identifier deterministically from the given bytestring.
+    ///
+    /// Every node executing a session must be given the same session ID.
+    ///
+    /// **Warning:** make sure the bytestring you provide will not be reused within your application,
+    /// and cannot be predicted in advance.
+    /// Session ID collisions will affect error attribution and evidence verification.
+    ///
+    /// In a blockchain setting, it may be some combination of the current block hash with the public parameters
+    /// (identities of the parties, hash of the inputs).
+    pub fn from_seed<SP: SessionParameters>(bytes: &[u8]) -> Self {
+        Self(
+            SP::Digest::new_with_prefix(b"SessionId")
+                .chain_update(bytes)
+                .finalize()
+                .as_ref()
+                .into(),
+        )
     }
 }
 
@@ -125,7 +144,7 @@ where
         let verifier = signer.verifying_key();
         let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(
             rng,
-            &session_id,
+            session_id.as_ref(),
             verifier.clone(),
             inputs,
         )?));

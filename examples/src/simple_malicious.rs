@@ -2,9 +2,7 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::{
-    protocol::{
-        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round, SessionId,
-    },
+    protocol::{Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round},
     session::signature::Keypair,
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSessionParams, TestSigner, TestVerifier},
 };
@@ -46,11 +44,11 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
     type Inputs = MaliciousInputs<Id>;
     fn new(
         rng: &mut impl CryptoRngCore,
-        session_id: &SessionId,
+        shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
     ) -> Result<Self, LocalError> {
-        let round = Round1::new(rng, session_id, id, inputs.inputs)?;
+        let round = Round1::new(rng, shared_randomness, id, inputs.inputs)?;
         Ok(Self {
             round,
             behavior: inputs.behavior,

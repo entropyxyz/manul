@@ -9,7 +9,7 @@ use manul::{
         Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
         LocalError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
     },
-    session::{signature::Keypair, SessionId, SessionOutcome},
+    session::{signature::Keypair, SessionOutcome},
     testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -78,7 +78,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for EmptyRo
     type Inputs = Inputs<Id>;
     fn new(
         _rng: &mut impl CryptoRngCore,
-        _session_id: &SessionId,
+        _shared_randomness: &[u8],
         _id: Id,
         inputs: Self::Inputs,
     ) -> Result<Self, LocalError> {

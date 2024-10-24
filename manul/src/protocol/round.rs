@@ -17,7 +17,6 @@ use super::{
     },
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
 };
-use crate::session::SessionId;
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
@@ -347,7 +346,7 @@ pub trait FirstRound<Id: 'static>: Round<Id> + Sized {
     /// `id` is the ID of this node.
     fn new(
         rng: &mut impl CryptoRngCore,
-        session_id: &SessionId,
+        shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
     ) -> Result<Self, LocalError>;
