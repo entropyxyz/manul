@@ -6,4 +6,4 @@ pub mod simple;
 #[cfg(test)]
 mod simple_malicious;
 
-pub use format::Bincode;
+pub use format::Binary;

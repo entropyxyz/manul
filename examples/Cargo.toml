@@ -10,7 +10,7 @@ readme = "README.md"
 
 [dependencies]
 manul = { path = "../manul" }
-bincode = { version = "2.0.0-rc.3", default-features = false, features = ["alloc", "serde"] }
+postcard = { version = "1", features = ["alloc"] }
 serde = "1"
 sha3 = "0.10"
 rand_core = "0.6"

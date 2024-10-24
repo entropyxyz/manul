@@ -12,10 +12,12 @@ which in turn is used to setup [`Session`](crate::session::Session)s to drive th
 The [`run_sync()`] method is helpful to execute a protocol synchronously and collect the outcomes.
 */
 
+mod format;
 mod identity;
 mod macros;
 mod run_sync;
 
+pub use format::Binary;
 pub use identity::{TestHasher, TestSessionParams, TestSignature, TestSigner, TestVerifier};
 pub use macros::{round_override, RoundOverride, RoundWrapper};
 pub use run_sync::run_sync;

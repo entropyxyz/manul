@@ -43,7 +43,7 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Creates a new serialized message.
-    fn new<T: Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
+    fn new<T: Serialize + 'static>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
         let payload = MessagePayload(serializer.serialize(message)?);
         Ok(Self::new_inner(Some(payload)))
     }

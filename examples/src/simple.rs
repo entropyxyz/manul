@@ -397,7 +397,7 @@ mod tests {
     use tracing_subscriber::EnvFilter;
 
     use super::{Inputs, Round1};
-    use crate::Bincode;
+    use crate::Binary;
 
     #[test]
     fn round() {
@@ -422,7 +422,7 @@ mod tests {
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<TestVerifier>, TestSessionParams<Bincode>>(&mut OsRng, inputs).unwrap()
+            run_sync::<Round1<TestVerifier>, TestSessionParams<Binary>>(&mut OsRng, inputs).unwrap()
         });
 
         for (_id, report) in reports {

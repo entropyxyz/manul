@@ -7,7 +7,8 @@ use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, RandomizedDigestSigner};
 
 use super::{
-    session::{Format, SessionId, SessionParameters},
+    format::{Deserializer, Format, Serializer},
+    session::{SessionId, SessionParameters},
     LocalError,
 };
 use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, RoundId};
@@ -16,18 +17,18 @@ use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, Normal
 pub(crate) struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
 
 impl SerializedSignature {
-    pub fn new<SP>(signature: &SP::Signature) -> Result<Self, LocalError>
+    pub fn new<SP>(serializer: &Serializer, signature: SP::Signature) -> Result<Self, LocalError>
     where
         SP: SessionParameters,
     {
-        SP::Format::serialize(signature).map(Self)
+        serializer.serialize(signature).map(Self)
     }
 
-    pub fn deserialize<SP>(&self) -> Result<SP::Signature, DeserializationError>
+    pub fn deserialize<SP>(&self, deserializer: &Deserializer) -> Result<SP::Signature, DeserializationError>
     where
         SP: SessionParameters,
     {
-        SP::Format::deserialize::<SP::Signature>(&self.0)
+        deserializer.deserialize::<SP::Signature>(&self.0)
     }
 }
 
@@ -82,6 +83,7 @@ where
     pub fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
+        serializer: &Serializer,
         session_id: &SessionId,
         round_id: RoundId,
         message: M,
@@ -97,7 +99,7 @@ where
             .try_sign_digest_with_rng(rng, digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
         Ok(Self {
-            signature: SerializedSignature::new::<SP>(&signature)?,
+            signature: SerializedSignature::new::<SP>(serializer, signature)?,
             message_with_metadata,
         })
     }
@@ -110,7 +112,11 @@ where
         &self.message_with_metadata.message
     }
 
-    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<M>, MessageVerificationError>
+    pub(crate) fn verify<SP>(
+        self,
+        verifier: &SP::Verifier,
+        deserializer: &Deserializer,
+    ) -> Result<VerifiedMessage<M>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
@@ -119,7 +125,7 @@ where
         let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = self
             .signature
-            .deserialize::<SP>()
+            .deserialize::<SP>(deserializer)
             .map_err(|_| MessageVerificationError::InvalidSignature)?;
         if verifier.verify_digest(digest, &signature).is_ok() {
             Ok(VerifiedMessage {
@@ -171,9 +177,11 @@ pub struct MessageBundle {
 }
 
 impl MessageBundle {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
+        serializer: &Serializer,
         session_id: &SessionId,
         round_id: RoundId,
         direct_message: DirectMessage,
@@ -183,7 +191,7 @@ impl MessageBundle {
     where
         SP: SessionParameters,
     {
-        let direct_message = SignedMessage::new::<SP>(rng, signer, session_id, round_id, direct_message)?;
+        let direct_message = SignedMessage::new::<SP>(rng, signer, serializer, session_id, round_id, direct_message)?;
         Ok(Self {
             direct_message,
             echo_broadcast,
@@ -227,13 +235,17 @@ impl CheckedMessageBundle {
         &self.metadata
     }
 
-    pub fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageBundle<SP>, MessageVerificationError>
+    pub fn verify<SP>(
+        self,
+        verifier: &SP::Verifier,
+        deserializer: &Deserializer,
+    ) -> Result<VerifiedMessageBundle<SP>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
-        let direct_message = self.direct_message.verify::<SP>(verifier)?;
-        let echo_broadcast = self.echo_broadcast.verify::<SP>(verifier)?;
-        let normal_broadcast = self.normal_broadcast.verify::<SP>(verifier)?;
+        let direct_message = self.direct_message.verify::<SP>(verifier, deserializer)?;
+        let echo_broadcast = self.echo_broadcast.verify::<SP>(verifier, deserializer)?;
+        let normal_broadcast = self.normal_broadcast.verify::<SP>(verifier, deserializer)?;
 
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),

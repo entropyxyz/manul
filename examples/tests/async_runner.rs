@@ -14,7 +14,7 @@ use manul::{
 };
 use manul_example::{
     simple::{Inputs, Round1, SimpleProtocol},
-    Bincode,
+    Binary,
 };
 use rand::Rng;
 use rand_core::OsRng;
@@ -43,8 +43,8 @@ async fn run_session<P, SP>(
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol,
+    SP: SessionParameters + Debug,
 {
     let rng = &mut OsRng;
 
@@ -158,7 +158,7 @@ async fn message_dispatcher<SP>(
     txs: BTreeMap<SP::Verifier, mpsc::Sender<MessageIn<SP>>>,
     rx: mpsc::Receiver<MessageOut<SP>>,
 ) where
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
 {
     let mut rx = rx;
     let mut messages = Vec::<MessageOut<SP>>::new();
@@ -199,8 +199,8 @@ async fn message_dispatcher<SP>(
 
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: 'static + Protocol + Send,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol + Send,
+    SP: SessionParameters + Debug,
     P::Result: Send,
     SP::Signer: Send,
 {
@@ -244,7 +244,7 @@ where
 #[tokio::test]
 async fn async_run() {
     // The kind of Session we need to run the `SimpleProtocol`.
-    type SimpleSession = Session<SimpleProtocol, TestSessionParams<Bincode>>;
+    type SimpleSession = Session<SimpleProtocol, TestSessionParams<Binary>>;
 
     // Create 4 parties
     let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
@@ -252,7 +252,7 @@ async fn async_run() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let session_id = SessionId::random::<TestSessionParams<Bincode>>(&mut OsRng);
+    let session_id = SessionId::random::<TestSessionParams<Binary>>(&mut OsRng);
 
     // Create 4 `Session`s
     let sessions = signers
