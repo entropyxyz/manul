@@ -6,7 +6,7 @@ process, e.g. to emulate a malicious participant. This module provides facilitie
 easier, by providing a [`RoundOverride`] type along with a [`round_override`] macro.
 
 The [`TestingSessionParams`] provides an implementation of the [`SessionParameters`](crate::session::SessionParameters) trait,
-which in turn is used to setup [`crate::session::Session`](crate::session::Session)s to drive the protocol.
+which in turn is used to setup [`Session`](crate::session::Session)s to drive the protocol.
 
 The [`run_sync`] method is helpful to execute a protocol synchronously and collect the outcomes.
 */
