@@ -30,7 +30,7 @@ jobs:
       - run: cargo build --target ${{ matrix.target }} --no-default-features
       - run: cargo build --target ${{ matrix.target }}
 
-  coveralls:
+  test-and-coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
