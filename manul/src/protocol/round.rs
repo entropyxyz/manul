@@ -30,7 +30,7 @@ pub enum FinalizeOutcome<Id, P: Protocol> {
 impl<Id, P> FinalizeOutcome<Id, P>
 where
     Id: 'static,
-    P: 'static + Protocol,
+    P: Protocol,
 {
     /// A helper method to create an [`AnotherRound`](`Self::AnotherRound`) variant.
     pub fn another_round(round: impl Round<Id, Protocol = P>) -> Self {
@@ -45,7 +45,7 @@ pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = 
 impl<Id, P> AnotherRound<Id, P>
 where
     Id: 'static,
-    P: 'static + Protocol,
+    P: Protocol,
 {
     /// Wraps an object implementing [`Round`].
     pub fn new(round: impl Round<Id, Protocol = P>) -> Self {
@@ -117,7 +117,7 @@ impl RoundId {
 }
 
 /// A distributed protocol.
-pub trait Protocol: Debug + Sized {
+pub trait Protocol: 'static + Debug + Sized {
     /// The successful result of an execution of this protocol.
     type Result;
 
@@ -216,7 +216,7 @@ pub struct DirectMessage(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 impl DirectMessage {
     /// Creates a new serialized direct message.
-    pub fn new<T: Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
+    pub fn new<T: 'static + Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
         serializer.serialize(message).map(Self)
     }
 
@@ -251,7 +251,7 @@ pub struct EchoBroadcast(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 
 impl EchoBroadcast {
     /// Creates a new serialized echo broadcast.
-    pub fn new<T: Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
+    pub fn new<T: 'static + Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
         serializer.serialize(message).map(Self)
     }
 

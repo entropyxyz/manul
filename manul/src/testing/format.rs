@@ -1,6 +1,11 @@
-use manul::{protocol::LocalError, session::Format};
+use alloc::{boxed::Box, string::ToString};
+
 use serde::Serialize;
 
+use crate::{protocol::LocalError, session::Format};
+
+/// A binary format to use in tests.
+#[derive(Debug, Clone, Copy)]
 pub struct Binary;
 
 impl Format for Binary {

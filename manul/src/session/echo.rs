@@ -12,13 +12,13 @@ use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessage},
-    session::{Deserializer, Serializer, SessionParameters},
+    session::SessionParameters,
     LocalError,
 };
 use crate::{
     protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
-        ReceiveError, Round, RoundId,
+        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload,
+        Protocol, ReceiveError, Round, RoundId, Serializer,
     },
     utils::SerializableMap,
 };
@@ -118,7 +118,7 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_messages: echo_messages.into(),
         };
-        let dm = DirectMessage::new(serializer, &message)?;
+        let dm = DirectMessage::new(serializer, message)?;
         Ok((dm, Artifact::empty()))
     }
 
@@ -183,7 +183,7 @@ where
                 continue;
             }
 
-            let verified_echo = match echo.clone().verify::<SP>(sender) {
+            let verified_echo = match echo.clone().verify::<SP>(sender, deserializer) {
                 Ok(echo) => echo,
                 Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.

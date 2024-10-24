@@ -12,7 +12,7 @@ use manul::{
 };
 use manul_example::{
     simple::{Inputs, Round1},
-    Bincode,
+    Binary,
 };
 use rand::Rng;
 use rand_core::OsRng;
@@ -40,8 +40,8 @@ async fn run_session<P, SP>(
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    P: Protocol,
+    SP: SessionParameters,
 {
     let rng = &mut OsRng;
 
@@ -178,8 +178,8 @@ async fn message_dispatcher<SP>(
 
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: 'static + Protocol + Send,
-    SP: 'static + SessionParameters,
+    P: Protocol + Send,
+    SP: SessionParameters,
     P::Result: Send,
     SP::Signer: Send,
 {
@@ -234,7 +234,7 @@ async fn async_run() {
             let inputs = Inputs {
                 all_ids: all_ids.clone(),
             };
-            Session::<_, TestingSessionParams<Bincode>>::new::<Round1<Verifier>>(
+            Session::<_, TestingSessionParams<Binary>>::new::<Round1<Verifier>>(
                 &mut OsRng,
                 session_id.clone(),
                 signer,

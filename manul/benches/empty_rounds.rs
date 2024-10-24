@@ -6,11 +6,11 @@ use core::fmt::Debug;
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
-        Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
-        LocalError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload,
+        Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
     },
-    session::{signature::Keypair, Deserializer, Format, Serializer, SessionId, SessionOutcome},
-    testing::{run_sync, Signer, TestingSessionParams, Verifier},
+    session::{signature::Keypair, Deserializer, Serializer, SessionId, SessionOutcome},
+    testing::{run_sync, Binary, Signer, TestingSessionParams, Verifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -32,21 +32,6 @@ impl ProtocolError for EmptyProtocolError {
         _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         unimplemented!()
-    }
-}
-
-pub struct Bincode;
-
-impl Format for Bincode {
-    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
-        bincode::serde::encode_to_vec(value, bincode::config::standard())
-            .map(|vec| vec.into())
-            .map_err(|err| LocalError::new(err.to_string()))
-    }
-
-    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError> {
-        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
-            .map_err(|err| DeserializationError::new(err.to_string()))
     }
 }
 
@@ -215,7 +200,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<Verifier>, TestingSessionParams<Bincode>>(&mut OsRng, inputs_no_echo.clone())
+                run_sync::<EmptyRound<Verifier>, TestingSessionParams<Binary>>(&mut OsRng, inputs_no_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
@@ -245,7 +230,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<EmptyRound<Verifier>, TestingSessionParams<Bincode>>(&mut OsRng, inputs_echo.clone())
+                run_sync::<EmptyRound<Verifier>, TestingSessionParams<Binary>>(&mut OsRng, inputs_echo.clone())
                     .unwrap()
                     .values()
                     .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
