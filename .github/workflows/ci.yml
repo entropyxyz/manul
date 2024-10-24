@@ -12,7 +12,7 @@ env:
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
-  build:
+  wasm-build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
