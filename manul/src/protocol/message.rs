@@ -3,7 +3,7 @@ use alloc::string::{String, ToString};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError},
+    errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError, NormalBroadcastError},
     round::Protocol,
 };
 
@@ -136,4 +136,22 @@ impl ProtocolMessageWrapper for EchoBroadcast {
 
 impl ProtocolMessagePart for EchoBroadcast {
     type Error = EchoBroadcastError;
+}
+
+/// A serialized regular (non-echo) broadcast.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NormalBroadcast(Option<MessagePayload>);
+
+impl ProtocolMessageWrapper for NormalBroadcast {
+    fn new_inner(maybe_message: Option<MessagePayload>) -> Self {
+        Self(maybe_message)
+    }
+
+    fn maybe_message(&self) -> &Option<MessagePayload> {
+        &self.0
+    }
+}
+
+impl ProtocolMessagePart for NormalBroadcast {
+    type Error = NormalBroadcastError;
 }

@@ -40,6 +40,8 @@ pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
     InvalidDirectMessage(DirectMessageError),
     /// The given echo broadcast cannot be deserialized.
     InvalidEchoBroadcast(EchoBroadcastError),
+    /// The given normal broadcast cannot be deserialized.
+    InvalidNormalBroadcast(NormalBroadcastError),
     /// A provable error occurred.
     Protocol(P::ProtocolError),
     /// An unprovable error occurred.
@@ -110,6 +112,15 @@ where
 {
     fn from(error: EchoBroadcastError) -> Self {
         Self(ReceiveErrorType::InvalidEchoBroadcast(error))
+    }
+}
+
+impl<Id, P> From<NormalBroadcastError> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
+    fn from(error: NormalBroadcastError) -> Self {
+        Self(ReceiveErrorType::InvalidNormalBroadcast(error))
     }
 }
 
@@ -204,6 +215,17 @@ impl From<String> for DirectMessageError {
 pub struct EchoBroadcastError(String);
 
 impl From<String> for EchoBroadcastError {
+    fn from(message: String) -> Self {
+        Self(message)
+    }
+}
+
+/// An error during deserialization of a normal broadcast.
+#[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Normal broadcast error: {0}")]
+pub struct NormalBroadcastError(String);
+
+impl From<String> for NormalBroadcastError {
     fn from(message: String) -> Self {
         Self(message)
     }

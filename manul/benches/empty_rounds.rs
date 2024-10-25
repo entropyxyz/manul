@@ -7,8 +7,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
         Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
-        LocalError, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
-        Round, RoundId,
+        LocalError, NormalBroadcast, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
+        ReceiveError, Round, RoundId,
     },
     session::{signature::Keypair, SessionOutcome},
     testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},
@@ -26,8 +26,10 @@ impl ProtocolError for EmptyProtocolError {
     fn verify_messages_constitute_error(
         &self,
         _echo_broadcast: &EchoBroadcast,
+        _normal_broadcast: &NormalBroadcast,
         _direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
         _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
@@ -132,6 +134,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         _rng: &mut impl CryptoRngCore,
         _from: &Id,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         if self.inputs.echo {
@@ -139,6 +142,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         } else {
             echo_broadcast.assert_is_none()?;
         }
+        normal_broadcast.assert_is_none()?;
         let _direct_message = direct_message.deserialize::<EmptyProtocol, Round1DirectMessage>()?;
         Ok(Payload::new(Round1Payload))
     }

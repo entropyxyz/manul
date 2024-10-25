@@ -17,8 +17,8 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
-        ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast, ObjectSafeRound,
+        Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
     },
     utils::SerializableMap,
 };
@@ -102,12 +102,8 @@ where
         &self.destinations
     }
 
-    fn make_direct_message(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        destination: &SP::Verifier,
-    ) -> Result<DirectMessage, LocalError> {
-        debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
+    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
+        debug!("{:?}: making an echo round message", self.verifier);
 
         // Don't send our own message the second time
         let mut echo_broadcasts = self.echo_broadcasts.clone();
@@ -121,8 +117,8 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_broadcasts: echo_broadcasts.into(),
         };
-        let dm = DirectMessage::new::<P, _>(&message)?;
-        Ok(dm)
+        let bc = NormalBroadcast::new::<P, _>(&message)?;
+        Ok(bc)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
@@ -134,13 +130,15 @@ where
         _rng: &mut impl CryptoRngCore,
         from: &SP::Verifier,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
         echo_broadcast.assert_is_none()?;
+        direct_message.assert_is_none()?;
 
-        let message = direct_message.deserialize::<P, EchoRoundMessage<SP>>()?;
+        let message = normal_broadcast.deserialize::<P, EchoRoundMessage<SP>>()?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.

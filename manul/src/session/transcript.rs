@@ -5,11 +5,12 @@ use alloc::{
 use core::fmt::Debug;
 
 use super::{evidence::Evidence, message::SignedMessage, session::SessionParameters, LocalError, RemoteError};
-use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
+use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId};
 
 #[derive(Debug)]
 pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
     echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>>,
+    normal_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<NormalBroadcast>>>,
     direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
@@ -24,6 +25,7 @@ where
     pub fn new() -> Self {
         Self {
             echo_broadcasts: BTreeMap::new(),
+            normal_broadcasts: BTreeMap::new(),
             direct_messages: BTreeMap::new(),
             provable_errors: BTreeMap::new(),
             unprovable_errors: BTreeMap::new(),
@@ -31,10 +33,12 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         self,
         round_id: RoundId,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+        normal_broadcasts: BTreeMap<SP::Verifier, SignedMessage<NormalBroadcast>>,
         direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
         provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
         unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
@@ -46,6 +50,16 @@ where
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
                     "An echo-broadcasts entry for {round_id:?} already exists"
+                )))
+            }
+        };
+
+        let mut all_normal_broadcasts = self.normal_broadcasts;
+        match all_normal_broadcasts.entry(round_id) {
+            Entry::Vacant(entry) => entry.insert(normal_broadcasts),
+            Entry::Occupied(_) => {
+                return Err(LocalError::new(format!(
+                    "A normal-broadcasts entry for {round_id:?} already exists"
                 )))
             }
         };
@@ -90,6 +104,7 @@ where
 
         Ok(Self {
             echo_broadcasts: all_echo_broadcasts,
+            normal_broadcasts: all_normal_broadcasts,
             direct_messages: all_direct_messages,
             provable_errors: all_provable_errors,
             unprovable_errors: all_unprovable_errors,
@@ -108,6 +123,19 @@ where
             .get(from)
             .cloned()
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {from:?} in {round_id:?}")))
+    }
+
+    pub fn get_normal_broadcast(
+        &self,
+        round_id: RoundId,
+        from: &SP::Verifier,
+    ) -> Result<SignedMessage<NormalBroadcast>, LocalError> {
+        self.normal_broadcasts
+            .get(&round_id)
+            .ok_or_else(|| LocalError::new(format!("No normal broadcasts registered for {round_id:?}")))?
+            .get(from)
+            .cloned()
+            .ok_or_else(|| LocalError::new(format!("No normal broadcasts registered for {from:?} in {round_id:?}")))
     }
 
     pub fn get_direct_message(

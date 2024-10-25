@@ -18,9 +18,9 @@ mod round;
 
 pub use errors::{
     DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
-    ProtocolValidationError, ReceiveError, RemoteError,
+    NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,
 };
-pub use message::{DirectMessage, EchoBroadcast, ProtocolMessagePart};
+pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart};
 pub use round::{
     AnotherRound, Artifact, FinalizeOutcome, FirstRound, Payload, Protocol, ProtocolError, Round, RoundId,
 };
