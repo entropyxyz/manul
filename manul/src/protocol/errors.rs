@@ -114,6 +114,7 @@ where
 }
 
 /// An error that can occur during [`Round::finalize`](`super::Round::finalize`).
+#[derive(Debug)]
 pub enum FinalizeError<P: Protocol> {
     /// A local error, usually indicating a bug in the implementation.
     Local(LocalError),

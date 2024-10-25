@@ -34,6 +34,10 @@ pub struct EchoRoundMessage<SP: SessionParameters> {
     pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
+/// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
+/// participants. The execution layer of the protocol guarantees that all participants have received
+/// the messages.
+#[derive(Debug)]
 pub struct EchoRound<P, SP: SessionParameters> {
     verifier: SP::Verifier,
     echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
@@ -82,7 +86,7 @@ where
 impl<P, SP> Round<SP::Verifier> for EchoRound<P, SP>
 where
     P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    SP: 'static + SessionParameters + Debug,
 {
     type Protocol = P;
 
