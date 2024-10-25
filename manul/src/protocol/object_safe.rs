@@ -9,7 +9,8 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
-    round::{Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, Payload, Protocol, Round, RoundId},
+    message::{DirectMessage, EchoBroadcast},
+    round::{Artifact, FinalizeOutcome, Payload, Protocol, Round, RoundId},
 };
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
@@ -46,19 +47,19 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
 
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
-    fn make_direct_message(
+    fn make_direct_message_with_artifact(
         &self,
         rng: &mut dyn CryptoRngCore,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError>;
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError>;
 
-    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>>;
+    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<EchoBroadcast, LocalError>;
 
     fn receive_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         from: &Id,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
@@ -111,16 +112,17 @@ where
         self.round.message_destinations()
     }
 
-    fn make_direct_message(
+    fn make_direct_message_with_artifact(
         &self,
         rng: &mut dyn CryptoRngCore,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.make_direct_message(&mut boxed_rng, destination)
+        self.round
+            .make_direct_message_with_artifact(&mut boxed_rng, destination)
     }
 
-    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_echo_broadcast(&mut boxed_rng)
     }
@@ -129,7 +131,7 @@ where
         &self,
         rng: &mut dyn CryptoRngCore,
         from: &Id,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);

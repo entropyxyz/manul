@@ -24,7 +24,7 @@ pub struct EmptyProtocolError;
 impl ProtocolError for EmptyProtocolError {
     fn verify_messages_constitute_error(
         &self,
-        _echo_broadcast: &Option<EchoBroadcast>,
+        _echo_broadcast: &EchoBroadcast,
         _direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
@@ -108,34 +108,36 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         &self.inputs.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
-            Some(Self::serialize_echo_broadcast(Round1EchoBroadcast))
+            Self::serialize_echo_broadcast(Round1EchoBroadcast)
         } else {
-            None
+            Ok(EchoBroadcast::none())
         }
     }
 
-    fn make_direct_message(
+    fn make_direct_message_with_artifact(
         &self,
         _rng: &mut impl CryptoRngCore,
         _destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let dm = Self::serialize_direct_message(Round1DirectMessage)?;
         let artifact = Artifact::new(Round1Artifact);
-        Ok((dm, artifact))
+        Ok((dm, Some(artifact)))
     }
 
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         _from: &Id,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        let _echo_broadcast = echo_broadcast
-            .map(|echo| echo.deserialize::<EmptyProtocol, Round1EchoBroadcast>())
-            .transpose()?;
+        if self.inputs.echo {
+            let _echo_broadcast = echo_broadcast.deserialize::<EmptyProtocol, Round1EchoBroadcast>()?;
+        } else {
+            echo_broadcast.assert_is_none()?;
+        }
         let _direct_message = direct_message.deserialize::<EmptyProtocol, Round1DirectMessage>()?;
         Ok(Payload::new(Round1Payload))
     }

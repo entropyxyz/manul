@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `Test` prefix to `testing::Signer`/`Verifier`/`Signature`/`Hasher` and renamed `TestingSessionParams` to `TestSessionParams`. ([#40])
 - `SessionId::new()` renamed to `from_seed()`. ([#41])
 - `FirstRound::new()` takes a `&[u8]` instead of a `SessionId` object. ([#41])
+- The signatures of `Round::make_echo_broadcast()`, `Round::make_direct_message()`, and `Round::receive_message()`, take messages without `Option`s. ([#46])
+- `Round::make_direct_message_with_artifact()` is the method returning an artifact now; `Round::make_direct_message()` is a shortcut for cases where no artifact is returned. ([#46])
+- `Artifact::empty()` removed, the user should return `None` instead. ([#46])
 
 
 ### Added
 
 - `SerializableMap` wrapper for `BTreeMap` supporting more formats and providing some safety features. (#[32])
+- `DirectMessage::assert_is_none()` and `verify_is_some()`, same for `EchoBroadcast`. Users can now check that a part of the round message (echo or direct) is `None` as expected, and make a verifiable evidence if it is not. ([#46])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
@@ -25,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#37]: https://github.com/entropyxyz/manul/pull/37
 [#40]: https://github.com/entropyxyz/manul/pull/40
 [#41]: https://github.com/entropyxyz/manul/pull/41
+[#46]: https://github.com/entropyxyz/manul/pull/46
 
 
 ## [0.0.1] - 2024-10-12

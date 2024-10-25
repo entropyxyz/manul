@@ -24,17 +24,23 @@ pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
 ///
 /// The blanket implementations delegate to the methods of the wrapped round.
 pub trait RoundOverride<Id>: RoundWrapper<Id> {
-    /// An override for [`Round::make_direct_message`].
-    fn make_direct_message(
+    /// An override for [`Round::make_direct_message_with_artifact`].
+    fn make_direct_message_with_artifact(
         &self,
         rng: &mut impl CryptoRngCore,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+        let dm = self.make_direct_message(rng, destination)?;
+        Ok((dm, None))
+    }
+
+    /// An override for [`Round::make_direct_message`].
+    fn make_direct_message(&self, rng: &mut impl CryptoRngCore, destination: &Id) -> Result<DirectMessage, LocalError> {
         self.inner_round_ref().make_direct_message(rng, destination)
     }
 
     /// An override for [`Round::make_echo_broadcast`].
-    fn make_echo_broadcast(&self, rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         self.inner_round_ref().make_echo_broadcast(rng)
     }
 
@@ -86,14 +92,22 @@ macro_rules! round_override {
                 &self,
                 rng: &mut impl CryptoRngCore,
                 destination: &Id,
-            ) -> Result<($crate::protocol::DirectMessage, $crate::protocol::Artifact), $crate::protocol::LocalError> {
+            ) -> Result<$crate::protocol::DirectMessage, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, destination)
+            }
+
+            fn make_direct_message_with_artifact(
+                &self,
+                rng: &mut impl CryptoRngCore,
+                destination: &Id,
+            ) -> Result<($crate::protocol::DirectMessage, Option<$crate::protocol::Artifact>), $crate::protocol::LocalError> {
+                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message_with_artifact(self, rng, destination)
             }
 
             fn make_echo_broadcast(
                 &self,
                 rng: &mut impl CryptoRngCore,
-            ) -> Option<Result<$crate::protocol::EchoBroadcast, $crate::protocol::LocalError>> {
+            ) -> Result<$crate::protocol::EchoBroadcast, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_echo_broadcast(self, rng)
             }
 
@@ -101,7 +115,7 @@ macro_rules! round_override {
                 &self,
                 rng: &mut impl CryptoRngCore,
                 from: &Id,
-                echo_broadcast: Option<$crate::protocol::EchoBroadcast>,
+                echo_broadcast: $crate::protocol::EchoBroadcast,
                 direct_message: $crate::protocol::DirectMessage,
             ) -> Result<$crate::protocol::Payload, $crate::protocol::ReceiveError<Id, Self::Protocol>> {
                 self.inner_round_ref()

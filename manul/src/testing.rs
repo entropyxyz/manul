@@ -5,10 +5,11 @@ When testing round based protocols it can be complicated to "inject" the proper 
 process, e.g. to emulate a malicious participant. This module provides facilities to make this
 easier, by providing a [`RoundOverride`] type along with a [`round_override`] macro.
 
-The [`TestSessionParams`] provides an implementation of the [`SessionParameters`](crate::session::SessionParameters) trait,
+The [`TestSessionParams`] provides an implementation of the
+[`SessionParameters`](crate::session::SessionParameters) trait,
 which in turn is used to setup [`Session`](crate::session::Session)s to drive the protocol.
 
-The [`run_sync`] method is helpful to execute a protocol synchronously and collect the outcomes.
+The [`run_sync()`] method is helpful to execute a protocol synchronously and collect the outcomes.
 */
 
 mod identity;
