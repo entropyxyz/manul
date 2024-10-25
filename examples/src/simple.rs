@@ -36,7 +36,7 @@ impl ProtocolError for SimpleProtocolError {
 
     fn verify_messages_constitute_error(
         &self,
-        _echo_broadcast: &Option<EchoBroadcast>,
+        _echo_broadcast: &EchoBroadcast,
         direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
@@ -171,21 +171,21 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
 
-        Some(Self::serialize_echo_broadcast(message))
+        Self::serialize_echo_broadcast(message)
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<DirectMessage, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round1Message {
@@ -193,19 +193,19 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
             your_position: self.context.ids_to_positions[destination],
         };
         let dm = Self::serialize_direct_message(message)?;
-        let artifact = Artifact::empty();
-        Ok((dm, artifact))
+        Ok(dm)
     }
 
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         from: &Id,
-        _echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
+        let _echo = echo_broadcast.deserialize::<SimpleProtocol, Round1Echo>()?;
         let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
@@ -275,21 +275,21 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         &self.context.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
 
-        Some(Self::serialize_echo_broadcast(message))
+        Self::serialize_echo_broadcast(message)
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<DirectMessage, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round1Message {
@@ -297,19 +297,19 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             your_position: self.context.ids_to_positions[destination],
         };
         let dm = Self::serialize_direct_message(message)?;
-        let artifact = Artifact::empty();
-        Ok((dm, artifact))
+        Ok(dm)
     }
 
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         from: &Id,
-        _echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
+        let _echo = echo_broadcast.deserialize::<SimpleProtocol, Round1Echo>()?;
         let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);

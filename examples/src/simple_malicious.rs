@@ -57,21 +57,17 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
 }
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound1<Id> {
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    fn make_direct_message(&self, rng: &mut impl CryptoRngCore, destination: &Id) -> Result<DirectMessage, LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
             let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&[99u8]).unwrap();
-            Ok((dm, Artifact::empty()))
+            Ok(dm)
         } else if matches!(self.behavior, Behavior::AttributableFailure) {
             let message = Round1Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
             let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&message)?;
-            Ok((dm, Artifact::empty()))
+            Ok(dm)
         } else {
             self.inner_round_ref().make_direct_message(rng, destination)
         }
@@ -121,18 +117,14 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
 }
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound2<Id> {
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    fn make_direct_message(&self, rng: &mut impl CryptoRngCore, destination: &Id) -> Result<DirectMessage, LocalError> {
         if matches!(self.behavior, Behavior::AttributableFailureRound2) {
             let message = Round2Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
             let dm = DirectMessage::new::<<Self::InnerRound as Round<Id>>::Protocol, _>(&message)?;
-            Ok((dm, Artifact::empty()))
+            Ok(dm)
         } else {
             self.inner_round_ref().make_direct_message(rng, destination)
         }

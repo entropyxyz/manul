@@ -106,7 +106,7 @@ where
         &self,
         _rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<DirectMessage, LocalError> {
         debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
 
         // Don't send our own message the second time
@@ -122,7 +122,7 @@ where
             echo_broadcasts: echo_broadcasts.into(),
         };
         let dm = DirectMessage::new::<P, _>(&message)?;
-        Ok((dm, Artifact::empty()))
+        Ok(dm)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
@@ -133,10 +133,12 @@ where
         &self,
         _rng: &mut impl CryptoRngCore,
         from: &SP::Verifier,
-        _echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
+
+        echo_broadcast.assert_is_none()?;
 
         let message = direct_message.deserialize::<P, EchoRoundMessage<SP>>()?;
 

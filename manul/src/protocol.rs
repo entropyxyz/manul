@@ -12,6 +12,7 @@ For more details, see the documentation of the mentioned traits.
 */
 
 mod errors;
+mod message;
 mod object_safe;
 mod round;
 
@@ -19,9 +20,9 @@ pub use errors::{
     DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
     ProtocolValidationError, ReceiveError, RemoteError,
 };
+pub use message::{DirectMessage, EchoBroadcast};
 pub use round::{
-    AnotherRound, Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, FirstRound, Payload, Protocol,
-    ProtocolError, Round, RoundId,
+    AnotherRound, Artifact, FinalizeOutcome, FirstRound, Payload, Protocol, ProtocolError, Round, RoundId,
 };
 
 pub(crate) use errors::ReceiveErrorType;

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     echo::{EchoRoundError, EchoRoundMessage},
-    message::{MessageVerificationError, SignedMessage},
+    message::{MessageVerificationError, MissingMessage, SignedMessage},
     session::SessionParameters,
     transcript::Transcript,
     LocalError,
@@ -22,6 +22,15 @@ use crate::{
 pub enum EvidenceError {
     Local(LocalError),
     InvalidEvidence(String),
+}
+
+// Other nodes would send a signed message with the payload being either Some(...) or None.
+// We expect the messages in the evidence only be the Some(...) ones, so if it's not the case, it's invalid evidence.
+// It's hard to enforce statically since we have to keep the signed messages as they were created by remote nodes.
+impl From<MissingMessage> for EvidenceError {
+    fn from(_error: MissingMessage) -> Self {
+        Self::InvalidEvidence("The signed message is missing the expected payload".into())
+    }
 }
 
 impl From<MessageVerificationError> for EvidenceError {
@@ -74,7 +83,7 @@ where
 {
     pub(crate) fn new_protocol_error(
         verifier: &SP::Verifier,
-        echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+        echo_broadcast: SignedMessage<EchoBroadcast>,
         direct_message: SignedMessage<DirectMessage>,
         error: P::ProtocolError,
         transcript: &Transcript<P, SP>,
@@ -353,7 +362,7 @@ where
 struct ProtocolEvidence<P: Protocol> {
     error: P::ProtocolError,
     direct_message: SignedMessage<DirectMessage>,
-    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
     direct_messages: SerializableMap<RoundId, SignedMessage<DirectMessage>>,
     echo_broadcasts: SerializableMap<RoundId, SignedMessage<EchoBroadcast>>,
     combined_echos: SerializableMap<RoundId, SignedMessage<DirectMessage>>,
@@ -383,17 +392,14 @@ where
             verified_direct_messages.insert(*round_id, verified_direct_message.payload().clone());
         }
 
-        let verified_echo_broadcast = if let Some(echo) = self.echo_broadcast.as_ref() {
-            let metadata = echo.metadata();
-            if metadata.session_id() != session_id || metadata.round_id() != self.direct_message.metadata().round_id() {
-                return Err(EvidenceError::InvalidEvidence(
-                    "Invalid attached message metadata".into(),
-                ));
-            }
-            Some(echo.clone().verify::<P, SP>(verifier)?.payload().clone())
-        } else {
-            None
-        };
+        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<P, SP>(verifier)?.payload().clone();
+        if self.echo_broadcast.metadata().session_id() != session_id
+            || self.echo_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
+        {
+            return Err(EvidenceError::InvalidEvidence(
+                "Invalid attached message metadata".into(),
+            ));
+        }
 
         let mut verified_echo_broadcasts = BTreeMap::new();
         for (round_id, echo_broadcast) in self.echo_broadcasts.iter() {
