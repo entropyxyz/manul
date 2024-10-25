@@ -5,7 +5,7 @@
     clippy::mod_module_files,
     clippy::unwrap_used,
     clippy::indexing_slicing,
-    missing_docs,
+    //missing_docs,
     missing_copy_implementations,
     rust_2018_idioms,
     trivial_casts,

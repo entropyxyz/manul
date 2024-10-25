@@ -135,6 +135,9 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MissingMessage;
+
 #[derive(Debug, Clone)]
 pub struct VerifiedMessage<M> {
     signature: SerializedSignature,
@@ -166,7 +169,7 @@ impl<M> VerifiedMessage<M> {
 #[derive(Clone, Debug)]
 pub struct MessageBundle {
     direct_message: SignedMessage<DirectMessage>,
-    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
 }
 
 impl MessageBundle {
@@ -176,7 +179,7 @@ impl MessageBundle {
         session_id: &SessionId,
         round_id: RoundId,
         direct_message: DirectMessage,
-        echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+        echo_broadcast: SignedMessage<EchoBroadcast>,
     ) -> Result<Self, LocalError>
     where
         P: Protocol,
@@ -190,12 +193,7 @@ impl MessageBundle {
     }
 
     pub(crate) fn unify_metadata(self) -> Option<CheckedMessageBundle> {
-        if !self
-            .echo_broadcast
-            .as_ref()
-            .map(|echo| echo.metadata() == self.direct_message.metadata())
-            .unwrap_or(true)
-        {
+        if self.echo_broadcast.metadata() != self.direct_message.metadata() {
             return None;
         }
 
@@ -216,7 +214,7 @@ impl MessageBundle {
 pub(crate) struct CheckedMessageBundle {
     metadata: MessageMetadata,
     direct_message: SignedMessage<DirectMessage>,
-    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
 }
 
 impl CheckedMessageBundle {
@@ -230,10 +228,7 @@ impl CheckedMessageBundle {
         SP: SessionParameters,
     {
         let direct_message = self.direct_message.verify::<P, SP>(verifier)?;
-        let echo_broadcast = self
-            .echo_broadcast
-            .map(|echo| echo.verify::<P, SP>(verifier))
-            .transpose()?;
+        let echo_broadcast = self.echo_broadcast.verify::<P, SP>(verifier)?;
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),
             metadata: self.metadata,
@@ -251,7 +246,7 @@ pub struct VerifiedMessageBundle<SP: SessionParameters> {
     from: SP::Verifier,
     metadata: MessageMetadata,
     direct_message: VerifiedMessage<DirectMessage>,
-    echo_broadcast: Option<VerifiedMessage<EchoBroadcast>>,
+    echo_broadcast: VerifiedMessage<EchoBroadcast>,
 }
 
 impl<SP> VerifiedMessageBundle<SP>
@@ -270,16 +265,15 @@ where
         self.direct_message.payload()
     }
 
-    /// Split the `VerifiedMessageBundle` into its constituent parts: the [`DirectMessage`] and (possibly)
-    /// the [`EchoBroadcast`] (depending on the protocol).
-    /// Consumes `self`.
-    pub(crate) fn into_parts(self) -> (Option<SignedMessage<EchoBroadcast>>, SignedMessage<DirectMessage>) {
-        let direct_message = self.direct_message.into_unverified();
-        let echo_broadcast = self.echo_broadcast.map(|echo| echo.into_unverified());
-        (echo_broadcast, direct_message)
+    pub(crate) fn echo_broadcast(&self) -> &EchoBroadcast {
+        self.echo_broadcast.payload()
     }
 
-    pub(crate) fn echo_broadcast(&self) -> Option<&EchoBroadcast> {
-        self.echo_broadcast.as_ref().map(|echo| echo.payload())
+    /// Split the `VerifiedMessageBundle` into its signed constituent parts:
+    /// the echo broadcast and the direct message.
+    pub(crate) fn into_parts(self) -> (SignedMessage<EchoBroadcast>, SignedMessage<DirectMessage>) {
+        let direct_message = self.direct_message.into_unverified();
+        let echo_broadcast = self.echo_broadcast.into_unverified();
+        (echo_broadcast, direct_message)
     }
 }
