@@ -23,14 +23,32 @@ use crate::{
     utils::SerializableMap,
 };
 
+/// An error that can occur on receiving a message during an echo round.
 #[derive(Debug)]
 pub(crate) enum EchoRoundError<Id> {
+    /// The node who constructed the echoed message pack included an invalid message in it.
+    ///
+    /// This is the fault of the sender of the echo pack.
+    ///
+    /// The attached identifier points out the sender for whom the echoed message was invalid,
+    /// to speed up the verification process.
     InvalidEcho(Id),
+    /// The originally received message and the one received in the echo pack were both valid,
+    /// but had different payload.
+    ///
+    /// This is the fault of the sender of that specific broadcast.
+    /// The attached identifier points out the that sender.
     InvalidBroadcast(Id),
+    /// The originally received message and the one received in the echo pack were both valid,
+    /// have the same payload, but different (albeit valid) signatures.
+    ///
+    /// This is the fault of the sender of that specific broadcast.
+    /// The attached identifier points out the that sender.
+    TwiceSigned(Id),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EchoRoundMessage<SP: SessionParameters> {
+pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
     pub(crate) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
@@ -209,6 +227,11 @@ where
             if verified_echo.payload() != previously_received_echo.payload() {
                 return Err(EchoRoundError::InvalidBroadcast(sender.clone()).into());
             }
+
+            // At this point, we know that the echoed broadcast is not identical to what we initially received,
+            // but somehow they both have the correct metadata, and correct signatures.
+            // Something strange is going on.
+            return Err(EchoRoundError::TwiceSigned(sender.clone()).into());
         }
 
         Ok(Payload::empty())
