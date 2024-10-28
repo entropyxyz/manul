@@ -107,7 +107,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
-    echo_message: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
     possible_next_rounds: BTreeSet<RoundId>,
     transcript: Transcript<P, SP>,
 }
@@ -159,14 +159,11 @@ where
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
-        let echo_message = round
-            .make_echo_broadcast(rng)
-            .transpose()?
-            .map(|echo| SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), echo))
-            .transpose()?;
+        let echo = round.make_echo_broadcast(rng)?;
+        let echo_broadcast = SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), echo)?;
         let message_destinations = round.message_destinations().clone();
 
-        let possible_next_rounds = if echo_message.is_none() {
+        let possible_next_rounds = if echo_broadcast.payload().is_none() {
             round.possible_next_rounds()
         } else {
             BTreeSet::from([round.id().echo()])
@@ -177,7 +174,7 @@ where
             signer,
             verifier,
             round,
-            echo_message,
+            echo_broadcast,
             possible_next_rounds,
             message_destinations,
             transcript,
@@ -207,7 +204,7 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
+        let (direct_message, artifact) = self.round.make_direct_message_with_artifact(rng, destination)?;
 
         let bundle = MessageBundle::new::<P, SP>(
             rng,
@@ -215,7 +212,7 @@ where
             &self.session_id,
             self.round.id(),
             direct_message,
-            self.echo_message.clone(),
+            self.echo_broadcast.clone(),
         )?;
 
         Ok((
@@ -359,7 +356,7 @@ where
         let processed = self.round.receive_message(
             rng,
             message.from(),
-            message.echo_broadcast().cloned(),
+            message.echo_broadcast().clone(),
             message.direct_message().clone(),
         );
         // We could filter out and return a possible `LocalError` at this stage,
@@ -413,10 +410,12 @@ where
             accum.still_have_not_sent_messages,
         )?;
 
-        if let Some(echo_message) = self.echo_message {
+        let echo_round_needed = !self.echo_broadcast.payload().is_none();
+
+        if echo_round_needed {
             let round = Box::new(ObjectSafeRoundWrapper::new(EchoRound::<P, SP>::new(
                 verifier,
-                echo_message,
+                self.echo_broadcast,
                 transcript.echo_broadcasts(round_id)?,
                 self.round,
                 accum.payloads,
@@ -586,11 +585,12 @@ where
     }
 
     fn add_artifact(&mut self, processed: ProcessedArtifact<SP>) -> Result<(), LocalError> {
-        if self
-            .artifacts
-            .insert(processed.destination.clone(), processed.artifact)
-            .is_some()
-        {
+        let artifact = match processed.artifact {
+            Some(artifact) => artifact,
+            None => return Ok(()),
+        };
+
+        if self.artifacts.insert(processed.destination.clone(), artifact).is_some() {
             return Err(LocalError::new(format!(
                 "Artifact for destination {:?} has already been recorded",
                 processed.destination
@@ -622,11 +622,14 @@ where
 
         let error = match processed.processed {
             Ok(payload) => {
+                // Note: only inserting the messages if they actually have a payload
                 let (echo_broadcast, direct_message) = processed.message.into_parts();
-                if let Some(echo) = echo_broadcast {
-                    self.echo_broadcasts.insert(from.clone(), echo);
+                if !echo_broadcast.payload().is_none() {
+                    self.echo_broadcasts.insert(from.clone(), echo_broadcast);
                 }
-                self.direct_messages.insert(from.clone(), direct_message);
+                if !direct_message.payload().is_none() {
+                    self.direct_messages.insert(from.clone(), direct_message);
+                }
                 self.payloads.insert(from.clone(), payload);
                 return Ok(());
             }
@@ -641,8 +644,6 @@ where
             }
             ReceiveErrorType::InvalidEchoBroadcast(error) => {
                 let (echo_broadcast, _direct_message) = processed.message.into_parts();
-                let echo_broadcast =
-                    echo_broadcast.ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
@@ -681,7 +682,7 @@ where
 #[derive(Debug)]
 pub struct ProcessedArtifact<SP: SessionParameters> {
     destination: SP::Verifier,
-    artifact: Artifact,
+    artifact: Option<Artifact>,
 }
 
 #[derive(Debug)]
@@ -735,7 +736,7 @@ mod tests {
         impl ProtocolError for DummyProtocolError {
             fn verify_messages_constitute_error(
                 &self,
-                _echo_broadcast: &Option<EchoBroadcast>,
+                _echo_broadcast: &EchoBroadcast,
                 _direct_message: &DirectMessage,
                 _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
                 _direct_messages: &BTreeMap<RoundId, DirectMessage>,

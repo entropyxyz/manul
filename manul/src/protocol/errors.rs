@@ -193,7 +193,13 @@ impl From<LocalError> for ProtocolValidationError {
 pub struct DirectMessageError(DeserializationError);
 
 impl DirectMessageError {
-    pub(crate) fn new(error: DeserializationError) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
+        Self(DeserializationError::new(message))
+    }
+}
+
+impl From<DeserializationError> for DirectMessageError {
+    fn from(error: DeserializationError) -> Self {
         Self(error)
     }
 }
@@ -204,7 +210,13 @@ impl DirectMessageError {
 pub struct EchoBroadcastError(DeserializationError);
 
 impl EchoBroadcastError {
-    pub(crate) fn new(error: DeserializationError) -> Self {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
+        Self(DeserializationError::new(message))
+    }
+}
+
+impl From<DeserializationError> for EchoBroadcastError {
+    fn from(error: DeserializationError) -> Self {
         Self(error)
     }
 }
