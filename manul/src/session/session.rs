@@ -687,7 +687,7 @@ where
             }
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
-                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, error, transcript)?;
+                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, error)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),

@@ -4,7 +4,7 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    echo::{EchoRoundError, EchoRoundMessage},
+    echo::{EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
     message::{MessageVerificationError, MissingMessage, SignedMessage},
     session::SessionParameters,
     transcript::Transcript,
@@ -151,7 +151,6 @@ where
         verifier: &SP::Verifier,
         normal_broadcast: SignedMessage<NormalBroadcast>,
         error: EchoRoundError<SP::Verifier>,
-        transcript: &Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let description = format!("{:?}", error);
         match error {
@@ -164,64 +163,21 @@ where
                     phantom: core::marker::PhantomData,
                 }),
             }),
-            EchoRoundError::InvalidBroadcast(from) => {
-                // We could avoid all this if we attached the SignedMessage objects
-                // directly to the error. But then it would have to be generic over `S`,
-                // which the `Round` trait knows nothing about.
-                let round_id = normal_broadcast.metadata().round_id().non_echo();
-                let we_received = transcript.get_echo_broadcast(round_id, &from)?;
-
-                let deserialized = normal_broadcast
-                    .payload()
-                    .deserialize::<P, EchoRoundMessage<SP>>()
-                    .map_err(|error| {
-                        LocalError::new(format!("Failed to deserialize the given direct message: {:?}", error))
-                    })?;
-                let echoed_to_us = deserialized.echo_broadcasts.get(&from).ok_or_else(|| {
-                    LocalError::new(format!(
-                        "The echo message from {from:?} is missing from the echo packet"
-                    ))
-                })?;
-
-                Ok(Self {
-                    guilty_party: from,
-                    description,
-                    evidence: EvidenceEnum::MismatchedBroadcasts(MismatchedBroadcastsEvidence {
-                        we_received,
-                        echoed_to_us: echoed_to_us.clone(),
-                        phantom: core::marker::PhantomData,
-                    }),
-                })
-            }
-            EchoRoundError::TwiceSigned(from) => {
-                // We could avoid all this if we attached the SignedMessage objects
-                // directly to the error. But then it would have to be generic over `S`,
-                // which the `Round` trait knows nothing about.
-                let round_id = normal_broadcast.metadata().round_id().non_echo();
-                let we_received = transcript.get_echo_broadcast(round_id, &from)?;
-
-                let deserialized = normal_broadcast
-                    .payload()
-                    .deserialize::<P, EchoRoundMessage<SP>>()
-                    .map_err(|error| {
-                        LocalError::new(format!("Failed to deserialize the given direct message: {:?}", error))
-                    })?;
-                let echoed_to_us = deserialized.echo_broadcasts.get(&from).ok_or_else(|| {
-                    LocalError::new(format!(
-                        "The echo message from {from:?} is missing from the echo packet"
-                    ))
-                })?;
-
-                Ok(Self {
-                    guilty_party: from,
-                    description,
-                    evidence: EvidenceEnum::TwiceSignedBroadcasts(TwiceSignedBroadcastsEvidence {
-                        we_received,
-                        echoed_to_us: echoed_to_us.clone(),
-                        phantom: core::marker::PhantomData,
-                    }),
-                })
-            }
+            EchoRoundError::MismatchedBroadcasts {
+                guilty_party,
+                error,
+                we_received,
+                echoed_to_us,
+            } => Ok(Self {
+                guilty_party,
+                description,
+                evidence: EvidenceEnum::MismatchedBroadcasts(MismatchedBroadcastsEvidence {
+                    error,
+                    we_received,
+                    echoed_to_us,
+                    phantom: core::marker::PhantomData,
+                }),
+            }),
         }
     }
 
@@ -286,7 +242,6 @@ where
             EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(party),
             EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party),
             EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(party),
-            EvidenceEnum::TwiceSignedBroadcasts(evidence) => evidence.verify::<SP>(party),
         }
     }
 }
@@ -299,7 +254,6 @@ enum EvidenceEnum<P: Protocol, SP: SessionParameters> {
     InvalidNormalBroadcast(InvalidNormalBroadcastEvidence<P>),
     InvalidEchoPack(InvalidEchoPackEvidence<P, SP>),
     MismatchedBroadcasts(MismatchedBroadcastsEvidence<P>),
-    TwiceSignedBroadcasts(TwiceSignedBroadcastsEvidence<P>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -349,6 +303,7 @@ where
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MismatchedBroadcastsEvidence<P: Protocol> {
+    error: MismatchedBroadcastsError,
     we_received: SignedMessage<EchoBroadcast>,
     echoed_to_us: SignedMessage<EchoBroadcast>,
     phantom: core::marker::PhantomData<P>,
@@ -366,37 +321,6 @@ where
         let echoed_to_us = self.echoed_to_us.clone().verify::<P, SP>(verifier)?;
 
         if we_received.metadata() == echoed_to_us.metadata() && we_received.payload() != echoed_to_us.payload() {
-            return Ok(());
-        }
-
-        Err(EvidenceError::InvalidEvidence(
-            "The attached messages don't constitute malicious behavior".into(),
-        ))
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TwiceSignedBroadcastsEvidence<P: Protocol> {
-    we_received: SignedMessage<EchoBroadcast>,
-    echoed_to_us: SignedMessage<EchoBroadcast>,
-    phantom: core::marker::PhantomData<P>,
-}
-
-impl<P> TwiceSignedBroadcastsEvidence<P>
-where
-    P: Protocol,
-{
-    fn verify<SP>(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError>
-    where
-        SP: SessionParameters,
-    {
-        let we_received = self.we_received.clone().verify::<P, SP>(verifier)?;
-        let echoed_to_us = self.echoed_to_us.clone().verify::<P, SP>(verifier)?;
-
-        if self.we_received != self.echoed_to_us
-            && we_received.metadata() == echoed_to_us.metadata()
-            && we_received.payload() == echoed_to_us.payload()
-        {
             return Ok(());
         }
 

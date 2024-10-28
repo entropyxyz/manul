@@ -34,17 +34,23 @@ pub(crate) enum EchoRoundError<Id> {
     /// to speed up the verification process.
     InvalidEcho(Id),
     /// The originally received message and the one received in the echo pack were both valid,
-    /// but had different payload.
+    /// but different.
     ///
     /// This is the fault of the sender of that specific broadcast.
-    /// The attached identifier points out the that sender.
-    InvalidBroadcast(Id),
-    /// The originally received message and the one received in the echo pack were both valid,
-    /// have the same payload, but different (albeit valid) signatures.
-    ///
-    /// This is the fault of the sender of that specific broadcast.
-    /// The attached identifier points out the that sender.
-    TwiceSigned(Id),
+    MismatchedBroadcasts {
+        guilty_party: Id,
+        error: MismatchedBroadcastsError,
+        we_received: SignedMessage<EchoBroadcast>,
+        echoed_to_us: SignedMessage<EchoBroadcast>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) enum MismatchedBroadcastsError {
+    /// The originally received message and the echoed one had different payloads.
+    DifferentPayloads,
+    /// The originally received message and the echoed one had different signatures.
+    DifferentSignatures,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,13 +231,25 @@ where
             // `sender` sent us and `from` messages with different payloads.
             // Provable fault of `sender`.
             if verified_echo.payload() != previously_received_echo.payload() {
-                return Err(EchoRoundError::InvalidBroadcast(sender.clone()).into());
+                return Err(EchoRoundError::MismatchedBroadcasts {
+                    guilty_party: sender.clone(),
+                    error: MismatchedBroadcastsError::DifferentPayloads,
+                    we_received: previously_received_echo.clone(),
+                    echoed_to_us: echo.clone(),
+                }
+                .into());
             }
 
             // At this point, we know that the echoed broadcast is not identical to what we initially received,
             // but somehow they both have the correct metadata, and correct signatures.
             // Something strange is going on.
-            return Err(EchoRoundError::TwiceSigned(sender.clone()).into());
+            return Err(EchoRoundError::MismatchedBroadcasts {
+                guilty_party: sender.clone(),
+                error: MismatchedBroadcastsError::DifferentSignatures,
+                we_received: previously_received_echo.clone(),
+                echoed_to_us: echo.clone(),
+            }
+            .into());
         }
 
         Ok(Payload::empty())
