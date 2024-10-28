@@ -1,149 +1,157 @@
-use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 
 use serde::{Deserialize, Serialize};
-use serde_encoded_bytes::{Base64, SliceLike};
 
 use super::{
-    errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError},
+    errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError, NormalBroadcastError},
     round::Protocol,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct DirectMessagePayload(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
+mod private {
+    use alloc::boxed::Box;
+    use serde::{Deserialize, Serialize};
+    use serde_encoded_bytes::{Base64, SliceLike};
 
-/// A serialized direct message.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DirectMessage(Option<DirectMessagePayload>);
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct MessagePayload(#[serde(with = "SliceLike::<Base64>")] pub Box<[u8]>);
 
-impl DirectMessage {
-    /// Creates an empty message.
-    ///
-    /// Use in case the round does not send a message of this type.
-    pub fn none() -> Self {
-        Self(None)
-    }
-
-    /// Creates a new serialized direct message.
-    pub fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
-        Ok(Self(Some(DirectMessagePayload(P::serialize(message)?))))
-    }
-
-    /// Returns `true` if this is an empty message.
-    pub(crate) fn is_none(&self) -> bool {
-        self.0.is_none()
-    }
-
-    /// Returns `Ok(())` if the message is indeed an empty message.
-    pub fn assert_is_none(&self) -> Result<(), DirectMessageError> {
-        if self.is_none() {
-            Ok(())
-        } else {
-            Err(DirectMessageError::new("The expected direct message is missing"))
-        }
-    }
-
-    /// Returns `Ok(())` if the message cannot be deserialized into `T`.
-    ///
-    /// This is intended to be used in the implementations of [`Protocol::verify_direct_message_is_invalid`].
-    pub fn verify_is_not<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
-        if self.deserialize::<P, T>().is_err() {
-            Ok(())
-        } else {
-            Err(MessageValidationError::InvalidEvidence(
-                "Message deserialized successfully".into(),
-            ))
-        }
-    }
-
-    /// Returns `Ok(())` if the message contains a payload.
-    ///
-    /// This is intended to be used in the implementations of [`Protocol::verify_direct_message_is_invalid`].
-    pub fn verify_is_some(&self) -> Result<(), MessageValidationError> {
-        if self.0.is_some() {
-            Ok(())
-        } else {
-            Err(MessageValidationError::InvalidEvidence(
-                "Message's payload is None".into(),
-            ))
-        }
-    }
-
-    /// Deserializes the direct message.
-    pub fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, DirectMessageError> {
-        let payload = self
-            .0
-            .as_ref()
-            .ok_or_else(|| DirectMessageError::new("The direct message is missing in the payload"))?;
-        P::deserialize(&payload.0).map_err(DirectMessageError::from)
+    pub trait ProtocolMessageWrapper: Sized {
+        fn new_inner(maybe_message: Option<MessagePayload>) -> Self;
+        fn maybe_message(&self) -> &Option<MessagePayload>;
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct EchoBroadcastPayload(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
+use private::{MessagePayload, ProtocolMessageWrapper};
 
-/// A serialized echo broadcast.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EchoBroadcast(Option<EchoBroadcastPayload>);
+/// A serialized part of the protocol message.
+///
+/// These would usually be generated separately by the round, but delivered together to
+/// [`Round::receive_message`](`crate::protocol::Round::receive_message`).
+pub trait ProtocolMessagePart: ProtocolMessageWrapper {
+    /// The error specific to deserializing this message.
+    ///
+    /// Used to distinguish which deserialization failed in
+    /// [`Round::receive_message`](`crate::protocol::Round::receive_message`)
+    /// and store the corresponding message in the evidence.
+    type Error: From<String>;
 
-impl EchoBroadcast {
     /// Creates an empty message.
     ///
     /// Use in case the round does not send a message of this type.
-    pub fn none() -> Self {
-        Self(None)
+    fn none() -> Self {
+        Self::new_inner(None)
     }
 
-    /// Creates a new serialized echo broadcast.
-    pub fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
-        Ok(Self(Some(EchoBroadcastPayload(P::serialize(message)?))))
+    /// Creates a new serialized message.
+    fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
+        let payload = MessagePayload(P::serialize(message)?);
+        Ok(Self::new_inner(Some(payload)))
     }
 
     /// Returns `true` if this is an empty message.
-    pub(crate) fn is_none(&self) -> bool {
-        self.0.is_none()
+    fn is_none(&self) -> bool {
+        self.maybe_message().is_none()
     }
 
     /// Returns `Ok(())` if the message is indeed an empty message.
-    pub fn assert_is_none(&self) -> Result<(), EchoBroadcastError> {
+    fn assert_is_none(&self) -> Result<(), Self::Error> {
         if self.is_none() {
             Ok(())
         } else {
-            Err(EchoBroadcastError::new("The expected echo broadcast is missing"))
+            Err("The payload was expected to contain a message, but is `None`"
+                .to_string()
+                .into())
         }
     }
 
     /// Returns `Ok(())` if the message cannot be deserialized into `T`.
     ///
-    /// This is intended to be used in the implementations of [`Protocol::verify_direct_message_is_invalid`].
-    pub fn verify_is_not<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
+    /// This is intended to be used in the implementations of
+    /// [`Protocol::verify_direct_message_is_invalid`] or [`Protocol::verify_echo_broadcast_is_invalid`].
+    fn verify_is_not<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
         if self.deserialize::<P, T>().is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::InvalidEvidence(
-                "Message deserialized successfully".into(),
+                "Message deserialized successfully, as expected by the protocol".into(),
             ))
         }
     }
 
     /// Returns `Ok(())` if the message contains a payload.
     ///
-    /// This is intended to be used in the implementations of [`Protocol::verify_direct_message_is_invalid`].
-    pub fn verify_is_some(&self) -> Result<(), MessageValidationError> {
-        if self.0.is_some() {
+    /// This is intended to be used in the implementations of
+    /// [`Protocol::verify_direct_message_is_invalid`] or [`Protocol::verify_echo_broadcast_is_invalid`].
+    fn verify_is_some(&self) -> Result<(), MessageValidationError> {
+        if self.maybe_message().is_some() {
             Ok(())
         } else {
             Err(MessageValidationError::InvalidEvidence(
-                "Message's payload is None".into(),
+                "The payload is `None`, as expected by the protocol".into(),
             ))
         }
     }
 
-    /// Deserializes the echo broadcast.
-    pub fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, EchoBroadcastError> {
+    /// Deserializes the message into `T`.
+    fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, Self::Error> {
         let payload = self
-            .0
+            .maybe_message()
             .as_ref()
-            .ok_or_else(|| EchoBroadcastError::new("The direct message is missing in the payload"))?;
-        P::deserialize(&payload.0).map_err(EchoBroadcastError::from)
+            .ok_or_else(|| "The payload is `None` and cannot be deserialized".into())?;
+        P::deserialize(&payload.0).map_err(|err| err.to_string().into())
     }
+}
+
+/// A serialized direct message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectMessage(Option<MessagePayload>);
+
+impl ProtocolMessageWrapper for DirectMessage {
+    fn new_inner(maybe_message: Option<MessagePayload>) -> Self {
+        Self(maybe_message)
+    }
+
+    fn maybe_message(&self) -> &Option<MessagePayload> {
+        &self.0
+    }
+}
+
+impl ProtocolMessagePart for DirectMessage {
+    type Error = DirectMessageError;
+}
+
+/// A serialized echo broadcast.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EchoBroadcast(Option<MessagePayload>);
+
+impl ProtocolMessageWrapper for EchoBroadcast {
+    fn new_inner(maybe_message: Option<MessagePayload>) -> Self {
+        Self(maybe_message)
+    }
+
+    fn maybe_message(&self) -> &Option<MessagePayload> {
+        &self.0
+    }
+}
+
+impl ProtocolMessagePart for EchoBroadcast {
+    type Error = EchoBroadcastError;
+}
+
+/// A serialized regular (non-echo) broadcast.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NormalBroadcast(Option<MessagePayload>);
+
+impl ProtocolMessageWrapper for NormalBroadcast {
+    fn new_inner(maybe_message: Option<MessagePayload>) -> Self {
+        Self(maybe_message)
+    }
+
+    fn maybe_message(&self) -> &Option<MessagePayload> {
+        &self.0
+    }
+}
+
+impl ProtocolMessagePart for NormalBroadcast {
+    type Error = NormalBroadcastError;
 }

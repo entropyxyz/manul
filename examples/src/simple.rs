@@ -27,6 +27,10 @@ impl ProtocolError for SimpleProtocolError {
         BTreeSet::new()
     }
 
+    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+
     fn required_combined_echos(&self) -> BTreeSet<RoundId> {
         match self {
             Self::Round1InvalidPosition => BTreeSet::new(),
@@ -37,8 +41,10 @@ impl ProtocolError for SimpleProtocolError {
     fn verify_messages_constitute_error(
         &self,
         _echo_broadcast: &EchoBroadcast,
+        _normal_broadcast: &NormalBroadcast,
         direct_message: &DirectMessage,
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
         combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
@@ -134,6 +140,12 @@ struct Round1Echo {
     my_position: u8,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Round1Broadcast {
+    x: u8,
+    my_position: u8,
+}
+
 struct Round1Payload {
     x: u8,
 }
@@ -183,6 +195,17 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         &self.context.other_ids
     }
 
+    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
+        debug!("{:?}: making normal broadcast", self.context.id);
+
+        let message = Round1Broadcast {
+            x: 0,
+            my_position: self.context.ids_to_positions[&self.context.id],
+        };
+
+        Self::serialize_normal_broadcast(message)
+    }
+
     fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
@@ -213,11 +236,13 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         from: &Id,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
         let _echo = echo_broadcast.deserialize::<SimpleProtocol, Round1Echo>()?;
+        let _normal = normal_broadcast.deserialize::<SimpleProtocol, Round1Broadcast>()?;
         let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
@@ -296,7 +321,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
     ) -> Result<DirectMessage, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
-        let message = Round1Message {
+        let message = Round2Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
@@ -309,11 +334,13 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         from: &Id,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
         echo_broadcast.assert_is_none()?;
+        normal_broadcast.assert_is_none()?;
 
         let message = direct_message.deserialize::<SimpleProtocol, Round1Message>()?;
 

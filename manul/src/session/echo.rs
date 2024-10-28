@@ -17,20 +17,44 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
-        ReceiveError, Round, RoundId,
+        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast, ObjectSafeRound,
+        Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
     },
     utils::SerializableMap,
 };
 
+/// An error that can occur on receiving a message during an echo round.
 #[derive(Debug)]
 pub(crate) enum EchoRoundError<Id> {
+    /// The node who constructed the echoed message pack included an invalid message in it.
+    ///
+    /// This is the fault of the sender of the echo pack.
+    ///
+    /// The attached identifier points out the sender for whom the echoed message was invalid,
+    /// to speed up the verification process.
     InvalidEcho(Id),
-    InvalidBroadcast(Id),
+    /// The originally received message and the one received in the echo pack were both valid,
+    /// but different.
+    ///
+    /// This is the fault of the sender of that specific broadcast.
+    MismatchedBroadcasts {
+        guilty_party: Id,
+        error: MismatchedBroadcastsError,
+        we_received: SignedMessage<EchoBroadcast>,
+        echoed_to_us: SignedMessage<EchoBroadcast>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) enum MismatchedBroadcastsError {
+    /// The originally received message and the echoed one had different payloads.
+    DifferentPayloads,
+    /// The originally received message and the echoed one had different signatures.
+    DifferentSignatures,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EchoRoundMessage<SP: SessionParameters> {
+pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
     pub(crate) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
@@ -102,12 +126,8 @@ where
         &self.destinations
     }
 
-    fn make_direct_message(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        destination: &SP::Verifier,
-    ) -> Result<DirectMessage, LocalError> {
-        debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
+    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
+        debug!("{:?}: making an echo round message", self.verifier);
 
         // Don't send our own message the second time
         let mut echo_broadcasts = self.echo_broadcasts.clone();
@@ -121,8 +141,8 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_broadcasts: echo_broadcasts.into(),
         };
-        let dm = DirectMessage::new::<P, _>(&message)?;
-        Ok(dm)
+        let bc = NormalBroadcast::new::<P, _>(&message)?;
+        Ok(bc)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
@@ -134,13 +154,15 @@ where
         _rng: &mut impl CryptoRngCore,
         from: &SP::Verifier,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
         echo_broadcast.assert_is_none()?;
+        direct_message.assert_is_none()?;
 
-        let message = direct_message.deserialize::<P, EchoRoundMessage<SP>>()?;
+        let message = normal_broadcast.deserialize::<P, EchoRoundMessage<SP>>()?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.
@@ -209,8 +231,25 @@ where
             // `sender` sent us and `from` messages with different payloads.
             // Provable fault of `sender`.
             if verified_echo.payload() != previously_received_echo.payload() {
-                return Err(EchoRoundError::InvalidBroadcast(sender.clone()).into());
+                return Err(EchoRoundError::MismatchedBroadcasts {
+                    guilty_party: sender.clone(),
+                    error: MismatchedBroadcastsError::DifferentPayloads,
+                    we_received: previously_received_echo.clone(),
+                    echoed_to_us: echo.clone(),
+                }
+                .into());
             }
+
+            // At this point, we know that the echoed broadcast is not identical to what we initially received,
+            // but somehow they both have the correct metadata, and correct signatures.
+            // Something strange is going on.
+            return Err(EchoRoundError::MismatchedBroadcasts {
+                guilty_party: sender.clone(),
+                error: MismatchedBroadcastsError::DifferentSignatures,
+                we_received: previously_received_echo.clone(),
+                echoed_to_us: echo.clone(),
+            }
+            .into());
         }
 
         Ok(Payload::empty())

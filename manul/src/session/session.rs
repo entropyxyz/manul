@@ -21,8 +21,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, ObjectSafeRound,
-    ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, NormalBroadcast,
+    ObjectSafeRound, ObjectSafeRoundWrapper, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
+    Round, RoundId,
 };
 
 /// A set of types needed to execute a session.
@@ -108,6 +109,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
     echo_broadcast: SignedMessage<EchoBroadcast>,
+    normal_broadcast: SignedMessage<NormalBroadcast>,
     possible_next_rounds: BTreeSet<RoundId>,
     transcript: Transcript<P, SP>,
 }
@@ -159,8 +161,13 @@ where
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
+
         let echo = round.make_echo_broadcast(rng)?;
         let echo_broadcast = SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), echo)?;
+
+        let normal = round.make_normal_broadcast(rng)?;
+        let normal_broadcast = SignedMessage::new::<P, SP>(rng, &signer, &session_id, round.id(), normal)?;
+
         let message_destinations = round.message_destinations().clone();
 
         let possible_next_rounds = if echo_broadcast.payload().is_none() {
@@ -175,6 +182,7 @@ where
             verifier,
             round,
             echo_broadcast,
+            normal_broadcast,
             possible_next_rounds,
             message_destinations,
             transcript,
@@ -213,6 +221,7 @@ where
             self.round.id(),
             direct_message,
             self.echo_broadcast.clone(),
+            self.normal_broadcast.clone(),
         )?;
 
         Ok((
@@ -357,6 +366,7 @@ where
             rng,
             message.from(),
             message.echo_broadcast().clone(),
+            message.normal_broadcast().clone(),
             message.direct_message().clone(),
         );
         // We could filter out and return a possible `LocalError` at this stage,
@@ -384,6 +394,7 @@ where
         let transcript = self.transcript.update(
             round_id,
             accum.echo_broadcasts,
+            accum.normal_broadcasts,
             accum.direct_messages,
             accum.provable_errors,
             accum.unprovable_errors,
@@ -404,6 +415,7 @@ where
         let transcript = self.transcript.update(
             round_id,
             accum.echo_broadcasts,
+            accum.normal_broadcasts,
             accum.direct_messages,
             accum.provable_errors,
             accum.unprovable_errors,
@@ -496,6 +508,7 @@ pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
     artifacts: BTreeMap<SP::Verifier, Artifact>,
     cached: BTreeMap<SP::Verifier, BTreeMap<RoundId, VerifiedMessageBundle<SP>>>,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    normal_broadcasts: BTreeMap<SP::Verifier, SignedMessage<NormalBroadcast>>,
     direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
@@ -515,6 +528,7 @@ where
             artifacts: BTreeMap::new(),
             cached: BTreeMap::new(),
             echo_broadcasts: BTreeMap::new(),
+            normal_broadcasts: BTreeMap::new(),
             direct_messages: BTreeMap::new(),
             provable_errors: BTreeMap::new(),
             unprovable_errors: BTreeMap::new(),
@@ -623,9 +637,12 @@ where
         let error = match processed.processed {
             Ok(payload) => {
                 // Note: only inserting the messages if they actually have a payload
-                let (echo_broadcast, direct_message) = processed.message.into_parts();
+                let (echo_broadcast, normal_broadcast, direct_message) = processed.message.into_parts();
                 if !echo_broadcast.payload().is_none() {
                     self.echo_broadcasts.insert(from.clone(), echo_broadcast);
+                }
+                if !normal_broadcast.payload().is_none() {
+                    self.normal_broadcasts.insert(from.clone(), normal_broadcast);
                 }
                 if !direct_message.payload().is_none() {
                     self.direct_messages.insert(from.clone(), direct_message);
@@ -638,18 +655,30 @@ where
 
         match error.0 {
             ReceiveErrorType::InvalidDirectMessage(error) => {
-                let (_echo_broadcast, direct_message) = processed.message.into_parts();
+                let (_echo_broadcast, _normal_broadcast, direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::InvalidEchoBroadcast(error) => {
-                let (echo_broadcast, _direct_message) = processed.message.into_parts();
+                let (echo_broadcast, _normal_broadcast, _direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
+            ReceiveErrorType::InvalidNormalBroadcast(error) => {
+                let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
+                let evidence = Evidence::new_invalid_normal_broadcast(&from, normal_broadcast, error);
+                self.register_provable_error(&from, evidence)
+            }
             ReceiveErrorType::Protocol(error) => {
-                let (echo_broadcast, direct_message) = processed.message.into_parts();
-                let evidence = Evidence::new_protocol_error(&from, echo_broadcast, direct_message, error, transcript)?;
+                let (echo_broadcast, normal_broadcast, direct_message) = processed.message.into_parts();
+                let evidence = Evidence::new_protocol_error(
+                    &from,
+                    echo_broadcast,
+                    normal_broadcast,
+                    direct_message,
+                    error,
+                    transcript,
+                )?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Unprovable(error) => {
@@ -657,8 +686,8 @@ where
                 Ok(())
             }
             ReceiveErrorType::Echo(error) => {
-                let (_echo_broadcast, direct_message) = processed.message.into_parts();
-                let evidence = Evidence::new_echo_round_error(&from, direct_message, error, transcript)?;
+                let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
+                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, error)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),
@@ -711,7 +740,7 @@ mod tests {
     use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
     use crate::{
         protocol::{
-            DeserializationError, DirectMessage, EchoBroadcast, LocalError, Protocol, ProtocolError,
+            DeserializationError, DirectMessage, EchoBroadcast, LocalError, NormalBroadcast, Protocol, ProtocolError,
             ProtocolValidationError, RoundId,
         },
         testing::TestSessionParams,
@@ -737,8 +766,10 @@ mod tests {
             fn verify_messages_constitute_error(
                 &self,
                 _echo_broadcast: &EchoBroadcast,
+                _normal_broadcast: &NormalBroadcast,
                 _direct_message: &DirectMessage,
                 _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+                _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
                 _direct_messages: &BTreeMap<RoundId, DirectMessage>,
                 _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
             ) -> Result<(), ProtocolValidationError> {

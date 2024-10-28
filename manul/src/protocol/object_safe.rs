@@ -9,7 +9,7 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
-    message::{DirectMessage, EchoBroadcast},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast},
     round::{Artifact, FinalizeOutcome, Payload, Protocol, Round, RoundId},
 };
 
@@ -55,11 +55,14 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
 
     fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<EchoBroadcast, LocalError>;
 
+    fn make_normal_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<NormalBroadcast, LocalError>;
+
     fn receive_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         from: &Id,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
@@ -127,16 +130,22 @@ where
         self.round.make_echo_broadcast(&mut boxed_rng)
     }
 
+    fn make_normal_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
+        let mut boxed_rng = BoxedRng(rng);
+        self.round.make_normal_broadcast(&mut boxed_rng)
+    }
+
     fn receive_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         from: &Id,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);
         self.round
-            .receive_message(&mut boxed_rng, from, echo_broadcast, direct_message)
+            .receive_message(&mut boxed_rng, from, echo_broadcast, normal_broadcast, direct_message)
     }
 
     fn finalize(

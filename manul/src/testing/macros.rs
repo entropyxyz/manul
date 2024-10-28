@@ -3,7 +3,7 @@ use alloc::collections::BTreeMap;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, Payload, Round,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, Payload, Round,
 };
 
 /// A trait defining a wrapper around an existing type implementing [`Round`].
@@ -42,6 +42,11 @@ pub trait RoundOverride<Id>: RoundWrapper<Id> {
     /// An override for [`Round::make_echo_broadcast`].
     fn make_echo_broadcast(&self, rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         self.inner_round_ref().make_echo_broadcast(rng)
+    }
+
+    /// An override for [`Round::make_normal_broadcast`].
+    fn make_normal_broadcast(&self, rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
+        self.inner_round_ref().make_normal_broadcast(rng)
     }
 
     /// An override for [`Round::finalize`].
@@ -111,15 +116,23 @@ macro_rules! round_override {
                 <Self as $crate::testing::RoundOverride<Id>>::make_echo_broadcast(self, rng)
             }
 
+            fn make_normal_broadcast(
+                &self,
+                rng: &mut impl CryptoRngCore,
+            ) -> Result<$crate::protocol::NormalBroadcast, $crate::protocol::LocalError> {
+                <Self as $crate::testing::RoundOverride<Id>>::make_normal_broadcast(self, rng)
+            }
+
             fn receive_message(
                 &self,
                 rng: &mut impl CryptoRngCore,
                 from: &Id,
                 echo_broadcast: $crate::protocol::EchoBroadcast,
+                normal_broadcast: $crate::protocol::NormalBroadcast,
                 direct_message: $crate::protocol::DirectMessage,
             ) -> Result<$crate::protocol::Payload, $crate::protocol::ReceiveError<Id, Self::Protocol>> {
                 self.inner_round_ref()
-                    .receive_message(rng, from, echo_broadcast, direct_message)
+                    .receive_message(rng, from, echo_broadcast, normal_broadcast, direct_message)
             }
 
             fn finalize(

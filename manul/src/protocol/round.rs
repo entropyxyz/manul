@@ -13,7 +13,7 @@ use super::{
     errors::{
         DeserializationError, FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError,
     },
-    message::{DirectMessage, EchoBroadcast},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
 };
 
@@ -144,7 +144,7 @@ pub trait Protocol: Debug + Sized {
         #[allow(unused_variables)] message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::InvalidEvidence(format!(
-            "There are no direct messages in {round_id:?}"
+            "Invalid round number: {round_id:?}"
         )))
     }
 
@@ -157,7 +157,20 @@ pub trait Protocol: Debug + Sized {
         #[allow(unused_variables)] message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::InvalidEvidence(format!(
-            "There are no echo broadcasts in {round_id:?}"
+            "Invalid round number: {round_id:?}"
+        )))
+    }
+
+    /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
+    /// assuming it is an echo broadcast from the round `round_id`.
+    ///
+    /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
+    fn verify_normal_broadcast_is_invalid(
+        round_id: RoundId,
+        #[allow(unused_variables)] message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        Err(MessageValidationError::InvalidEvidence(format!(
+            "Invalid round number: {round_id:?}"
         )))
     }
 }
@@ -178,6 +191,13 @@ pub trait ProtocolError: Debug + Clone + Send {
     ///
     /// **Note:** Should not include the round where the error happened.
     fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
+        BTreeSet::new()
+    }
+
+    /// The rounds normal broadcasts from which are required to prove malicious behavior for this error.
+    ///
+    /// **Note:** Should not include the round where the error happened.
+    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
         BTreeSet::new()
     }
 
@@ -203,11 +223,14 @@ pub trait ProtocolError: Debug + Clone + Send {
     /// [`required_echo_broadcasts`](`Self::required_echo_broadcasts`).
     /// `combined_echos` are bundled echos from other parties from the previous rounds,
     /// as requested by [`required_combined_echos`](`Self::required_combined_echos`).
+    #[allow(clippy::too_many_arguments)]
     fn verify_messages_constitute_error(
         &self,
         echo_broadcast: &EchoBroadcast,
+        normal_broadcast: &NormalBroadcast,
         direct_message: &DirectMessage,
         echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         direct_messages: &BTreeMap<RoundId, DirectMessage>,
         combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
@@ -342,6 +365,7 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
     /// only via [`make_direct_message_with_artifact`](`Self::make_direct_message_with_artifact`).
     ///
     /// Return [`DirectMessage::none`] if this round does not send direct messages.
+    /// This is also the blanket implementation.
     fn make_direct_message(
         &self,
         #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
@@ -350,9 +374,10 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
         Ok(DirectMessage::none())
     }
 
-    /// Returns the echo broadcast for this round, or `None` if the round does not require echo-broadcasting.
+    /// Returns the echo broadcast for this round.
     ///
-    /// Returns `None` if not implemented.
+    /// Return [`EchoBroadcast::none`] if this round does not send echo-broadcast messages.
+    /// This is also the blanket implementation.
     ///
     /// The execution layer will guarantee that all the destinations are sure they all received the same broadcast.
     /// This also means that a message with the broadcasts from all nodes signed by each node is available
@@ -364,6 +389,20 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
         Ok(EchoBroadcast::none())
     }
 
+    /// Returns the normal broadcast for this round.
+    ///
+    /// Return [`NormalBroadcast::none`] if this round does not send normal broadcast messages.
+    /// This is also the blanket implementation.
+    ///
+    /// Unlike the echo broadcasts, these will be just sent to every node from [`Self::message_destinations`]
+    /// without any confirmation required.
+    fn make_normal_broadcast(
+        &self,
+        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
+    ) -> Result<NormalBroadcast, LocalError> {
+        Ok(NormalBroadcast::none())
+    }
+
     /// Processes the received message and generates the payload that will be used in [`finalize`](`Self::finalize`).
     ///
     /// Note that there is no need to authenticate the message at this point;
@@ -373,6 +412,7 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
         rng: &mut impl CryptoRngCore,
         from: &Id,
         echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
@@ -398,6 +438,12 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
     /// to return in [`make_echo_broadcast`](`Self::make_echo_broadcast`).
     fn serialize_echo_broadcast(message: impl Serialize) -> Result<EchoBroadcast, LocalError> {
         EchoBroadcast::new::<Self::Protocol, _>(message)
+    }
+
+    /// A convenience method to create a [`NormalBroadcast`] object
+    /// to return in [`make_normal_broadcast`](`Self::make_normal_broadcast`).
+    fn serialize_normal_broadcast(message: impl Serialize) -> Result<NormalBroadcast, LocalError> {
+        NormalBroadcast::new::<Self::Protocol, _>(message)
     }
 
     /// A convenience method to create a [`DirectMessage`] object

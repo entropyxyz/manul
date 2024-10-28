@@ -2,7 +2,10 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::{
-    protocol::{Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round},
+    protocol::{
+        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, ProtocolMessagePart,
+        Round,
+    },
     session::signature::Keypair,
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSessionParams, TestSigner, TestVerifier},
 };

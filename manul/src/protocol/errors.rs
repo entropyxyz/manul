@@ -40,6 +40,8 @@ pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
     InvalidDirectMessage(DirectMessageError),
     /// The given echo broadcast cannot be deserialized.
     InvalidEchoBroadcast(EchoBroadcastError),
+    /// The given normal broadcast cannot be deserialized.
+    InvalidNormalBroadcast(NormalBroadcastError),
     /// A provable error occurred.
     Protocol(P::ProtocolError),
     /// An unprovable error occurred.
@@ -110,6 +112,15 @@ where
 {
     fn from(error: EchoBroadcastError) -> Self {
         Self(ReceiveErrorType::InvalidEchoBroadcast(error))
+    }
+}
+
+impl<Id, P> From<NormalBroadcastError> for ReceiveError<Id, P>
+where
+    P: Protocol,
+{
+    fn from(error: NormalBroadcastError) -> Self {
+        Self(ReceiveErrorType::InvalidNormalBroadcast(error))
     }
 }
 
@@ -190,33 +201,32 @@ impl From<LocalError> for ProtocolValidationError {
 /// An error during deserialization of a direct message.
 #[derive(displaydoc::Display, Debug, Clone)]
 #[displaydoc("Direct message error: {0}")]
-pub struct DirectMessageError(DeserializationError);
+pub struct DirectMessageError(String);
 
-impl DirectMessageError {
-    pub(crate) fn new(message: impl Into<String>) -> Self {
-        Self(DeserializationError::new(message))
-    }
-}
-
-impl From<DeserializationError> for DirectMessageError {
-    fn from(error: DeserializationError) -> Self {
-        Self(error)
+impl From<String> for DirectMessageError {
+    fn from(message: String) -> Self {
+        Self(message)
     }
 }
 
 /// An error during deserialization of an echo broadcast.
 #[derive(displaydoc::Display, Debug, Clone)]
 #[displaydoc("Echo broadcast error: {0}")]
-pub struct EchoBroadcastError(DeserializationError);
+pub struct EchoBroadcastError(String);
 
-impl EchoBroadcastError {
-    pub(crate) fn new(message: impl Into<String>) -> Self {
-        Self(DeserializationError::new(message))
+impl From<String> for EchoBroadcastError {
+    fn from(message: String) -> Self {
+        Self(message)
     }
 }
 
-impl From<DeserializationError> for EchoBroadcastError {
-    fn from(error: DeserializationError) -> Self {
-        Self(error)
+/// An error during deserialization of a normal broadcast.
+#[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Normal broadcast error: {0}")]
+pub struct NormalBroadcastError(String);
+
+impl From<String> for NormalBroadcastError {
+    fn from(message: String) -> Self {
+        Self(message)
     }
 }
