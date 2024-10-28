@@ -13,7 +13,7 @@ use super::{
     errors::{
         DeserializationError, FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError,
     },
-    message::{DirectMessage, EchoBroadcast},
+    message::{DirectMessage, EchoBroadcast, ProtocolMessagePart},
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
 };
 

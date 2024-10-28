@@ -7,7 +7,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
         Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
-        LocalError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
+        LocalError, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
+        Round, RoundId,
     },
     session::{signature::Keypair, SessionOutcome},
     testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},

@@ -18,7 +18,7 @@ use super::{
 use crate::{
     protocol::{
         Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
-        ReceiveError, Round, RoundId,
+        ProtocolMessagePart, ReceiveError, Round, RoundId,
     },
     utils::SerializableMap,
 };

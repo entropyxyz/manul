@@ -22,7 +22,7 @@ use super::{
 };
 use crate::protocol::{
     Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, ObjectSafeRound,
-    ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
+    ObjectSafeRoundWrapper, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType, Round, RoundId,
 };
 
 /// A set of types needed to execute a session.

@@ -13,7 +13,7 @@ use super::{
 use crate::{
     protocol::{
         DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, Protocol,
-        ProtocolError, ProtocolValidationError, RoundId,
+        ProtocolError, ProtocolMessagePart, ProtocolValidationError, RoundId,
     },
     utils::SerializableMap,
 };
@@ -422,7 +422,9 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            let echo_set = DirectMessage::deserialize::<P, EchoRoundMessage<SP>>(verified_combined_echo.payload())?;
+            let echo_set = verified_combined_echo
+                .payload()
+                .deserialize::<P, EchoRoundMessage<SP>>()?;
 
             let mut verified_echo_set = Vec::new();
             for (other_verifier, echo_broadcast) in echo_set.echo_broadcasts.iter() {
