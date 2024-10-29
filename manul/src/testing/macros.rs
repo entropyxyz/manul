@@ -3,7 +3,7 @@ use alloc::collections::BTreeMap;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, Payload, Round,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, Payload, Round,
 };
 use crate::session::Serializer;
 
@@ -19,19 +19,30 @@ pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
     fn inner_round(self) -> Self::InnerRound;
 }
 
-/// This trait defines overrides of some methods [`RoundWrapper::InnerRound`].
+/// This trait defines overrides of some methods of [`RoundWrapper::InnerRound`].
 ///
-/// Intended to be used with [`round_override`] to generate the [`Round`] implementation.
+/// Intended to be used with the [`round_override`] macro to generate the [`Round`] implementation.
 ///
-/// The blanket implementations default to the methods of the wrapped round.
+/// The blanket implementations delegate to the methods of the wrapped round.
 pub trait RoundOverride<Id>: RoundWrapper<Id> {
+    /// An override for [`Round::make_direct_message_with_artifact`].
+    fn make_direct_message_with_artifact(
+        &self,
+        rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+        destination: &Id,
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+        let dm = self.make_direct_message(rng, serializer, destination)?;
+        Ok((dm, None))
+    }
+
     /// An override for [`Round::make_direct_message`].
     fn make_direct_message(
         &self,
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<DirectMessage, LocalError> {
         self.inner_round_ref().make_direct_message(rng, serializer, destination)
     }
 
@@ -40,8 +51,17 @@ pub trait RoundOverride<Id>: RoundWrapper<Id> {
         &self,
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
-    ) -> Option<Result<EchoBroadcast, LocalError>> {
+    ) -> Result<EchoBroadcast, LocalError> {
         self.inner_round_ref().make_echo_broadcast(rng, serializer)
+    }
+
+    /// An override for [`Round::make_normal_broadcast`].
+    fn make_normal_broadcast(
+        &self,
+        rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<NormalBroadcast, LocalError> {
+        self.inner_round_ref().make_normal_broadcast(rng, serializer)
     }
 
     /// An override for [`Round::finalize`].
@@ -62,14 +82,15 @@ pub trait RoundOverride<Id>: RoundWrapper<Id> {
 /// A macro for "inheriting" from a [`Round`]-implementing type, and overriding some of its behavior.
 ///
 /// The given `$round` must implement [`RoundOverride`], and is generally some type
-/// with one of its fiels implementing [`Round`].
-/// Then, using the macro will implement [`Round`] for `$round` by delegating non-overridden methods to
+/// with one of its fields implementing [`Round`].
+/// Then, the macro will implement the [`Round`] trait for `$round` by delegating non-overridden methods to
 /// the internal [`RoundWrapper::InnerRound`].
 #[macro_export]
 macro_rules! round_override {
     ($round: ident) => {
         impl<Id> Round<Id> for $round<Id>
         where
+            Id: Debug,
             $round<Id>: RoundOverride<Id>,
         {
             type Protocol =
@@ -92,16 +113,33 @@ macro_rules! round_override {
                 rng: &mut impl CryptoRngCore,
                 serializer: &$crate::session::Serializer,
                 destination: &Id,
-            ) -> Result<($crate::protocol::DirectMessage, $crate::protocol::Artifact), $crate::protocol::LocalError> {
+            ) -> Result<$crate::protocol::DirectMessage, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, serializer, destination)
+            }
+
+            fn make_direct_message_with_artifact(
+                &self,
+                rng: &mut impl CryptoRngCore,
+                serializer: &$crate::session::Serializer,
+                destination: &Id,
+            ) -> Result<($crate::protocol::DirectMessage, Option<$crate::protocol::Artifact>), $crate::protocol::LocalError> {
+                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message_with_artifact(self, rng, serializer, destination)
             }
 
             fn make_echo_broadcast(
                 &self,
                 rng: &mut impl CryptoRngCore,
                 serializer: &$crate::session::Serializer,
-            ) -> Option<Result<$crate::protocol::EchoBroadcast, $crate::protocol::LocalError>> {
+            ) -> Result<$crate::protocol::EchoBroadcast, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_echo_broadcast(self, rng, serializer)
+            }
+
+            fn make_normal_broadcast(
+                &self,
+                rng: &mut impl CryptoRngCore,
+                serializer: &$crate::session::Serializer,
+            ) -> Result<$crate::protocol::NormalBroadcast, $crate::protocol::LocalError> {
+                <Self as $crate::testing::RoundOverride<Id>>::make_normal_broadcast(self, rng, serializer)
             }
 
             fn receive_message(
@@ -109,11 +147,12 @@ macro_rules! round_override {
                 rng: &mut impl CryptoRngCore,
                 deserializer: &$crate::session::Deserializer,
                 from: &Id,
-                echo_broadcast: Option<$crate::protocol::EchoBroadcast>,
+                echo_broadcast: $crate::protocol::EchoBroadcast,
+                normal_broadcast: $crate::protocol::NormalBroadcast,
                 direct_message: $crate::protocol::DirectMessage,
             ) -> Result<$crate::protocol::Payload, $crate::protocol::ReceiveError<Id, Self::Protocol>> {
                 self.inner_round_ref()
-                    .receive_message(rng, deserializer, from, echo_broadcast, direct_message)
+                    .receive_message(rng, deserializer, from, echo_broadcast, normal_broadcast, direct_message)
             }
 
             fn finalize(

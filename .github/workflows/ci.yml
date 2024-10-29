@@ -12,7 +12,7 @@ env:
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
-  build:
+  wasm-build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -30,7 +30,7 @@ jobs:
       - run: cargo build --target ${{ matrix.target }} --no-default-features
       - run: cargo build --target ${{ matrix.target }}
 
-  coveralls:
+  test-and-coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,20 +43,22 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
         with:
           files: lcov.info
           fail_on_error: true
 
-  tests:
+  # This is supposed to factor out possible bugs introduced by Rust compiler changes
+  # and dependency changes, making the results more reproducible.
+  stable-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            rust: stable
+            rust: 1.81.0 # MSRV
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@v1
@@ -66,7 +68,7 @@ jobs:
           profile: minimal
           override: true
       - run: ${{ matrix.deps }}
-      - run: cargo test --target ${{ matrix.target }}
+      - run: cargo test --workspace --locked --all-features --target ${{ matrix.target }}
 
   clippy:
     runs-on: ubuntu-latest

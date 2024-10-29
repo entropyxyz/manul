@@ -3,10 +3,11 @@ use core::fmt::Debug;
 
 use manul::{
     protocol::{
-        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, Round, SessionId,
+        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, ProtocolMessagePart,
+        Round,
     },
     session::{signature::Keypair, Serializer},
-    testing::{round_override, run_sync, RoundOverride, RoundWrapper, Signer, TestingSessionParams, Verifier},
+    testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
@@ -29,6 +30,7 @@ struct MaliciousInputs<Id> {
     behavior: Behavior,
 }
 
+#[derive(Debug)]
 struct MaliciousRound1<Id> {
     round: Round1<Id>,
     behavior: Behavior,
@@ -48,11 +50,11 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
     type Inputs = MaliciousInputs<Id>;
     fn new(
         rng: &mut impl CryptoRngCore,
-        session_id: &SessionId,
+        shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
     ) -> Result<Self, LocalError> {
-        let round = Round1::new(rng, session_id, id, inputs.inputs)?;
+        let round = Round1::new(rng, shared_randomness, id, inputs.inputs)?;
         Ok(Self {
             round,
             behavior: inputs.behavior,
@@ -66,17 +68,15 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<DirectMessage, LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
-            let dm = DirectMessage::new(serializer, [99u8]).unwrap();
-            Ok((dm, Artifact::empty()))
+            DirectMessage::new(serializer, [99u8])
         } else if matches!(self.behavior, Behavior::AttributableFailure) {
             let message = Round1Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            let dm = DirectMessage::new(serializer, message)?;
-            Ok((dm, Artifact::empty()))
+            DirectMessage::new(serializer, message)
         } else {
             self.inner_round_ref().make_direct_message(rng, serializer, destination)
         }
@@ -109,6 +109,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
 
 round_override!(MaliciousRound1);
 
+#[derive(Debug)]
 struct MaliciousRound2<Id> {
     round: Round2<Id>,
     behavior: Behavior,
@@ -130,14 +131,13 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<DirectMessage, LocalError> {
         if matches!(self.behavior, Behavior::AttributableFailureRound2) {
             let message = Round2Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            let dm = DirectMessage::new(serializer, message)?;
-            Ok((dm, Artifact::empty()))
+            DirectMessage::new(serializer, message)
         } else {
             self.inner_round_ref().make_direct_message(rng, serializer, destination)
         }
@@ -148,7 +148,7 @@ round_override!(MaliciousRound2);
 
 #[test]
 fn serialized_garbage() {
-    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
+    let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
@@ -177,7 +177,7 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, TestingSessionParams<Binary>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<Binary>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -194,7 +194,7 @@ fn serialized_garbage() {
 
 #[test]
 fn attributable_failure() {
-    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
+    let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
@@ -223,7 +223,7 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, TestingSessionParams<Binary>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<Binary>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -240,7 +240,7 @@ fn attributable_failure() {
 
 #[test]
 fn attributable_failure_round2() {
-    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
+    let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
@@ -269,7 +269,7 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<Verifier>, TestingSessionParams<Binary>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<Binary>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();

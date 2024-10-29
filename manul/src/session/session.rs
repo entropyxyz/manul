@@ -9,9 +9,9 @@ use core::fmt::Debug;
 use digest::Digest;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use serde_encoded_bytes::{Base64, SliceLike};
+use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::{
     echo::EchoRound,
@@ -22,8 +22,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, ObjectSafeRound,
-    ObjectSafeRoundWrapper, Payload, Protocol, ReceiveError, ReceiveErrorType, Round, RoundId,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, NormalBroadcast,
+    ObjectSafeRound, ObjectSafeRoundWrapper, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
+    Round, RoundId,
 };
 
 /// A set of types needed to execute a session.
@@ -32,7 +33,7 @@ use crate::protocol::{
 /// is used in the network in which they are running the protocol.
 pub trait SessionParameters: 'static {
     /// The signer type.
-    type Signer: RandomizedDigestSigner<Self::Digest, Self::Signature> + Keypair<VerifyingKey = Self::Verifier>;
+    type Signer: Debug + RandomizedDigestSigner<Self::Digest, Self::Signature> + Keypair<VerifyingKey = Self::Verifier>;
 
     /// The hash type that will be used to pre-hash message payloads before signing.
     type Digest: Digest;
@@ -56,7 +57,7 @@ pub trait SessionParameters: 'static {
 
 /// A session identifier shared between the parties.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, PartialOrd, Ord, Hash)]
-pub struct SessionId(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
+pub struct SessionId(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
 
 /// A session ID.
 ///
@@ -65,15 +66,34 @@ pub struct SessionId(#[serde(with = "SliceLike::<Base64>")] Box<[u8]>);
 /// Must be created uniquely for each session execution, otherwise there is a danger of replay attacks.
 impl SessionId {
     /// Creates a random session identifier.
-    pub fn random(rng: &mut impl CryptoRngCore) -> Self {
-        let mut buffer = [0u8; 256];
+    ///
+    /// **Warning:** this should generally be used for testing; creating a random session ID in a centralized way
+    /// usually defeats the purpose of having a distributed protocol.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn random<SP: SessionParameters>(rng: &mut impl CryptoRngCore) -> Self {
+        let mut buffer = digest::Output::<SP::Digest>::default();
         rng.fill_bytes(&mut buffer);
-        Self(buffer.into())
+        Self(buffer.as_ref().into())
     }
 
-    /// Creates a session identifier from the given bytestring.
-    pub fn new(bytes: &[u8]) -> Self {
-        Self(bytes.into())
+    /// Creates a session identifier deterministically from the given bytestring.
+    ///
+    /// Every node executing a session must be given the same session ID.
+    ///
+    /// **Warning:** make sure the bytestring you provide will not be reused within your application,
+    /// and cannot be predicted in advance.
+    /// Session ID collisions will affect error attribution and evidence verification.
+    ///
+    /// In a blockchain setting, it may be some combination of the current block hash with the public parameters
+    /// (identities of the parties, hash of the inputs).
+    pub fn from_seed<SP: SessionParameters>(bytes: &[u8]) -> Self {
+        Self(
+            SP::Digest::new_with_prefix(b"SessionId")
+                .chain_update(bytes)
+                .finalize()
+                .as_ref()
+                .into(),
+        )
     }
 }
 
@@ -85,6 +105,7 @@ impl AsRef<[u8]> for SessionId {
 
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
+#[derive(Debug)]
 pub struct Session<P: Protocol, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
@@ -93,12 +114,14 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     deserializer: Deserializer,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
-    echo_message: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
+    normal_broadcast: SignedMessage<NormalBroadcast>,
     possible_next_rounds: BTreeSet<RoundId>,
     transcript: Transcript<P, SP>,
 }
 
 /// Possible non-erroneous results of finalizing a round.
+#[derive(Debug)]
 pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
     /// The execution is finished.
     Finished(SessionReport<P, SP>),
@@ -114,7 +137,7 @@ pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
 impl<P, SP> Session<P, SP>
 where
     P: Protocol,
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
 {
     /// Initializes a new session.
     pub fn new<R>(
@@ -130,7 +153,7 @@ where
         let verifier = signer.verifying_key();
         let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(
             rng,
-            &session_id,
+            session_id.as_ref(),
             verifier.clone(),
             inputs,
         )?));
@@ -157,14 +180,16 @@ where
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
-        let echo_message = round
-            .make_echo_broadcast(rng, &serializer)
-            .transpose()?
-            .map(|echo| SignedMessage::new::<SP>(rng, &signer, &serializer, &session_id, round.id(), echo))
-            .transpose()?;
+
+        let echo = round.make_echo_broadcast(rng, &serializer)?;
+        let echo_broadcast = SignedMessage::new::<SP>(rng, &signer, &serializer, &session_id, round.id(), echo)?;
+
+        let normal = round.make_normal_broadcast(rng, &serializer)?;
+        let normal_broadcast = SignedMessage::new::<SP>(rng, &signer, &serializer, &session_id, round.id(), normal)?;
+
         let message_destinations = round.message_destinations().clone();
 
-        let possible_next_rounds = if echo_message.is_none() {
+        let possible_next_rounds = if echo_broadcast.payload().is_none() {
             round.possible_next_rounds()
         } else {
             BTreeSet::from([round.id().echo()])
@@ -177,7 +202,8 @@ where
             serializer,
             deserializer,
             round,
-            echo_message,
+            echo_broadcast,
+            normal_broadcast,
             possible_next_rounds,
             message_destinations,
             transcript,
@@ -207,7 +233,9 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self.round.make_direct_message(rng, &self.serializer, destination)?;
+        let (direct_message, artifact) =
+            self.round
+                .make_direct_message_with_artifact(rng, &self.serializer, destination)?;
 
         let bundle = MessageBundle::new::<SP>(
             rng,
@@ -216,7 +244,8 @@ where
             &self.session_id,
             self.round.id(),
             direct_message,
-            self.echo_message.clone(),
+            self.echo_broadcast.clone(),
+            self.normal_broadcast.clone(),
         )?;
 
         Ok((
@@ -243,6 +272,18 @@ where
     }
 
     /// Performs some preliminary checks on the message to verify its integrity.
+    ///
+    /// On the happy path, the return values are as follows:
+    ///     - `Ok(Some(…))` if the message passes all checks.
+    ///     - `Ok(None)` if the message passed all checks, but is not for this round. In this case
+    ///     the preprocessed message is buffered in the "cached" message and applied in the next round.
+    ///
+    /// On the unhappy path, the return values are:
+    ///     - `Ok(None)` when something goes wrong, either because there's a problem at the
+    /// sending side or the message was received in the wrong context (e.g. wrong session, wrong
+    /// round etc). In most cases a `RemoteError` is added to the `RoundAccumulator`.
+    ///     - `Err` means an error while processing the data locally (likely bugs or
+    /// deserialization issues).
     pub fn preprocess_message(
         &self,
         accum: &mut RoundAccumulator<P, SP>,
@@ -250,49 +291,48 @@ where
         message: MessageBundle,
     ) -> Result<Option<VerifiedMessageBundle<SP>>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
-
+        let key = self.verifier();
         if self.transcript.is_banned(from) || accum.is_banned(from) {
+            trace!("{key:?} Banned.");
             return Ok(None);
         }
 
         let checked_message = match message.unify_metadata() {
             Some(checked_message) => checked_message,
             None => {
-                accum.register_unprovable_error(from, RemoteError::new("Mismatched metadata in bundled messages"))?;
+                let err = "Mismatched metadata in bundled messages.";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
         };
         let message_round_id = checked_message.metadata().round_id();
 
         if checked_message.metadata().session_id() != &self.session_id {
-            accum.register_unprovable_error(
-                from,
-                RemoteError::new("The received message has an incorrect session ID"),
-            )?;
+            let err = "The received message has an incorrect session ID";
+            accum.register_unprovable_error(from, RemoteError::new(err))?;
+            trace!("{key:?} {err}");
             return Ok(None);
         }
 
         if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
-                accum.register_unprovable_error(
-                    from,
-                    RemoteError::new("Message from this party is already being processed"),
-                )?;
+                let err = "Message from this party is already being processed";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
         } else if self.possible_next_rounds.contains(&message_round_id) {
             if accum.message_is_cached(from, message_round_id) {
-                accum.register_unprovable_error(
-                    from,
-                    RemoteError::new(format!("Message for {:?} is already cached", message_round_id)),
-                )?;
+                let err = format!("Message for {:?} is already cached", message_round_id);
+                accum.register_unprovable_error(from, RemoteError::new(&err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
         } else {
-            accum.register_unprovable_error(
-                from,
-                RemoteError::new(format!("Unexpected message round ID: {:?}", message_round_id)),
-            )?;
+            let err = format!("Unexpected message round ID: {:?}", message_round_id);
+            accum.register_unprovable_error(from, RemoteError::new(&err))?;
+            trace!("{key:?} {err}");
             return Ok(None);
         }
 
@@ -301,18 +341,21 @@ where
         let verified_message = match checked_message.verify::<SP>(from, &self.deserializer) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
-                accum.register_unprovable_error(from, RemoteError::new("The signature could not be deserialized"))?;
+                let err = "The signature could not be deserialized.";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
             Err(MessageVerificationError::SignatureMismatch) => {
-                accum.register_unprovable_error(from, RemoteError::new("Message verification failed"))?;
+                let err = "Message verification failed.";
+                accum.register_unprovable_error(from, RemoteError::new(err))?;
+                trace!("{key:?} {err}");
                 return Ok(None);
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
         };
         debug!(
-            "{:?}: received {:?} message from {:?}",
-            self.verifier(),
+            "{key:?}: Received {:?} message from {:?}",
             verified_message.metadata().round_id(),
             from
         );
@@ -322,12 +365,13 @@ where
             Ok(Some(verified_message))
         } else if self.possible_next_rounds.contains(&message_round_id) {
             debug!(
-                "{:?}: caching message from {:?} for {:?}",
-                self.verifier(),
+                "{key:?}: Caching message from {:?} for {:?}",
                 verified_message.from(),
                 verified_message.metadata().round_id()
             );
             accum.cache_message(verified_message)?;
+            // TODO(dp): this is a bit awkward. It means "all good, but nothing to do here right
+            // now".
             Ok(None)
         } else {
             unreachable!()
@@ -346,7 +390,8 @@ where
             rng,
             &self.deserializer,
             message.from(),
-            message.echo_broadcast().cloned(),
+            message.echo_broadcast().clone(),
+            message.normal_broadcast().clone(),
             message.direct_message().clone(),
         );
         // We could filter out and return a possible `LocalError` at this stage,
@@ -374,6 +419,7 @@ where
         let transcript = self.transcript.update(
             round_id,
             accum.echo_broadcasts,
+            accum.normal_broadcasts,
             accum.direct_messages,
             accum.provable_errors,
             accum.unprovable_errors,
@@ -394,16 +440,19 @@ where
         let transcript = self.transcript.update(
             round_id,
             accum.echo_broadcasts,
+            accum.normal_broadcasts,
             accum.direct_messages,
             accum.provable_errors,
             accum.unprovable_errors,
             accum.still_have_not_sent_messages,
         )?;
 
-        if let Some(echo_message) = self.echo_message {
+        let echo_round_needed = !self.echo_broadcast.payload().is_none();
+
+        if echo_round_needed {
             let round = Box::new(ObjectSafeRoundWrapper::new(EchoRound::<P, SP>::new(
                 verifier,
-                echo_message,
+                self.echo_broadcast,
                 transcript.echo_broadcasts(round_id)?,
                 self.round,
                 accum.payloads,
@@ -491,6 +540,7 @@ pub enum CanFinalize {
 }
 
 /// A mutable accumulator for collecting the results and errors from processing messages for a single round.
+#[derive(Debug)]
 pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
     expecting_messages_from: BTreeSet<SP::Verifier>,
@@ -499,6 +549,7 @@ pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
     artifacts: BTreeMap<SP::Verifier, Artifact>,
     cached: BTreeMap<SP::Verifier, BTreeMap<RoundId, VerifiedMessageBundle<SP>>>,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    normal_broadcasts: BTreeMap<SP::Verifier, SignedMessage<NormalBroadcast>>,
     direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
@@ -518,6 +569,7 @@ where
             artifacts: BTreeMap::new(),
             cached: BTreeMap::new(),
             echo_broadcasts: BTreeMap::new(),
+            normal_broadcasts: BTreeMap::new(),
             direct_messages: BTreeMap::new(),
             provable_errors: BTreeMap::new(),
             unprovable_errors: BTreeMap::new(),
@@ -588,11 +640,12 @@ where
     }
 
     fn add_artifact(&mut self, processed: ProcessedArtifact<SP>) -> Result<(), LocalError> {
-        if self
-            .artifacts
-            .insert(processed.destination.clone(), processed.artifact)
-            .is_some()
-        {
+        let artifact = match processed.artifact {
+            Some(artifact) => artifact,
+            None => return Ok(()),
+        };
+
+        if self.artifacts.insert(processed.destination.clone(), artifact).is_some() {
             return Err(LocalError::new(format!(
                 "Artifact for destination {:?} has already been recorded",
                 processed.destination
@@ -625,11 +678,17 @@ where
 
         let error = match processed.processed {
             Ok(payload) => {
-                let (echo_broadcast, direct_message) = processed.message.into_unverified();
-                if let Some(echo) = echo_broadcast {
-                    self.echo_broadcasts.insert(from.clone(), echo);
+                // Note: only inserting the messages if they actually have a payload
+                let (echo_broadcast, normal_broadcast, direct_message) = processed.message.into_parts();
+                if !echo_broadcast.payload().is_none() {
+                    self.echo_broadcasts.insert(from.clone(), echo_broadcast);
                 }
-                self.direct_messages.insert(from.clone(), direct_message);
+                if !normal_broadcast.payload().is_none() {
+                    self.normal_broadcasts.insert(from.clone(), normal_broadcast);
+                }
+                if !direct_message.payload().is_none() {
+                    self.direct_messages.insert(from.clone(), direct_message);
+                }
                 self.payloads.insert(from.clone(), payload);
                 return Ok(());
             }
@@ -638,20 +697,30 @@ where
 
         match error.0 {
             ReceiveErrorType::InvalidDirectMessage(error) => {
-                let (_echo_broadcast, direct_message) = processed.message.into_unverified();
+                let (_echo_broadcast, _normal_broadcast, direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::InvalidEchoBroadcast(error) => {
-                let (echo_broadcast, _direct_message) = processed.message.into_unverified();
-                let echo_broadcast =
-                    echo_broadcast.ok_or_else(|| LocalError::new("Expected a non-None echo broadcast"))?;
+                let (echo_broadcast, _normal_broadcast, _direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
+            ReceiveErrorType::InvalidNormalBroadcast(error) => {
+                let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
+                let evidence = Evidence::new_invalid_normal_broadcast(&from, normal_broadcast, error);
+                self.register_provable_error(&from, evidence)
+            }
             ReceiveErrorType::Protocol(error) => {
-                let (echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence = Evidence::new_protocol_error(&from, echo_broadcast, direct_message, error, transcript)?;
+                let (echo_broadcast, normal_broadcast, direct_message) = processed.message.into_parts();
+                let evidence = Evidence::new_protocol_error(
+                    &from,
+                    echo_broadcast,
+                    normal_broadcast,
+                    direct_message,
+                    error,
+                    transcript,
+                )?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Unprovable(error) => {
@@ -659,8 +728,8 @@ where
                 Ok(())
             }
             ReceiveErrorType::Echo(error) => {
-                let (_echo_broadcast, direct_message) = processed.message.into_unverified();
-                let evidence = Evidence::new_echo_round_error(&from, deserializer, direct_message, error, transcript)?;
+                let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
+                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, error)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),
@@ -681,11 +750,13 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct ProcessedArtifact<SP: SessionParameters> {
     destination: SP::Verifier,
-    artifact: Artifact,
+    artifact: Option<Artifact>,
 }
 
+#[derive(Debug)]
 pub struct ProcessedMessage<P: Protocol, SP: SessionParameters> {
     message: VerifiedMessageBundle<SP>,
     processed: Result<Payload, ReceiveError<SP::Verifier, P>>,
@@ -711,20 +782,21 @@ mod tests {
     use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
     use crate::{
         protocol::{
-            Deserializer, DirectMessage, EchoBroadcast, Protocol, ProtocolError, ProtocolValidationError, RoundId,
+            DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, ProtocolError, ProtocolValidationError, RoundId,
         },
-        testing::{Binary, TestingSessionParams},
+        session::Deserializer,
+        testing::{Binary, TestSessionParams},
     };
 
     #[test]
     fn test_concurrency_bounds() {
         // In order to support parallel message creation and processing we need that
-        // certain generic types could be Send and/or Sync.
+        // certain generic types be Send and/or Sync.
         //
         // Since they are generic, this depends on the exact type parameters supplied by the user,
-        // so if the user does not want parallelism, they may not use Send/Sync generic parameters.
-        // But we want to make sure that if the generic parameters are Send/Sync,
-        // our types are too.
+        // so if the user does not want parallelism, they can use generic parameters that are not
+        // Send/Sync. But we want to make sure that if the generic parameters are
+        // Send/Sync, our types are too.
 
         #[derive(Debug)]
         struct DummyProtocol;
@@ -736,9 +808,11 @@ mod tests {
             fn verify_messages_constitute_error(
                 &self,
                 _deserializer: &Deserializer,
-                _echo_broadcast: &Option<EchoBroadcast>,
+                _echo_broadcast: &EchoBroadcast,
+                _normal_broadcast: &NormalBroadcast,
                 _direct_message: &DirectMessage,
                 _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+                _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
                 _direct_messages: &BTreeMap<RoundId, DirectMessage>,
                 _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
             ) -> Result<(), ProtocolValidationError> {
@@ -752,7 +826,7 @@ mod tests {
             type CorrectnessProof = ();
         }
 
-        type SP = TestingSessionParams<Binary>;
+        type SP = TestSessionParams<Binary>;
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task
         // to run the loop there.

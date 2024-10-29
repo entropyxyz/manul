@@ -1,5 +1,7 @@
 extern crate alloc;
 
+use std::fmt::Debug;
+
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
@@ -8,10 +10,10 @@ use manul::{
         signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId,
         SessionParameters, SessionReport,
     },
-    testing::{Signer, TestingSessionParams, Verifier},
+    testing::{TestSessionParams, TestSigner},
 };
 use manul_example::{
-    simple::{Inputs, Round1},
+    simple::{Inputs, Round1, SimpleProtocol},
     Binary,
 };
 use rand::Rng;
@@ -20,7 +22,7 @@ use tokio::{
     sync::mpsc,
     time::{sleep, Duration},
 };
-use tracing::debug;
+use tracing::{debug, trace};
 use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 
 struct MessageOut<SP: SessionParameters> {
@@ -34,6 +36,7 @@ struct MessageIn<SP: SessionParameters> {
     message: MessageBundle,
 }
 
+/// Runs a session. Simulates what each participating party would run as the protocol progresses.
 async fn run_session<P, SP>(
     tx: mpsc::Sender<MessageOut<SP>>,
     rx: mpsc::Receiver<MessageIn<SP>>,
@@ -41,17 +44,30 @@ async fn run_session<P, SP>(
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
     P: Protocol,
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
 {
     let rng = &mut OsRng;
 
     let mut rx = rx;
 
     let mut session = session;
+    // Some rounds can finalize early and put off sending messages to the next round. Such messages
+    // will be stored here and applied after the messages for this round are sent.
     let mut cached_messages = Vec::new();
 
     let key = session.verifier();
 
+    // Each iteration of the loop progresses the session as follows:
+    //  - Send out messages as dictated by the session "destinations".
+    //  - Apply any cached messages.
+    //  - Enter a nested loop:
+    //      - Try to finalize the session; if we're done, exit the inner loop.
+    //      - Wait until we get an incoming message.
+    //      - Process the message we received and continue the loop.
+    //  - When all messages have been sent and received as specified by the protocol, finalize the
+    //    round.
+    //  - If the protocol outcome is a new round, go to the top of the loop and start over with a
+    //    new session.
     loop {
         debug!("{key:?}: *** starting round {:?} ***", session.round_id());
 
@@ -70,7 +86,7 @@ where
             // and the artifact will be sent back to the host task
             // to be added to the accumulator.
             let (message, artifact) = session.make_message(rng, destination)?;
-            debug!("{key:?}: sending a message to {destination:?}",);
+            debug!("{key:?}: Sending a message to {destination:?}",);
             tx.send(MessageOut {
                 from: key.clone(),
                 to: destination.clone(),
@@ -79,16 +95,16 @@ where
             .await
             .unwrap();
 
-            // This will happen in a host task
+            // This would happen in a host task
             session.add_artifact(&mut accum, artifact)?;
         }
 
         for preprocessed in cached_messages {
-            // In production usage, this will happen in a spawned task.
-            debug!("{key:?}: applying a cached message");
+            // In production usage, this would happen in a spawned task and relayed back to the main task.
+            debug!("{key:?}: Applying a cached message");
             let processed = session.process_message(rng, preprocessed);
 
-            // This will happen in a host task.
+            // This would happen in a host task.
             session.add_processed_message(&mut accum, processed)?;
         }
 
@@ -99,26 +115,31 @@ where
                 // Due to already registered invalid messages from nodes,
                 // even if the remaining nodes send correct messages, it won't be enough.
                 // Terminating.
-                CanFinalize::Never => return session.terminate(accum),
+                CanFinalize::Never => {
+                    tracing::warn!("{key:?}: This session cannot ever be finalized. Terminating.");
+                    return session.terminate(accum);
+                }
             }
 
-            debug!("{key:?}: waiting for a message");
+            debug!("{key:?}: Waiting for a message");
             let incoming = rx.recv().await.unwrap();
 
             // Perform quick checks before proceeding with the verification.
-            let preprocessed = session.preprocess_message(&mut accum, &incoming.from, incoming.message)?;
-
-            if let Some(preprocessed) = preprocessed {
-                // In production usage, this will happen in a spawned task.
-                debug!("{key:?}: applying a message from {:?}", incoming.from);
-                let processed = session.process_message(rng, preprocessed);
-
-                // This will happen in a host task.
-                session.add_processed_message(&mut accum, processed)?;
+            match session.preprocess_message(&mut accum, &incoming.from, incoming.message)? {
+                Some(preprocessed) => {
+                    // In production usage, this would happen in a separate task.
+                    debug!("{key:?}: Applying a message from {:?}", incoming.from);
+                    let processed = session.process_message(rng, preprocessed);
+                    // In production usage, this would be a host task.
+                    session.add_processed_message(&mut accum, processed)?;
+                }
+                None => {
+                    trace!("{key:?} Pre-processing complete. Current state: {accum:?}")
+                }
             }
         }
 
-        debug!("{key:?}: finalizing the round");
+        debug!("{key:?}: Finalizing the round");
 
         match session.finalize_round(rng, accum)? {
             RoundOutcome::Finished(report) => break Ok(report),
@@ -137,7 +158,7 @@ async fn message_dispatcher<SP>(
     txs: BTreeMap<SP::Verifier, mpsc::Sender<MessageIn<SP>>>,
     rx: mpsc::Receiver<MessageOut<SP>>,
 ) where
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
 {
     let mut rx = rx;
     let mut messages = Vec::<MessageOut<SP>>::new();
@@ -179,7 +200,7 @@ async fn message_dispatcher<SP>(
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
     P: Protocol + Send,
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
     P::Result: Send,
     SP::Signer: Send,
 {
@@ -207,7 +228,7 @@ where
         })
         .collect::<Vec<_>>();
 
-    // Drop the last copy of the dispatcher's incoming channel so that it could finish.
+    // Drop the last copy of the dispatcher's incoming channel so that it can finish.
     drop(dispatcher_tx);
 
     let mut results = Vec::with_capacity(num_parties);
@@ -222,25 +243,25 @@ where
 
 #[tokio::test]
 async fn async_run() {
-    let signers = (0..3).map(Signer::new).collect::<Vec<_>>();
+    // The kind of Session we need to run the `SimpleProtocol`.
+    type SimpleSession = Session<SimpleProtocol, TestSessionParams<Binary>>;
+
+    // Create 4 parties
+    let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let session_id = SessionId::random(&mut OsRng);
+    let session_id = SessionId::random::<TestSessionParams<Binary>>(&mut OsRng);
+
+    // Create 4 `Session`s
     let sessions = signers
         .into_iter()
         .map(|signer| {
             let inputs = Inputs {
                 all_ids: all_ids.clone(),
             };
-            Session::<_, TestingSessionParams<Binary>>::new::<Round1<Verifier>>(
-                &mut OsRng,
-                session_id.clone(),
-                signer,
-                inputs,
-            )
-            .unwrap()
+            SimpleSession::new::<Round1<_>>(&mut OsRng, session_id.clone(), signer, inputs).unwrap()
         })
         .collect::<Vec<_>>();
 
@@ -250,5 +271,6 @@ async fn async_run() {
         .try_init()
         .unwrap();
 
+    // Run the protocol
     run_nodes(sessions).await;
 }

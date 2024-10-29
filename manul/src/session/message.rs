@@ -7,11 +7,11 @@ use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, RandomizedDigestSigner};
 
 use super::{
-    format::Format,
+    format::{Deserializer, Format, Serializer},
     session::{SessionId, SessionParameters},
     LocalError,
 };
-use crate::protocol::{DeserializationError, Deserializer, DirectMessage, EchoBroadcast, RoundId, Serializer};
+use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, RoundId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
@@ -138,6 +138,9 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MissingMessage;
+
 #[derive(Debug, Clone)]
 pub struct VerifiedMessage<M> {
     signature: SerializedSignature,
@@ -161,16 +164,20 @@ impl<M> VerifiedMessage<M> {
     }
 }
 
-/// A message bundle to be sent to another node.
+/// A message bundle destined for another node.
+///
+/// During message pre-processing, a `MessageBundle` transitions to a `CheckedMessageBundle`.
 ///
 /// Note that this is already signed.
 #[derive(Clone, Debug)]
 pub struct MessageBundle {
     direct_message: SignedMessage<DirectMessage>,
-    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
+    normal_broadcast: SignedMessage<NormalBroadcast>,
 }
 
 impl MessageBundle {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
@@ -178,7 +185,8 @@ impl MessageBundle {
         session_id: &SessionId,
         round_id: RoundId,
         direct_message: DirectMessage,
-        echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+        echo_broadcast: SignedMessage<EchoBroadcast>,
+        normal_broadcast: SignedMessage<NormalBroadcast>,
     ) -> Result<Self, LocalError>
     where
         SP: SessionParameters,
@@ -187,33 +195,39 @@ impl MessageBundle {
         Ok(Self {
             direct_message,
             echo_broadcast,
+            normal_broadcast,
         })
     }
 
     pub(crate) fn unify_metadata(self) -> Option<CheckedMessageBundle> {
-        let metadata = self.direct_message.message_with_metadata.metadata.clone();
-        if !self
-            .echo_broadcast
-            .as_ref()
-            .map(|echo| echo.metadata() == self.direct_message.metadata())
-            .unwrap_or(true)
-        {
+        if self.echo_broadcast.metadata() != self.direct_message.metadata() {
             return None;
         }
 
+        if self.normal_broadcast.metadata() != self.direct_message.metadata() {
+            return None;
+        }
+
+        let metadata = self.direct_message.message_with_metadata.metadata.clone();
         Some(CheckedMessageBundle {
             metadata,
             direct_message: self.direct_message,
             echo_broadcast: self.echo_broadcast,
+            normal_broadcast: self.normal_broadcast,
         })
     }
 }
 
+/// A `CheckedMessageBundle` is like a [`MessageBundle`] but where we have checked that the metadata
+/// (i.e. SessionId and RoundId) from the Echo message (if any) matches with that of the
+/// [`DirectMessage`].
+/// `CheckedMessageBundle`s can transition to [`VerifiedMessageBundle`].
 #[derive(Clone, Debug)]
 pub(crate) struct CheckedMessageBundle {
     metadata: MessageMetadata,
     direct_message: SignedMessage<DirectMessage>,
-    echo_broadcast: Option<SignedMessage<EchoBroadcast>>,
+    echo_broadcast: SignedMessage<EchoBroadcast>,
+    normal_broadcast: SignedMessage<NormalBroadcast>,
 }
 
 impl CheckedMessageBundle {
@@ -230,25 +244,29 @@ impl CheckedMessageBundle {
         SP: SessionParameters,
     {
         let direct_message = self.direct_message.verify::<SP>(verifier, deserializer)?;
-        let echo_broadcast = self
-            .echo_broadcast
-            .map(|echo| echo.verify::<SP>(verifier, deserializer))
-            .transpose()?;
+        let echo_broadcast = self.echo_broadcast.verify::<SP>(verifier, deserializer)?;
+        let normal_broadcast = self.normal_broadcast.verify::<SP>(verifier, deserializer)?;
+
         Ok(VerifiedMessageBundle {
             from: verifier.clone(),
             metadata: self.metadata,
             direct_message,
             echo_broadcast,
+            normal_broadcast,
         })
     }
 }
 
+/// A `VerifiedMessageBundle` is the final evolution of a [`MessageBundle`]. At this point in the
+/// process, the [`DirectMessage`] and an eventual [`EchoBroadcast`] have been fully checked and the
+/// signature on the [`SignedMessage`] from the original [`MessageBundle`] successfully verified.
 #[derive(Clone, Debug)]
 pub struct VerifiedMessageBundle<SP: SessionParameters> {
     from: SP::Verifier,
     metadata: MessageMetadata,
     direct_message: VerifiedMessage<DirectMessage>,
-    echo_broadcast: Option<VerifiedMessage<EchoBroadcast>>,
+    echo_broadcast: VerifiedMessage<EchoBroadcast>,
+    normal_broadcast: VerifiedMessage<NormalBroadcast>,
 }
 
 impl<SP> VerifiedMessageBundle<SP>
@@ -267,13 +285,26 @@ where
         self.direct_message.payload()
     }
 
-    pub(crate) fn into_unverified(self) -> (Option<SignedMessage<EchoBroadcast>>, SignedMessage<DirectMessage>) {
-        let direct_message = self.direct_message.into_unverified();
-        let echo_broadcast = self.echo_broadcast.map(|echo| echo.into_unverified());
-        (echo_broadcast, direct_message)
+    pub(crate) fn echo_broadcast(&self) -> &EchoBroadcast {
+        self.echo_broadcast.payload()
     }
 
-    pub(crate) fn echo_broadcast(&self) -> Option<&EchoBroadcast> {
-        self.echo_broadcast.as_ref().map(|echo| echo.payload())
+    pub(crate) fn normal_broadcast(&self) -> &NormalBroadcast {
+        self.normal_broadcast.payload()
+    }
+
+    /// Split the `VerifiedMessageBundle` into its signed constituent parts:
+    /// the echo broadcast and the direct message.
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        SignedMessage<EchoBroadcast>,
+        SignedMessage<NormalBroadcast>,
+        SignedMessage<DirectMessage>,
+    ) {
+        let direct_message = self.direct_message.into_unverified();
+        let echo_broadcast = self.echo_broadcast.into_unverified();
+        let normal_broadcast = self.normal_broadcast.into_unverified();
+        (echo_broadcast, normal_broadcast, direct_message)
     }
 }

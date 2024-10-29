@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use rand::Rng;
@@ -35,7 +37,7 @@ fn propagate<P, SP>(
 ) -> Result<(State<P, SP>, Vec<Message<SP>>), LocalError>
 where
     P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    SP: 'static + SessionParameters + Debug,
 {
     let mut messages = Vec::new();
 
@@ -95,10 +97,10 @@ pub fn run_sync<R, SP>(
 ) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
 where
     R: 'static + FirstRound<SP::Verifier>,
-    SP: 'static + SessionParameters,
+    SP: 'static + SessionParameters + Debug,
     for<'a, 'de> &'a mut <<SP as SessionParameters>::Format as Format>::Des<'de>: serde::Deserializer<'de>,
 {
-    let session_id = SessionId::random(rng);
+    let session_id = SessionId::random::<SP>(rng);
 
     let mut messages = Vec::new();
     let mut states = BTreeMap::new();

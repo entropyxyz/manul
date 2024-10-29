@@ -3,13 +3,14 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
 };
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
-    round::{Artifact, DirectMessage, EchoBroadcast, FinalizeOutcome, Payload, Protocol, Round, RoundId},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast},
+    round::{Artifact, FinalizeOutcome, Payload, Protocol, Round, RoundId},
 };
 use crate::session::{Deserializer, Serializer};
 
@@ -18,9 +19,9 @@ use crate::session::{Deserializer, Serializer};
 /// to be passed to statically typed round methods.
 struct BoxedRng<'a>(&'a mut dyn CryptoRngCore);
 
-impl<'a> CryptoRng for BoxedRng<'a> {}
+impl CryptoRng for BoxedRng<'_> {}
 
-impl<'a> RngCore for BoxedRng<'a> {
+impl RngCore for BoxedRng<'_> {
     fn next_u32(&mut self) -> u32 {
         self.0.next_u32()
     }
@@ -38,7 +39,7 @@ impl<'a> RngCore for BoxedRng<'a> {
 // Since we want `Round` methods to take `&mut impl CryptoRngCore` arguments
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
-pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
+pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
@@ -47,25 +48,32 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
 
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
-    fn make_direct_message(
+    fn make_direct_message_with_artifact(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError>;
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError>;
 
     fn make_echo_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
-    ) -> Option<Result<EchoBroadcast, LocalError>>;
+    ) -> Result<EchoBroadcast, LocalError>;
+
+    fn make_normal_broadcast(
+        &self,
+        rng: &mut dyn CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<NormalBroadcast, LocalError>;
 
     fn receive_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
@@ -82,7 +90,9 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync {
     fn get_type_id(&self) -> core::any::TypeId;
 }
 
-// The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be `Send + Sync`.
+// The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be
+// `Send + Sync`.
+#[derive(Debug)]
 pub(crate) struct ObjectSafeRoundWrapper<Id, R> {
     round: R,
     phantom: PhantomData<fn(Id) -> Id>,
@@ -99,7 +109,7 @@ impl<Id: 'static, R: Round<Id>> ObjectSafeRoundWrapper<Id, R> {
 
 impl<Id, R> ObjectSafeRound<Id> for ObjectSafeRoundWrapper<Id, R>
 where
-    Id: 'static,
+    Id: 'static + Debug,
     R: Round<Id>,
 {
     type Protocol = <R as Round<Id>>::Protocol;
@@ -116,23 +126,33 @@ where
         self.round.message_destinations()
     }
 
-    fn make_direct_message(
+    fn make_direct_message_with_artifact(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.make_direct_message(&mut boxed_rng, serializer, destination)
+        self.round
+            .make_direct_message_with_artifact(&mut boxed_rng, serializer, destination)
     }
 
     fn make_echo_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
-    ) -> Option<Result<EchoBroadcast, LocalError>> {
+    ) -> Result<EchoBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_echo_broadcast(&mut boxed_rng, serializer)
+    }
+
+    fn make_normal_broadcast(
+        &self,
+        rng: &mut dyn CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<NormalBroadcast, LocalError> {
+        let mut boxed_rng = BoxedRng(rng);
+        self.round.make_normal_broadcast(&mut boxed_rng, serializer)
     }
 
     fn receive_message(
@@ -140,12 +160,19 @@ where
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round
-            .receive_message(&mut boxed_rng, deserializer, from, echo_broadcast, direct_message)
+        self.round.receive_message(
+            &mut boxed_rng,
+            deserializer,
+            from,
+            echo_broadcast,
+            normal_broadcast,
+            direct_message,
+        )
     }
 
     fn finalize(

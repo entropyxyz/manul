@@ -1,6 +1,7 @@
 use manul::{protocol::LocalError, session::Format};
 use serde::Serialize;
 
+#[derive(Debug)]
 pub struct Binary;
 
 impl Format for Binary {

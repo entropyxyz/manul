@@ -1,12 +1,12 @@
 use alloc::{boxed::Box, format};
-use core::marker::PhantomData;
+use core::{fmt::Debug, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{DeserializationError, LocalError};
 
 /// A (de)serializer that will be used for the protocol messages.
-pub trait Format: 'static + Send + Sync {
+pub trait Format: 'static + Send + Sync + Debug {
     /// Serializes the given object into a bytestring.
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
 
@@ -21,10 +21,11 @@ pub trait Format: 'static + Send + Sync {
 
 // Serialization
 
-trait ObjectSafeSerializer {
+trait ObjectSafeSerializer: Debug {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError>;
 }
 
+#[derive(Debug)]
 struct SerializerWrapper<F: Format>(PhantomData<F>);
 
 impl<F: Format> ObjectSafeSerializer for SerializerWrapper<F> {
@@ -34,6 +35,7 @@ impl<F: Format> ObjectSafeSerializer for SerializerWrapper<F> {
 }
 
 /// A serializer for protocol messages.
+#[derive(Debug)]
 pub struct Serializer(Box<dyn ObjectSafeSerializer + Send + Sync>);
 
 impl Serializer {
@@ -50,9 +52,10 @@ impl Serializer {
 
 // Deserialization
 
+#[derive(Debug)]
 struct DeserializerFactoryWrapper<F>(PhantomData<F>);
 
-trait ObjectSafeDeserializerFactory {
+trait ObjectSafeDeserializerFactory: Debug {
     fn make_deserializer<'de>(&self, bytes: &'de [u8]) -> Box<dyn ObjectSafeDeserializer<'de> + 'de>;
 }
 
@@ -86,6 +89,7 @@ where
 }
 
 /// A deserializer for protocol messages.
+#[derive(Debug)]
 pub struct Deserializer(Box<dyn ObjectSafeDeserializerFactory + Send + Sync>);
 
 impl Deserializer {
