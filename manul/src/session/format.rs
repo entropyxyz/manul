@@ -25,24 +25,11 @@ trait ObjectSafeSerializer: Debug {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError>;
 }
 
-#[derive(Debug)]
-struct SerializerWrapper<F: Format>(PhantomData<F>);
-
-impl<F: Format> ObjectSafeSerializer for SerializerWrapper<F> {
-    fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError> {
-        F::serialize(&value)
-    }
-}
-
 /// A serializer for protocol messages.
 #[derive(Debug)]
 pub struct Serializer(Box<dyn ObjectSafeSerializer + Send + Sync>);
 
 impl Serializer {
-    pub(crate) fn new<F: Format>() -> Self {
-        Self(Box::new(SerializerWrapper::<F>(PhantomData)))
-    }
-
     /// Serializes a `serde`-serializable object.
     pub fn serialize<T: Serialize + 'static>(&self, value: T) -> Result<Box<[u8]>, LocalError> {
         let boxed_value: Box<dyn erased_serde::Serialize> = Box::new(value);

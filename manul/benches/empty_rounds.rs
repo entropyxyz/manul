@@ -10,7 +10,7 @@ use manul::{
         NormalBroadcast, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
         Round, RoundId,
     },
-    session::{signature::Keypair, Deserializer, Serializer, SessionOutcome},
+    session::{signature::Keypair, Deserializer, Format, SessionOutcome},
     testing::{run_sync, Binary, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -101,13 +101,9 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         &self.inputs.other_ids
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<EchoBroadcast, LocalError> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
-            EchoBroadcast::new(serializer, Round1EchoBroadcast)
+            Binary::serialize(Round1EchoBroadcast).map(EchoBroadcast::from_bytes)
         } else {
             Ok(EchoBroadcast::none())
         }
@@ -116,10 +112,9 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
     fn make_direct_message_with_artifact(
         &self,
         _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
         _destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = DirectMessage::new(serializer, Round1DirectMessage)?;
+        let dm = Binary::serialize(Round1DirectMessage).map(DirectMessage::from_bytes)?;
         let artifact = Artifact::new(Round1Artifact);
         Ok((dm, Some(artifact)))
     }

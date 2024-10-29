@@ -12,7 +12,7 @@ use super::{
     message::{DirectMessage, EchoBroadcast, NormalBroadcast},
     round::{Artifact, FinalizeOutcome, Payload, Protocol, Round, RoundId},
 };
-use crate::session::{Deserializer, Serializer};
+use crate::session::Deserializer;
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
 /// this structure wraps the dynamic object and exposes a `CryptoRngCore` interface,
@@ -54,17 +54,9 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError>;
 
-    fn make_echo_broadcast(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<EchoBroadcast, LocalError>;
+    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<EchoBroadcast, LocalError>;
 
-    fn make_normal_broadcast(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<NormalBroadcast, LocalError>;
+    fn make_normal_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<NormalBroadcast, LocalError>;
 
     fn receive_message(
         &self,
@@ -135,22 +127,14 @@ where
             .make_direct_message_with_artifact(&mut boxed_rng, destination)
     }
 
-    fn make_echo_broadcast(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<EchoBroadcast, LocalError> {
+    fn make_echo_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.make_echo_broadcast(&mut boxed_rng, serializer)
+        self.round.make_echo_broadcast(&mut boxed_rng)
     }
 
-    fn make_normal_broadcast(
-        &self,
-        rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<NormalBroadcast, LocalError> {
+    fn make_normal_broadcast(&self, rng: &mut dyn CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.make_normal_broadcast(&mut boxed_rng, serializer)
+        self.round.make_normal_broadcast(&mut boxed_rng)
     }
 
     fn receive_message(

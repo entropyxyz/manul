@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    format::{Deserializer, Serializer},
+    format::{Deserializer, Format},
     message::{MessageVerificationError, SignedMessage},
     session::SessionParameters,
     LocalError,
@@ -127,11 +127,7 @@ where
         &self.destinations
     }
 
-    fn make_normal_broadcast(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<NormalBroadcast, LocalError> {
+    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making an echo round message", self.verifier);
 
         // Don't send our own message the second time
@@ -146,7 +142,7 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_broadcasts: echo_broadcasts.into(),
         };
-        NormalBroadcast::new(serializer, message)
+        SP::Format::serialize(message).map(NormalBroadcast::from_bytes)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {

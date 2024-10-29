@@ -16,7 +16,7 @@ use tracing::{debug, trace};
 use super::{
     echo::EchoRound,
     evidence::Evidence,
-    format::{Deserializer, Format, Serializer},
+    format::{Deserializer, Format},
     message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle},
     transcript::{SessionOutcome, SessionReport, Transcript},
     LocalError, RemoteError,
@@ -110,7 +110,6 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
     verifier: SP::Verifier,
-    serializer: Serializer,
     deserializer: Deserializer,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
@@ -157,34 +156,24 @@ where
             verifier.clone(),
             inputs,
         )?));
-        let serializer = Serializer::new::<SP::Format>();
         let deserializer = Deserializer::new::<SP::Format>();
-        Self::new_for_next_round(
-            rng,
-            session_id,
-            signer,
-            serializer,
-            deserializer,
-            first_round,
-            Transcript::new(),
-        )
+        Self::new_for_next_round(rng, session_id, signer, deserializer, first_round, Transcript::new())
     }
 
     fn new_for_next_round(
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
         signer: SP::Signer,
-        serializer: Serializer,
         deserializer: Deserializer,
         round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
 
-        let echo = round.make_echo_broadcast(rng, &serializer)?;
+        let echo = round.make_echo_broadcast(rng)?;
         let echo_broadcast = SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
 
-        let normal = round.make_normal_broadcast(rng, &serializer)?;
+        let normal = round.make_normal_broadcast(rng)?;
         let normal_broadcast = SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
 
         let message_destinations = round.message_destinations().clone();
@@ -199,7 +188,6 @@ where
             session_id,
             signer,
             verifier,
-            serializer, // TODO(dp): get rid of this
             deserializer,
             round,
             echo_broadcast,
@@ -456,15 +444,8 @@ where
                 accum.artifacts,
             )));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(
-                rng,
-                self.session_id,
-                self.signer,
-                self.serializer,
-                self.deserializer,
-                round,
-                transcript,
-            )?;
+            let session =
+                Session::new_for_next_round(rng, self.session_id, self.signer, self.deserializer, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -497,7 +478,6 @@ where
                         rng,
                         self.session_id,
                         self.signer,
-                        self.serializer,
                         self.deserializer,
                         round,
                         transcript,

@@ -71,7 +71,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
+            Binary::serialize(message).map(DirectMessage::from_bytes)
         } else {
             self.inner_round_ref().make_direct_message(rng, destination)
         }
@@ -127,7 +127,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
+            Binary::serialize(message).map(DirectMessage::from_bytes)
         } else {
             self.inner_round_ref().make_direct_message(rng, destination)
         }

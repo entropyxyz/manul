@@ -192,33 +192,23 @@ where
         &self.context.other_ids
     }
 
-    fn make_normal_broadcast(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<NormalBroadcast, LocalError> {
+    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making normal broadcast", self.context.id);
 
         let message = Round1Broadcast {
             x: 0,
             my_position: self.context.ids_to_positions[&self.context.id],
         };
-
-        NormalBroadcast::new(serializer, message)
+        Binary::serialize(message).map(NormalBroadcast::from_bytes)
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-    ) -> Result<EchoBroadcast, LocalError> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
 
         let message = Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
         };
-
-        EchoBroadcast::new(serializer, message)
+        Binary::serialize(message).map(EchoBroadcast::from_bytes)
     }
 
     fn make_direct_message(
@@ -232,7 +222,7 @@ where
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
+        Binary::serialize(message).map(DirectMessage::from_bytes)
     }
 
     fn receive_message(
@@ -328,7 +318,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
+        Binary::serialize(message).map(DirectMessage::from_bytes)
     }
 
     fn receive_message(

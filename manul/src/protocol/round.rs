@@ -14,7 +14,7 @@ use super::{
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
 };
-use crate::session::{Deserializer, Serializer};
+use crate::session::Deserializer;
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
@@ -381,7 +381,6 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
     fn make_echo_broadcast(
         &self,
         #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
-        #[allow(unused_variables)] serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         Ok(EchoBroadcast::none())
     }
@@ -396,7 +395,6 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
     fn make_normal_broadcast(
         &self,
         #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
-        #[allow(unused_variables)] serializer: &Serializer,
     ) -> Result<NormalBroadcast, LocalError> {
         Ok(NormalBroadcast::none())
     }
