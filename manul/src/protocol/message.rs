@@ -4,8 +4,8 @@ use alloc::string::{String, ToString};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError, NormalBroadcastError},
-    Deserializer, Serializer,
+    errors::{DirectMessageError, EchoBroadcastError, MessageValidationError, NormalBroadcastError},
+    Deserializer,
 };
 
 mod private {
@@ -41,13 +41,6 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     /// Use in case the round does not send a message of this type.
     fn none() -> Self {
         Self::new_inner(None)
-    }
-
-    // TODO(dp): remove?
-    /// Creates a new serialized message.
-    fn new<T: Serialize + 'static>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
-        let payload = MessagePayload(serializer.serialize(message)?);
-        Ok(Self::new_inner(Some(payload)))
     }
 
     /// Creates a new serialized message from bytes.
