@@ -182,10 +182,10 @@ where
         let verifier = signer.verifying_key();
 
         let echo = round.make_echo_broadcast(rng, &serializer)?;
-        let echo_broadcast = SignedMessage::new::<SP>(rng, &signer, &serializer, &session_id, round.id(), echo)?;
+        let echo_broadcast = SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
 
         let normal = round.make_normal_broadcast(rng, &serializer)?;
-        let normal_broadcast = SignedMessage::new::<SP>(rng, &signer, &serializer, &session_id, round.id(), normal)?;
+        let normal_broadcast = SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
 
         let message_destinations = round.message_destinations().clone();
 
@@ -199,7 +199,7 @@ where
             session_id,
             signer,
             verifier,
-            serializer,
+            serializer, // TODO(dp): get rid of this
             deserializer,
             round,
             echo_broadcast,
@@ -233,14 +233,11 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) =
-            self.round
-                .make_direct_message_with_artifact(rng, &self.serializer, destination)?;
+        let (direct_message, artifact) = self.round.make_direct_message_with_artifact(rng, destination)?;
 
         let bundle = MessageBundle::new::<SP>(
             rng,
             &self.signer,
-            &self.serializer,
             &self.session_id,
             self.round.id(),
             direct_message,
@@ -405,7 +402,7 @@ where
         accum: &mut RoundAccumulator<P, SP>,
         processed: ProcessedMessage<P, SP>,
     ) -> Result<(), LocalError> {
-        accum.add_processed_message(&self.deserializer, &self.transcript, processed)
+        accum.add_processed_message(&self.transcript, processed)
     }
 
     /// Makes an accumulator for a new round.
@@ -656,7 +653,6 @@ where
 
     fn add_processed_message(
         &mut self,
-        deserializer: &Deserializer,
         transcript: &Transcript<P, SP>,
         processed: ProcessedMessage<P, SP>,
     ) -> Result<(), LocalError> {

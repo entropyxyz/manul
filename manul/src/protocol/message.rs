@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 
 use serde::{Deserialize, Serialize};
@@ -42,10 +43,16 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
         Self::new_inner(None)
     }
 
+    // TODO(dp): remove?
     /// Creates a new serialized message.
     fn new<T: Serialize + 'static>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
         let payload = MessagePayload(serializer.serialize(message)?);
         Ok(Self::new_inner(Some(payload)))
+    }
+
+    /// Creates a new serialized message from bytes.
+    fn from_bytes(bytes: Box<[u8]>) -> Self {
+        Self::new_inner(Some(MessagePayload(bytes)))
     }
 
     /// Returns `true` if this is an empty message.

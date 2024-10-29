@@ -350,10 +350,9 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
     fn make_direct_message_with_artifact(
         &self,
         rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        Ok((self.make_direct_message(rng, serializer, destination)?, None))
+        Ok((self.make_direct_message(rng, destination)?, None))
     }
 
     /// Returns the direct message to the given destination.
@@ -366,7 +365,6 @@ pub trait Round<Id>: 'static + Send + Sync + Debug {
     fn make_direct_message(
         &self,
         #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
-        #[allow(unused_variables)] serializer: &Serializer,
         #[allow(unused_variables)] destination: &Id,
     ) -> Result<DirectMessage, LocalError> {
         Ok(DirectMessage::none())

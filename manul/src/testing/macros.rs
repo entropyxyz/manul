@@ -29,21 +29,15 @@ pub trait RoundOverride<Id>: RoundWrapper<Id> {
     fn make_direct_message_with_artifact(
         &self,
         rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = self.make_direct_message(rng, serializer, destination)?;
+        let dm = self.make_direct_message(rng, destination)?;
         Ok((dm, None))
     }
 
     /// An override for [`Round::make_direct_message`].
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
-        self.inner_round_ref().make_direct_message(rng, serializer, destination)
+    fn make_direct_message(&self, rng: &mut impl CryptoRngCore, destination: &Id) -> Result<DirectMessage, LocalError> {
+        self.inner_round_ref().make_direct_message(rng, destination)
     }
 
     /// An override for [`Round::make_echo_broadcast`].
@@ -111,19 +105,17 @@ macro_rules! round_override {
             fn make_direct_message(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                serializer: &$crate::session::Serializer,
                 destination: &Id,
             ) -> Result<$crate::protocol::DirectMessage, $crate::protocol::LocalError> {
-                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, serializer, destination)
+                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, destination)
             }
 
             fn make_direct_message_with_artifact(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                serializer: &$crate::session::Serializer,
                 destination: &Id,
             ) -> Result<($crate::protocol::DirectMessage, Option<$crate::protocol::Artifact>), $crate::protocol::LocalError> {
-                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message_with_artifact(self, rng, serializer, destination)
+                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message_with_artifact(self, rng,  destination)
             }
 
             fn make_echo_broadcast(

@@ -1,10 +1,12 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
-use manul::protocol::*;
+use manul::{protocol::*, session::Format};
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+
+use crate::format::Binary;
 
 #[derive(Debug)]
 pub struct SimpleProtocol;
@@ -172,7 +174,10 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Round1<
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
+impl<Id> Round<Id> for Round1<Id>
+where
+    Id: 'static + Debug + Clone + Ord + Send + Sync,
+{
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
@@ -219,7 +224,6 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
         destination: &Id,
     ) -> Result<DirectMessage, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
@@ -228,7 +232,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        DirectMessage::new(serializer, message)
+        Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
     }
 
     fn receive_message(
@@ -316,7 +320,6 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
         destination: &Id,
     ) -> Result<DirectMessage, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
@@ -325,7 +328,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        DirectMessage::new(serializer, message)
+        Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
     }
 
     fn receive_message(

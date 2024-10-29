@@ -6,7 +6,7 @@ use manul::{
         Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, ProtocolMessagePart,
         Round,
     },
-    session::{signature::Keypair, Serializer},
+    session::{signature::Keypair, Format},
     testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -63,22 +63,17 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
 }
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound1<Id> {
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    fn make_direct_message(&self, rng: &mut impl CryptoRngCore, destination: &Id) -> Result<DirectMessage, LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
-            DirectMessage::new(serializer, [99u8])
+            Ok(DirectMessage::from_bytes([99u8].into()))
         } else if matches!(self.behavior, Behavior::AttributableFailure) {
             let message = Round1Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            DirectMessage::new(serializer, message)
+            Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
         } else {
-            self.inner_round_ref().make_direct_message(rng, serializer, destination)
+            self.inner_round_ref().make_direct_message(rng, destination)
         }
     }
 
@@ -126,20 +121,15 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
 }
 
 impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound2<Id> {
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    fn make_direct_message(&self, rng: &mut impl CryptoRngCore, destination: &Id) -> Result<DirectMessage, LocalError> {
         if matches!(self.behavior, Behavior::AttributableFailureRound2) {
             let message = Round2Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            DirectMessage::new(serializer, message)
+            Binary::serialize(message).map(|bytes| DirectMessage::from_bytes(bytes))
         } else {
-            self.inner_round_ref().make_direct_message(rng, serializer, destination)
+            self.inner_round_ref().make_direct_message(rng, destination)
         }
     }
 }

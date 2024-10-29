@@ -51,7 +51,6 @@ pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
     fn make_direct_message_with_artifact(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError>;
 
@@ -129,12 +128,11 @@ where
     fn make_direct_message_with_artifact(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round
-            .make_direct_message_with_artifact(&mut boxed_rng, serializer, destination)
+            .make_direct_message_with_artifact(&mut boxed_rng, destination)
     }
 
     fn make_echo_broadcast(
