@@ -177,19 +177,24 @@ impl<M> VerifiedMessagePart<M> {
 
 /// A signed message destined for another node.
 #[derive(Clone, Debug)]
-pub struct Message {
+pub struct Message<Verifier> {
+    destination: Verifier,
     direct_message: SignedMessagePart<DirectMessage>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
 }
 
-impl Message {
+impl<Verifier> Message<Verifier>
+where
+    Verifier: Clone,
+{
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
         session_id: &SessionId,
         round_id: RoundId,
+        destination: &Verifier,
         direct_message: DirectMessage,
         echo_broadcast: SignedMessagePart<EchoBroadcast>,
         normal_broadcast: SignedMessagePart<NormalBroadcast>,
@@ -199,10 +204,16 @@ impl Message {
     {
         let direct_message = SignedMessagePart::new::<SP>(rng, signer, session_id, round_id, direct_message)?;
         Ok(Self {
+            destination: destination.clone(),
             direct_message,
             echo_broadcast,
             normal_broadcast,
         })
+    }
+
+    /// The verifier of the party this message is intended for.
+    pub fn destination(&self) -> &Verifier {
+        &self.destination
     }
 
     pub(crate) fn unify_metadata(self) -> Option<CheckedMessage> {
@@ -241,7 +252,7 @@ impl CheckedMessage {
         &self.metadata
     }
 
-    pub fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<SP>, MessageVerificationError>
+    pub fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<SP::Verifier>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
@@ -264,25 +275,21 @@ impl CheckedMessage {
 // signatures of message parts (direct, broadcast etc) from the original [`Message`] successfully verified.
 
 /// A [`Message`] that had its metadata and signatures verified.
-#[derive_where::derive_where(Debug)]
-#[derive(Clone)]
-pub struct VerifiedMessage<SP: SessionParameters> {
-    from: SP::Verifier,
+#[derive(Debug, Clone)]
+pub struct VerifiedMessage<Verifier> {
+    from: Verifier,
     metadata: MessageMetadata,
     direct_message: VerifiedMessagePart<DirectMessage>,
     echo_broadcast: VerifiedMessagePart<EchoBroadcast>,
     normal_broadcast: VerifiedMessagePart<NormalBroadcast>,
 }
 
-impl<SP> VerifiedMessage<SP>
-where
-    SP: SessionParameters,
-{
+impl<Verifier> VerifiedMessage<Verifier> {
     pub(crate) fn metadata(&self) -> &MessageMetadata {
         &self.metadata
     }
 
-    pub(crate) fn from(&self) -> &SP::Verifier {
+    pub(crate) fn from(&self) -> &Verifier {
         &self.from
     }
 

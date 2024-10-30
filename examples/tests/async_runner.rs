@@ -23,12 +23,12 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: Message,
+    message: Message<SP::Verifier>,
 }
 
 struct MessageIn<SP: SessionParameters> {
     from: SP::Verifier,
-    message: Message,
+    message: Message<SP::Verifier>,
 }
 
 /// Runs a session. Simulates what each participating party would run as the protocol progresses.
