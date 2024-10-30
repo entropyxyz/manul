@@ -112,7 +112,7 @@ where
                 // Terminating.
                 CanFinalize::Never => {
                     tracing::warn!("{key:?}: This session cannot ever be finalized. Terminating.");
-                    return session.terminate(accum);
+                    return session.terminate_due_to_errors(accum);
                 }
             }
 

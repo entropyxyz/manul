@@ -410,8 +410,11 @@ where
         RoundAccumulator::new(self.round.expecting_messages_from())
     }
 
-    /// Terminates the session.
-    pub fn terminate(self, accum: RoundAccumulator<P, SP>) -> Result<SessionReport<P, SP>, LocalError> {
+    fn terminate_inner(
+        self,
+        accum: RoundAccumulator<P, SP>,
+        not_enough_messages: bool,
+    ) -> Result<SessionReport<P, SP>, LocalError> {
         let round_id = self.round_id();
         let transcript = self.transcript.update(
             round_id,
@@ -422,7 +425,26 @@ where
             accum.unprovable_errors,
             accum.still_have_not_sent_messages,
         )?;
-        Ok(SessionReport::new(SessionOutcome::NotEnoughMessages, transcript))
+        let outcome = if not_enough_messages {
+            SessionOutcome::NotEnoughMessages
+        } else {
+            SessionOutcome::Terminated
+        };
+        Ok(SessionReport::new(outcome, transcript))
+    }
+
+    /// Terminates the session, recording the reason as a user decision.
+    pub fn terminate(self, accum: RoundAccumulator<P, SP>) -> Result<SessionReport<P, SP>, LocalError> {
+        self.terminate_inner(accum, false)
+    }
+
+    /// Terminates the session, recording the reason as the session being not possible to finalize
+    /// due to the number of misbehaving nodes.
+    ///
+    /// Will be usually called after receiving [`CanFinalize::Never`] from
+    /// [`can_finalize`](`Self::can_finalize`).
+    pub fn terminate_due_to_errors(self, accum: RoundAccumulator<P, SP>) -> Result<SessionReport<P, SP>, LocalError> {
+        self.terminate_inner(accum, false)
     }
 
     /// Attempts to finalize the current round.

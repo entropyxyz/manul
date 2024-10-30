@@ -68,7 +68,7 @@ where
                 }
             }
             CanFinalize::NotYet => break State::InProgress { session, accum },
-            CanFinalize::Never => break State::Finished(session.terminate(accum)?),
+            CanFinalize::Never => break State::Finished(session.terminate_due_to_errors(accum)?),
         }
 
         let destinations = session.message_destinations();
