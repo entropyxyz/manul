@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError, NormalBroadcastError},
-    round::Protocol,
+    Deserializer, Serializer,
 };
 
 mod private {
@@ -43,8 +43,11 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Creates a new serialized message.
-    fn new<P: Protocol, T: Serialize>(message: T) -> Result<Self, LocalError> {
-        let payload = MessagePayload(P::serialize(message)?);
+    fn new<T>(serializer: &Serializer, message: T) -> Result<Self, LocalError>
+    where
+        T: 'static + Serialize,
+    {
+        let payload = MessagePayload(serializer.serialize(message)?);
         Ok(Self::new_inner(Some(payload)))
     }
 
@@ -67,9 +70,13 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     /// Returns `Ok(())` if the message cannot be deserialized into `T`.
     ///
     /// This is intended to be used in the implementations of
-    /// [`Protocol::verify_direct_message_is_invalid`] or [`Protocol::verify_echo_broadcast_is_invalid`].
-    fn verify_is_not<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<(), MessageValidationError> {
-        if self.deserialize::<P, T>().is_err() {
+    /// [`Protocol::verify_direct_message_is_invalid`](`crate::protocol::Protocol::verify_direct_message_is_invalid`) or
+    /// [`Protocol::verify_echo_broadcast_is_invalid`](`crate::protocol::Protocol::verify_echo_broadcast_is_invalid`).
+    fn verify_is_not<'de, T: Deserialize<'de>>(
+        &'de self,
+        deserializer: &Deserializer,
+    ) -> Result<(), MessageValidationError> {
+        if self.deserialize::<T>(deserializer).is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::InvalidEvidence(
@@ -81,7 +88,8 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     /// Returns `Ok(())` if the message contains a payload.
     ///
     /// This is intended to be used in the implementations of
-    /// [`Protocol::verify_direct_message_is_invalid`] or [`Protocol::verify_echo_broadcast_is_invalid`].
+    /// [`Protocol::verify_direct_message_is_invalid`](`crate::protocol::Protocol::verify_direct_message_is_invalid`) or
+    /// [`Protocol::verify_echo_broadcast_is_invalid`](`crate::protocol::Protocol::verify_echo_broadcast_is_invalid`).
     fn verify_is_some(&self) -> Result<(), MessageValidationError> {
         if self.maybe_message().is_some() {
             Ok(())
@@ -93,12 +101,17 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Deserializes the message into `T`.
-    fn deserialize<P: Protocol, T: for<'de> Deserialize<'de>>(&self) -> Result<T, Self::Error> {
+    fn deserialize<'de, T>(&'de self, deserializer: &Deserializer) -> Result<T, Self::Error>
+    where
+        T: Deserialize<'de>,
+    {
         let payload = self
             .maybe_message()
             .as_ref()
             .ok_or_else(|| "The payload is `None` and cannot be deserialized".into())?;
-        P::deserialize(&payload.0).map_err(|err| err.to_string().into())
+        deserializer
+            .deserialize(&payload.0)
+            .map_err(|err| err.to_string().into())
     }
 }
 

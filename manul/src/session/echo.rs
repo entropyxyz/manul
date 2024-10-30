@@ -17,8 +17,8 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast, ObjectSafeRound,
-        Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast,
+        ObjectSafeRound, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     utils::SerializableMap,
 };
@@ -75,7 +75,7 @@ pub struct EchoRound<P, SP: SessionParameters> {
 impl<P, SP> EchoRound<P, SP>
 where
     P: Protocol,
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
 {
     pub fn new(
         verifier: SP::Verifier,
@@ -126,7 +126,11 @@ where
         &self.destinations
     }
 
-    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<NormalBroadcast, LocalError> {
+    fn make_normal_broadcast(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making an echo round message", self.verifier);
 
         // Don't send our own message the second time
@@ -141,8 +145,7 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_broadcasts: echo_broadcasts.into(),
         };
-        let bc = NormalBroadcast::new::<P, _>(&message)?;
-        Ok(bc)
+        NormalBroadcast::new(serializer, message)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
@@ -152,6 +155,7 @@ where
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         from: &SP::Verifier,
         echo_broadcast: EchoBroadcast,
         normal_broadcast: NormalBroadcast,
@@ -162,7 +166,7 @@ where
         echo_broadcast.assert_is_none()?;
         direct_message.assert_is_none()?;
 
-        let message = normal_broadcast.deserialize::<P, EchoRoundMessage<SP>>()?;
+        let message = normal_broadcast.deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.
@@ -209,7 +213,7 @@ where
                 continue;
             }
 
-            let verified_echo = match echo.clone().verify::<P, SP>(sender) {
+            let verified_echo = match echo.clone().verify::<SP>(sender) {
                 Ok(echo) => echo,
                 Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.
