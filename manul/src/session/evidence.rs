@@ -19,9 +19,16 @@ use crate::{
     utils::SerializableMap,
 };
 
+/// Possible errors when verifying [`Evidence`] (evidence of malicious behavior).
 #[derive(Debug, Clone)]
 pub enum EvidenceError {
+    /// Indicates a runtime problem or a bug in the code.
     Local(LocalError),
+    /// The evidence is improperly constructed
+    ///
+    /// This can indicate many things, such as: messages missing, invalid signatures, invalid messages,
+    /// the messages not actually proving the malicious behavior.
+    /// See the attached description for details.
     InvalidEvidence(String),
 }
 
@@ -70,6 +77,7 @@ impl From<ProtocolValidationError> for EvidenceError {
     }
 }
 
+/// A self-contained evidence of malicious behavior by a node.
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Evidence<P: Protocol, SP: SessionParameters> {
@@ -226,14 +234,20 @@ where
         }
     }
 
+    /// Returns the verifier of the offending party.
     pub fn guilty_party(&self) -> &SP::Verifier {
         &self.guilty_party
     }
 
+    /// Returns a general description of the offense.
     pub fn description(&self) -> &str {
         &self.description
     }
 
+    /// Attempts to verify that the attached data constitutes enough evidence
+    /// to prove the malicious behavior.
+    ///
+    /// Returns `Ok(())` if it is the case.
     pub fn verify(&self, party: &SP::Verifier) -> Result<(), EvidenceError> {
         let deserializer = Deserializer::new::<SP::WireFormat>();
         match &self.evidence {
