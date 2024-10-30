@@ -13,8 +13,8 @@ use super::{
     errors::{FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
     object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
+    serialization::{Deserializer, Serializer},
 };
-use crate::session::{Deserializer, Serializer};
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
@@ -28,7 +28,7 @@ pub enum FinalizeOutcome<Id, P: Protocol> {
 impl<Id, P> FinalizeOutcome<Id, P>
 where
     Id: 'static + Debug,
-    P: 'static + Protocol,
+    P: Protocol,
 {
     /// A helper method to create an [`AnotherRound`](`Self::AnotherRound`) variant.
     pub fn another_round(round: impl Round<Id, Protocol = P>) -> Self {
@@ -44,7 +44,7 @@ pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = 
 impl<Id, P> AnotherRound<Id, P>
 where
     Id: 'static + Debug,
-    P: 'static + Protocol,
+    P: Protocol,
 {
     /// Wraps an object implementing [`Round`].
     pub fn new(round: impl Round<Id, Protocol = P>) -> Self {
@@ -116,7 +116,7 @@ impl RoundId {
 }
 
 /// A distributed protocol.
-pub trait Protocol: Debug + Sized {
+pub trait Protocol: 'static + Debug + Sized {
     /// The successful result of an execution of this protocol.
     type Result: Debug;
 

@@ -4,18 +4,18 @@ use core::fmt::Debug;
 use manul::{
     protocol::{
         Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, ProtocolMessagePart,
-        Round,
+        Round, Serializer,
     },
-    session::{signature::Keypair, Serializer},
-    testing::{round_override, run_sync, RoundOverride, RoundWrapper, TestSessionParams, TestSigner, TestVerifier},
+    session::signature::Keypair,
+    testing::{
+        round_override, run_sync, BinaryFormat, RoundOverride, RoundWrapper, TestSessionParams, TestSigner,
+        TestVerifier,
+    },
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
 
-use crate::{
-    simple::{Inputs, Round1, Round1Message, Round2, Round2Message},
-    Bincode,
-};
+use crate::simple::{Inputs, Round1, Round1Message, Round2, Round2Message};
 
 #[derive(Debug, Clone, Copy)]
 enum Behavior {
@@ -76,7 +76,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            DirectMessage::new(serializer, &message)
+            DirectMessage::new(serializer, message)
         } else {
             self.inner_round_ref().make_direct_message(rng, serializer, destination)
         }
@@ -137,7 +137,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for Mali
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            DirectMessage::new(serializer, &message)
+            DirectMessage::new(serializer, message)
         } else {
             self.inner_round_ref().make_direct_message(rng, serializer, destination)
         }
@@ -177,7 +177,7 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<Bincode>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -223,7 +223,7 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<Bincode>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -269,7 +269,7 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<Bincode>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();

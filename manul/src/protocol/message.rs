@@ -43,7 +43,10 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Creates a new serialized message.
-    fn new<T: Serialize>(serializer: &Serializer, message: T) -> Result<Self, LocalError> {
+    fn new<T>(serializer: &Serializer, message: T) -> Result<Self, LocalError>
+    where
+        T: 'static + Serialize,
+    {
         let payload = MessagePayload(serializer.serialize(message)?);
         Ok(Self::new_inner(Some(payload)))
     }
@@ -67,9 +70,10 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     /// Returns `Ok(())` if the message cannot be deserialized into `T`.
     ///
     /// This is intended to be used in the implementations of
-    /// [`Protocol::verify_direct_message_is_invalid`] or [`Protocol::verify_echo_broadcast_is_invalid`].
-    fn verify_is_not<T: for<'de> Deserialize<'de>>(
-        &self,
+    /// [`Protocol::verify_direct_message_is_invalid`](`crate::protocol::Protocol::verify_direct_message_is_invalid`) or
+    /// [`Protocol::verify_echo_broadcast_is_invalid`](`crate::protocol::Protocol::verify_echo_broadcast_is_invalid`).
+    fn verify_is_not<'de, T: Deserialize<'de>>(
+        &'de self,
         deserializer: &Deserializer,
     ) -> Result<(), MessageValidationError> {
         if self.deserialize::<T>(deserializer).is_err() {
@@ -84,7 +88,8 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     /// Returns `Ok(())` if the message contains a payload.
     ///
     /// This is intended to be used in the implementations of
-    /// [`Protocol::verify_direct_message_is_invalid`] or [`Protocol::verify_echo_broadcast_is_invalid`].
+    /// [`Protocol::verify_direct_message_is_invalid`](`crate::protocol::Protocol::verify_direct_message_is_invalid`) or
+    /// [`Protocol::verify_echo_broadcast_is_invalid`](`crate::protocol::Protocol::verify_echo_broadcast_is_invalid`).
     fn verify_is_some(&self) -> Result<(), MessageValidationError> {
         if self.maybe_message().is_some() {
             Ok(())
@@ -96,7 +101,10 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Deserializes the message into `T`.
-    fn deserialize<T: for<'de> Deserialize<'de>>(&self, deserializer: &Deserializer) -> Result<T, Self::Error> {
+    fn deserialize<'de, T>(&'de self, deserializer: &Deserializer) -> Result<T, Self::Error>
+    where
+        T: Deserialize<'de>,
+    {
         let payload = self
             .maybe_message()
             .as_ref()

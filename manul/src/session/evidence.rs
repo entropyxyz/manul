@@ -6,14 +6,15 @@ use serde::{Deserialize, Serialize};
 use super::{
     echo::{EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
     message::{MessageVerificationError, MissingMessage, SignedMessage},
-    session::{Deserializer, SessionParameters},
+    session::SessionParameters,
     transcript::Transcript,
     LocalError,
 };
 use crate::{
     protocol::{
-        DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError, NormalBroadcast,
-        NormalBroadcastError, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError, RoundId,
+        Deserializer, DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
+        NormalBroadcast, NormalBroadcastError, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
+        RoundId,
     },
     utils::SerializableMap,
 };
@@ -233,12 +234,13 @@ where
     }
 
     pub fn verify(&self, party: &SP::Verifier) -> Result<(), EvidenceError> {
+        let deserializer = Deserializer::new::<SP::WireFormat>();
         match &self.evidence {
-            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(party, &Deserializer),
-            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(party, &Deserializer),
-            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(party, &Deserializer),
+            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(party, &deserializer),
+            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(party, &deserializer),
+            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(party, &deserializer),
             EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(party),
-            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party, &Deserializer),
+            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party, &deserializer),
             EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(party),
         }
     }

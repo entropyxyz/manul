@@ -15,8 +15,8 @@ mod errors;
 mod message;
 mod object_safe;
 mod round;
+mod serialization;
 
-pub use crate::session::{Deserializer, Serializer, SessionId};
 pub use errors::{
     DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
     NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,
@@ -25,6 +25,7 @@ pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage
 pub use round::{
     AnotherRound, Artifact, FinalizeOutcome, FirstRound, Payload, Protocol, ProtocolError, Round, RoundId,
 };
+pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;
 pub(crate) use object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};

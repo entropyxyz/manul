@@ -2,7 +2,6 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
-    string::ToString,
     vec::Vec,
 };
 use core::fmt::Debug;
@@ -19,55 +18,20 @@ use super::{
     evidence::Evidence,
     message::{MessageBundle, MessageVerificationError, SignedMessage, VerifiedMessageBundle},
     transcript::{SessionOutcome, SessionReport, Transcript},
+    wire_format::WireFormat,
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
-    NormalBroadcast, ObjectSafeRound, ObjectSafeRoundWrapper, Payload, Protocol, ProtocolMessagePart, ReceiveError,
-    ReceiveErrorType, Round, RoundId,
+    Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, NormalBroadcast,
+    ObjectSafeRound, ObjectSafeRoundWrapper, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
+    Round, RoundId, Serializer,
 };
-
-/// A (de)serializer that will be used for the protocol messages.
-pub trait Format {
-    /// Serializes the given object into a bytestring.
-    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
-
-    /// Tries to deserialize the given bytestring as an object of type `T`.
-    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError>;
-}
-
-/// [temporary serializer]
-#[derive(Debug, Clone, Copy)]
-pub struct Serializer;
-
-impl Serializer {
-    // TODO: temporary implementation, should be made via `erased_serde`
-    /// Serializes the given object into a bytestring.
-    pub fn serialize<T: Serialize>(&self, value: T) -> Result<Box<[u8]>, LocalError> {
-        bincode::serde::encode_to_vec(value, bincode::config::standard())
-            .map(|vec| vec.into())
-            .map_err(|err| LocalError::new(err.to_string()))
-    }
-}
-
-/// [temporary deserializer]
-#[derive(Debug, Clone, Copy)]
-pub struct Deserializer;
-
-impl Deserializer {
-    // TODO: temporary implementation, should be made via `erased_serde`
-    /// Tries to deserialize the given bytestring as an object of type `T`.
-    pub fn deserialize<'de, T: Deserialize<'de>>(&self, bytes: &'de [u8]) -> Result<T, DeserializationError> {
-        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
-            .map_err(|err| DeserializationError::new(err.to_string()))
-    }
-}
 
 /// A set of types needed to execute a session.
 ///
 /// These will be generally determined by the user, depending on what signature type
 /// is used in the network in which they are running the protocol.
-pub trait SessionParameters {
+pub trait SessionParameters: 'static {
     /// The signer type.
     type Signer: Debug + RandomizedDigestSigner<Self::Digest, Self::Signature> + Keypair<VerifyingKey = Self::Verifier>;
 
@@ -88,7 +52,7 @@ pub trait SessionParameters {
     type Signature: Serialize + for<'de> Deserialize<'de>;
 
     /// The type used to (de)serialize messages.
-    type Format: Format;
+    type WireFormat: WireFormat;
 }
 
 /// A session identifier shared between the parties.
@@ -146,6 +110,8 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
     verifier: SP::Verifier,
+    serializer: Serializer,
+    deserializer: Deserializer,
     round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
     message_destinations: BTreeSet<SP::Verifier>,
     echo_broadcast: SignedMessage<EchoBroadcast>,
@@ -170,8 +136,8 @@ pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> Session<P, SP>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol,
+    SP: SessionParameters + Debug,
 {
     /// Initializes a new session.
     pub fn new<R>(
@@ -181,7 +147,7 @@ where
         inputs: R::Inputs,
     ) -> Result<Self, LocalError>
     where
-        R: FirstRound<SP::Verifier> + Round<SP::Verifier, Protocol = P> + 'static,
+        R: FirstRound<SP::Verifier> + Round<SP::Verifier, Protocol = P>,
     {
         let verifier = signer.verifying_key();
         let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(
@@ -190,22 +156,34 @@ where
             verifier.clone(),
             inputs,
         )?));
-        Self::new_for_next_round(rng, session_id, signer, first_round, Transcript::new())
+        let serializer = Serializer::new::<SP::WireFormat>();
+        let deserializer = Deserializer::new::<SP::WireFormat>();
+        Self::new_for_next_round(
+            rng,
+            session_id,
+            signer,
+            serializer,
+            deserializer,
+            first_round,
+            Transcript::new(),
+        )
     }
 
     fn new_for_next_round(
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
         signer: SP::Signer,
+        serializer: Serializer,
+        deserializer: Deserializer,
         round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
 
-        let echo = round.make_echo_broadcast(rng, &Serializer)?;
+        let echo = round.make_echo_broadcast(rng, &serializer)?;
         let echo_broadcast = SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
 
-        let normal = round.make_normal_broadcast(rng, &Serializer)?;
+        let normal = round.make_normal_broadcast(rng, &serializer)?;
         let normal_broadcast = SignedMessage::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
 
         let message_destinations = round.message_destinations().clone();
@@ -220,6 +198,8 @@ where
             session_id,
             signer,
             verifier,
+            serializer,
+            deserializer,
             round,
             echo_broadcast,
             normal_broadcast,
@@ -252,9 +232,9 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(MessageBundle, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self
-            .round
-            .make_direct_message_with_artifact(rng, &Serializer, destination)?;
+        let (direct_message, artifact) =
+            self.round
+                .make_direct_message_with_artifact(rng, &self.serializer, destination)?;
 
         let bundle = MessageBundle::new::<SP>(
             rng,
@@ -406,7 +386,7 @@ where
     ) -> ProcessedMessage<P, SP> {
         let processed = self.round.receive_message(
             rng,
-            &Deserializer,
+            &self.deserializer,
             message.from(),
             message.echo_broadcast().clone(),
             message.normal_broadcast().clone(),
@@ -477,7 +457,15 @@ where
                 accum.artifacts,
             )));
             let cached_messages = filter_messages(accum.cached, round.id());
-            let session = Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
+            let session = Session::new_for_next_round(
+                rng,
+                self.session_id,
+                self.signer,
+                self.serializer,
+                self.deserializer,
+                round,
+                transcript,
+            )?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -506,7 +494,15 @@ where
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();
 
-                    let session = Session::new_for_next_round(rng, self.session_id, self.signer, round, transcript)?;
+                    let session = Session::new_for_next_round(
+                        rng,
+                        self.session_id,
+                        self.signer,
+                        self.serializer,
+                        self.deserializer,
+                        round,
+                        transcript,
+                    )?;
                     RoundOutcome::AnotherRound {
                         cached_messages,
                         session,
@@ -775,20 +771,18 @@ fn filter_messages<SP: SessionParameters>(
 
 #[cfg(test)]
 mod tests {
-    use alloc::{boxed::Box, collections::BTreeMap, vec::Vec};
+    use alloc::{collections::BTreeMap, vec::Vec};
 
     use impls::impls;
     use serde::{Deserialize, Serialize};
 
-    use super::{
-        Deserializer, Format, MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle,
-    };
+    use super::{MessageBundle, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessageBundle};
     use crate::{
         protocol::{
-            DeserializationError, DirectMessage, EchoBroadcast, LocalError, NormalBroadcast, Protocol, ProtocolError,
+            Deserializer, DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, ProtocolError,
             ProtocolValidationError, RoundId,
         },
-        testing::TestSessionParams,
+        testing::{BinaryFormat, TestSessionParams},
     };
 
     #[test]
@@ -829,24 +823,7 @@ mod tests {
             type CorrectnessProof = ();
         }
 
-        struct DummyFormat;
-
-        impl Format for DummyFormat {
-            fn serialize<T>(_: T) -> Result<Box<[u8]>, LocalError>
-            where
-                T: Serialize,
-            {
-                unimplemented!()
-            }
-            fn deserialize<'de, T>(_: &[u8]) -> Result<T, DeserializationError>
-            where
-                T: Deserialize<'de>,
-            {
-                unimplemented!()
-            }
-        }
-
-        type SP = TestSessionParams<DummyFormat>;
+        type SP = TestSessionParams<BinaryFormat>;
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task
         // to run the loop there.

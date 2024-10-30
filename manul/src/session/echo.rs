@@ -12,13 +12,13 @@ use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessage},
-    session::{Deserializer, Serializer, SessionParameters},
+    session::SessionParameters,
     LocalError,
 };
 use crate::{
     protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast, ObjectSafeRound,
-        Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast,
+        ObjectSafeRound, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     utils::SerializableMap,
 };
@@ -75,7 +75,7 @@ pub struct EchoRound<P, SP: SessionParameters> {
 impl<P, SP> EchoRound<P, SP>
 where
     P: Protocol,
-    SP: SessionParameters,
+    SP: SessionParameters + Debug,
 {
     pub fn new(
         verifier: SP::Verifier,
@@ -145,7 +145,7 @@ where
         let message = EchoRoundMessage::<SP> {
             echo_broadcasts: echo_broadcasts.into(),
         };
-        NormalBroadcast::new(serializer, &message)
+        NormalBroadcast::new(serializer, message)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {

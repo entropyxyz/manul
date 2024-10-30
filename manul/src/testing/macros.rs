@@ -3,9 +3,9 @@ use alloc::collections::BTreeMap;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, Payload, Round,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, Payload,
+    Round, Serializer,
 };
-use crate::session::Serializer;
 
 /// A trait defining a wrapper around an existing type implementing [`Round`].
 pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
@@ -111,7 +111,7 @@ macro_rules! round_override {
             fn make_direct_message(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                serializer: &$crate::session::Serializer,
+                serializer: &$crate::protocol::Serializer,
                 destination: &Id,
             ) -> Result<$crate::protocol::DirectMessage, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, serializer, destination)
@@ -120,7 +120,7 @@ macro_rules! round_override {
             fn make_direct_message_with_artifact(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                serializer: &$crate::session::Serializer,
+                serializer: &$crate::protocol::Serializer,
                 destination: &Id,
             ) -> Result<($crate::protocol::DirectMessage, Option<$crate::protocol::Artifact>), $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_direct_message_with_artifact(self, rng, serializer, destination)
@@ -129,7 +129,7 @@ macro_rules! round_override {
             fn make_echo_broadcast(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                serializer: &$crate::session::Serializer,
+                serializer: &$crate::protocol::Serializer,
             ) -> Result<$crate::protocol::EchoBroadcast, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_echo_broadcast(self, rng, serializer)
             }
@@ -137,7 +137,7 @@ macro_rules! round_override {
             fn make_normal_broadcast(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                serializer: &$crate::session::Serializer,
+                serializer: &$crate::protocol::Serializer,
             ) -> Result<$crate::protocol::NormalBroadcast, $crate::protocol::LocalError> {
                 <Self as $crate::testing::RoundOverride<Id>>::make_normal_broadcast(self, rng, serializer)
             }
@@ -145,7 +145,7 @@ macro_rules! round_override {
             fn receive_message(
                 &self,
                 rng: &mut impl CryptoRngCore,
-                deserializer: &$crate::session::Deserializer,
+                deserializer: &$crate::protocol::Deserializer,
                 from: &Id,
                 echo_broadcast: $crate::protocol::EchoBroadcast,
                 normal_broadcast: $crate::protocol::NormalBroadcast,

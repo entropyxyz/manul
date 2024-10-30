@@ -7,7 +7,8 @@ use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, RandomizedDigestSigner};
 
 use super::{
-    session::{Format, SessionId, SessionParameters},
+    session::{SessionId, SessionParameters},
+    wire_format::WireFormat,
     LocalError,
 };
 use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, RoundId};
@@ -16,18 +17,18 @@ use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, Normal
 pub(crate) struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
 
 impl SerializedSignature {
-    pub fn new<SP>(signature: &SP::Signature) -> Result<Self, LocalError>
+    pub fn new<SP>(signature: SP::Signature) -> Result<Self, LocalError>
     where
         SP: SessionParameters,
     {
-        SP::Format::serialize(signature).map(Self)
+        SP::WireFormat::serialize(signature).map(Self)
     }
 
     pub fn deserialize<SP>(&self) -> Result<SP::Signature, DeserializationError>
     where
         SP: SessionParameters,
     {
-        SP::Format::deserialize::<SP::Signature>(&self.0)
+        SP::WireFormat::deserialize::<SP::Signature>(&self.0)
     }
 }
 
@@ -91,13 +92,13 @@ where
     {
         let metadata = MessageMetadata::new(session_id, round_id);
         let message_with_metadata = MessageWithMetadata { metadata, message };
-        let message_bytes = SP::Format::serialize(&message_with_metadata)?;
+        let message_bytes = SP::WireFormat::serialize(&message_with_metadata)?;
         let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = signer
             .try_sign_digest_with_rng(rng, digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
         Ok(Self {
-            signature: SerializedSignature::new::<SP>(&signature)?,
+            signature: SerializedSignature::new::<SP>(signature)?,
             message_with_metadata,
         })
     }
@@ -115,7 +116,7 @@ where
         SP: SessionParameters,
     {
         let message_bytes =
-            SP::Format::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
+            SP::WireFormat::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
         let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
         let signature = self
             .signature
@@ -171,6 +172,7 @@ pub struct MessageBundle {
 }
 
 impl MessageBundle {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<SP>(
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,

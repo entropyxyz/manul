@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Artifact::empty()` removed, the user should return `None` instead. ([#46])
 - `EchoBroadcast` and `DirectMessage` now use `ProtocolMessagePart` trait for their methods. ([#47])
 - Added normal broadcasts support in addition to echo ones; signatures of `Round` methods changed accordingly; added `Round::make_normal_broadcast()`. ([#47])
+- Serialization format is a part of `SessionParameters` now; `Round` and `Protocol` methods receive dynamic serializers/deserializers. ([#33])
 
 
 ### Added
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
+[#33]: https://github.com/entropyxyz/manul/pull/33
 [#36]: https://github.com/entropyxyz/manul/pull/36
 [#37]: https://github.com/entropyxyz/manul/pull/37
 [#40]: https://github.com/entropyxyz/manul/pull/40

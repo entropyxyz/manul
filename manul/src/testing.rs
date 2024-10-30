@@ -15,7 +15,9 @@ The [`run_sync()`] method is helpful to execute a protocol synchronously and col
 mod identity;
 mod macros;
 mod run_sync;
+mod wire_format;
 
 pub use identity::{TestHasher, TestSessionParams, TestSignature, TestSigner, TestVerifier};
 pub use macros::{round_override, RoundOverride, RoundWrapper};
 pub use run_sync::run_sync;
+pub use wire_format::{BinaryFormat, HumanReadableFormat};

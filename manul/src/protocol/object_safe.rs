@@ -11,8 +11,8 @@ use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast},
     round::{Artifact, FinalizeOutcome, Payload, Protocol, Round, RoundId},
+    serialization::{Deserializer, Serializer},
 };
-use crate::session::{Deserializer, Serializer};
 
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
 /// this structure wraps the dynamic object and exposes a `CryptoRngCore` interface,
