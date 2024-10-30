@@ -11,7 +11,9 @@ use super::{
     wire_format::WireFormat,
     LocalError,
 };
-use crate::protocol::{DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, RoundId};
+use crate::protocol::{
+    DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart, RoundId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
@@ -76,9 +78,26 @@ pub struct MessageWithMetadata<M> {
     message: M,
 }
 
+impl<M: ProtocolMessagePart> MessageWithMetadata<M> {
+    fn digest<SP>(&self) -> Result<SP::Digest, LocalError>
+    where
+        SP: SessionParameters,
+    {
+        let digest =
+            SP::Digest::new_with_prefix(b"SignedMessage").chain_update(SP::WireFormat::serialize(&self.metadata)?);
+
+        let digest = match self.message.maybe_message().as_ref() {
+            None => digest.chain_update([0u8]),
+            Some(payload) => digest.chain_update([1u8]).chain_update(payload),
+        };
+
+        Ok(digest)
+    }
+}
+
 impl<M> SignedMessage<M>
 where
-    M: Serialize,
+    M: ProtocolMessagePart,
 {
     pub fn new<SP>(
         rng: &mut impl CryptoRngCore,
@@ -92,8 +111,7 @@ where
     {
         let metadata = MessageMetadata::new(session_id, round_id);
         let message_with_metadata = MessageWithMetadata { metadata, message };
-        let message_bytes = SP::WireFormat::serialize(&message_with_metadata)?;
-        let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        let digest = message_with_metadata.digest::<SP>()?;
         let signature = signer
             .try_sign_digest_with_rng(rng, digest)
             .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
@@ -115,9 +133,10 @@ where
     where
         SP: SessionParameters,
     {
-        let message_bytes =
-            SP::WireFormat::serialize(&self.message_with_metadata).map_err(MessageVerificationError::Local)?;
-        let digest = SP::Digest::new_with_prefix(b"SignedMessage").chain_update(message_bytes);
+        let digest = self
+            .message_with_metadata
+            .digest::<SP>()
+            .map_err(MessageVerificationError::Local)?;
         let signature = self
             .signature
             .deserialize::<SP>()
