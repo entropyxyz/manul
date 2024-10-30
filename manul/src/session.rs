@@ -16,6 +16,7 @@ mod transcript;
 mod wire_format;
 
 pub use crate::protocol::{LocalError, RemoteError};
+pub use evidence::{Evidence, EvidenceError};
 pub use message::MessageBundle;
 pub use session::{CanFinalize, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters};
 pub use transcript::{SessionOutcome, SessionReport};

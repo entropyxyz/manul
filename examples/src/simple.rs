@@ -1,4 +1,8 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    format,
+    string::String,
+};
 use core::fmt::Debug;
 
 use manul::protocol::*;
@@ -15,6 +19,10 @@ pub enum SimpleProtocolError {
 }
 
 impl ProtocolError for SimpleProtocolError {
+    fn description(&self) -> String {
+        format!("{:?}", self)
+    }
+
     fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         match self {
             Self::Round1InvalidPosition => BTreeSet::new(),
