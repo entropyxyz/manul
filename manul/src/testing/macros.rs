@@ -3,12 +3,12 @@ use alloc::collections::BTreeMap;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, Payload,
-    Round, Serializer,
+    Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, PartyId,
+    Payload, Round, Serializer,
 };
 
 /// A trait defining a wrapper around an existing type implementing [`Round`].
-pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
+pub trait RoundWrapper<Id: PartyId>: 'static + Sized + Send + Sync {
     /// The inner round type.
     type InnerRound: Round<Id>;
 
@@ -24,7 +24,7 @@ pub trait RoundWrapper<Id>: 'static + Sized + Send + Sync {
 /// Intended to be used with the [`round_override`] macro to generate the [`Round`] implementation.
 ///
 /// The blanket implementations delegate to the methods of the wrapped round.
-pub trait RoundOverride<Id>: RoundWrapper<Id> {
+pub trait RoundOverride<Id: PartyId>: RoundWrapper<Id> {
     /// An override for [`Round::make_direct_message_with_artifact`].
     fn make_direct_message_with_artifact(
         &self,
@@ -90,8 +90,8 @@ macro_rules! round_override {
     ($round: ident) => {
         impl<Id> Round<Id> for $round<Id>
         where
-            Id: Debug,
-            $round<Id>: RoundOverride<Id>,
+            Id: $crate::protocol::PartyId,
+            $round<Id>: $crate::testing::RoundOverride<Id>,
         {
             type Protocol =
                 <<$round<Id> as $crate::testing::RoundWrapper<Id>>::InnerRound as $crate::protocol::Round<Id>>::Protocol;
