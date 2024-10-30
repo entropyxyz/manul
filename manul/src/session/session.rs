@@ -313,13 +313,19 @@ where
             return Ok(None);
         }
 
-        if message_round_id == self.round_id() {
+        enum MessageFor {
+            ThisRound,
+            NextRound,
+        }
+
+        let message_for = if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
                 let err = "Message from this party is already being processed";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
                 trace!("{key:?} {err}");
                 return Ok(None);
             }
+            MessageFor::ThisRound
         } else if self.possible_next_rounds.contains(&message_round_id) {
             if accum.message_is_cached(from, message_round_id) {
                 let err = format!("Message for {:?} is already cached", message_round_id);
@@ -327,12 +333,13 @@ where
                 trace!("{key:?} {err}");
                 return Ok(None);
             }
+            MessageFor::NextRound
         } else {
             let err = format!("Unexpected message round ID: {:?}", message_round_id);
             accum.register_unprovable_error(from, RemoteError::new(&err))?;
             trace!("{key:?} {err}");
             return Ok(None);
-        }
+        };
 
         // Verify the signature now
 
@@ -352,27 +359,20 @@ where
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
         };
-        debug!(
-            "{key:?}: Received {:?} message from {:?}",
-            verified_message.metadata().round_id(),
-            from
-        );
+        debug!("{key:?}: Received {message_round_id:?} message from {from:?}");
 
-        if message_round_id == self.round_id() {
-            accum.mark_processing(&verified_message)?;
-            Ok(Some(verified_message))
-        } else if self.possible_next_rounds.contains(&message_round_id) {
-            debug!(
-                "{key:?}: Caching message from {:?} for {:?}",
-                verified_message.from(),
-                verified_message.metadata().round_id()
-            );
-            accum.cache_message(verified_message)?;
-            // TODO(dp): this is a bit awkward. It means "all good, but nothing to do here right
-            // now".
-            Ok(None)
-        } else {
-            unreachable!()
+        match message_for {
+            MessageFor::ThisRound => {
+                accum.mark_processing(&verified_message)?;
+                Ok(Some(verified_message))
+            }
+            MessageFor::NextRound => {
+                debug!("{key:?}: Caching message from {from:?} for {message_round_id:?}");
+                accum.cache_message(verified_message)?;
+                // TODO(dp): this is a bit awkward. It means "all good, but nothing to do here right
+                // now".
+                Ok(None)
+            }
         }
     }
 
