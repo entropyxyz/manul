@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SerializableMap` wrapper for `BTreeMap` supporting more formats and providing some safety features. (#[32])
 - `DirectMessage::assert_is_none()` and `verify_is_some()`, same for `EchoBroadcast`. Users can now check that a part of the round message (echo or direct) is `None` as expected, and make a verifiable evidence if it is not. ([#46])
+- Re-export `digest` from the `session` module. ([#56])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
@@ -35,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#41]: https://github.com/entropyxyz/manul/pull/41
 [#46]: https://github.com/entropyxyz/manul/pull/46
 [#47]: https://github.com/entropyxyz/manul/pull/47
+[#56]: https://github.com/entropyxyz/manul/pull/56
 
 
 ## [0.0.1] - 2024-10-12

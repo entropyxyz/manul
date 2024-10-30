@@ -25,3 +25,4 @@ pub use wire_format::WireFormat;
 pub(crate) use echo::EchoRoundError;
 
 pub use signature;
+pub use digest;
