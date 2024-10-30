@@ -10,7 +10,7 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast},
-    round::{Artifact, FinalizeOutcome, Payload, Protocol, Round, RoundId},
+    round::{Artifact, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
     serialization::{Deserializer, Serializer},
 };
 
@@ -39,7 +39,7 @@ impl RngCore for BoxedRng<'_> {
 // Since we want `Round` methods to take `&mut impl CryptoRngCore` arguments
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
-pub(crate) trait ObjectSafeRound<Id>: 'static + Debug + Send + Sync {
+pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
@@ -98,7 +98,11 @@ pub(crate) struct ObjectSafeRoundWrapper<Id, R> {
     phantom: PhantomData<fn(Id) -> Id>,
 }
 
-impl<Id: 'static, R: Round<Id>> ObjectSafeRoundWrapper<Id, R> {
+impl<Id, R> ObjectSafeRoundWrapper<Id, R>
+where
+    Id: PartyId,
+    R: Round<Id>,
+{
     pub fn new(round: R) -> Self {
         Self {
             round,
@@ -109,7 +113,7 @@ impl<Id: 'static, R: Round<Id>> ObjectSafeRoundWrapper<Id, R> {
 
 impl<Id, R> ObjectSafeRound<Id> for ObjectSafeRoundWrapper<Id, R>
 where
-    Id: 'static + Debug,
+    Id: PartyId,
     R: Round<Id>,
 {
     type Protocol = <R as Round<Id>>::Protocol;
@@ -203,7 +207,7 @@ where
 // so we have to provide this workaround.
 impl<Id, P> dyn ObjectSafeRound<Id, Protocol = P>
 where
-    Id: 'static,
+    Id: PartyId,
     P: Protocol,
 {
     pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {

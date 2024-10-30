@@ -3,8 +3,8 @@ use core::fmt::Debug;
 
 use manul::{
     protocol::{
-        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, Payload, ProtocolMessagePart,
-        Round, Serializer,
+        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, PartyId, Payload,
+        ProtocolMessagePart, Round, Serializer,
     },
     session::signature::Keypair,
     testing::{
@@ -36,7 +36,7 @@ struct MaliciousRound1<Id> {
     behavior: Behavior,
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for MaliciousRound1<Id> {
+impl<Id: PartyId> RoundWrapper<Id> for MaliciousRound1<Id> {
     type InnerRound = Round1<Id>;
     fn inner_round_ref(&self) -> &Self::InnerRound {
         &self.round
@@ -46,7 +46,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for MaliciousRound1<Id> {
+impl<Id: PartyId> FirstRound<Id> for MaliciousRound1<Id> {
     type Inputs = MaliciousInputs<Id>;
     fn new(
         rng: &mut impl CryptoRngCore,
@@ -62,7 +62,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Malicio
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound1<Id> {
+impl<Id: PartyId> RoundOverride<Id> for MaliciousRound1<Id> {
     fn make_direct_message(
         &self,
         rng: &mut impl CryptoRngCore,
@@ -115,7 +115,7 @@ struct MaliciousRound2<Id> {
     behavior: Behavior,
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for MaliciousRound2<Id> {
+impl<Id: PartyId> RoundWrapper<Id> for MaliciousRound2<Id> {
     type InnerRound = Round2<Id>;
     fn inner_round_ref(&self) -> &Self::InnerRound {
         &self.round
@@ -125,7 +125,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundWrapper<Id> for Malic
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> RoundOverride<Id> for MaliciousRound2<Id> {
+impl<Id: PartyId> RoundOverride<Id> for MaliciousRound2<Id> {
     fn make_direct_message(
         &self,
         rng: &mut impl CryptoRngCore,

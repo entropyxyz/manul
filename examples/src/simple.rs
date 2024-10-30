@@ -149,7 +149,7 @@ struct Round1Payload {
     x: u8,
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Round1<Id> {
+impl<Id: PartyId> FirstRound<Id> for Round1<Id> {
     type Inputs = Inputs<Id>;
     fn new(
         _rng: &mut impl CryptoRngCore,
@@ -179,7 +179,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for Round1<
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round1<Id> {
+impl<Id: PartyId> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
@@ -305,7 +305,7 @@ pub(crate) struct Round2Message {
     pub(crate) your_position: u8,
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for Round2<Id> {
+impl<Id: PartyId> Round<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {

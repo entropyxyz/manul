@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DirectMessage::assert_is_none()` and `verify_is_some()`, same for `EchoBroadcast`. Users can now check that a part of the round message (echo or direct) is `None` as expected, and make a verifiable evidence if it is not. ([#46])
 - Re-export `digest` from the `session` module. ([#56])
 - Added `Message::destination()`. ([#56])
+- `PartyId` trait alias for the combination of bounds needed for a party identifier. ([#59])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
@@ -43,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#56]: https://github.com/entropyxyz/manul/pull/56
 [#57]: https://github.com/entropyxyz/manul/pull/57
 [#58]: https://github.com/entropyxyz/manul/pull/58
+[#59]: https://github.com/entropyxyz/manul/pull/59
 
 
 ## [0.0.1] - 2024-10-12

@@ -24,8 +24,8 @@ use super::{
 };
 use crate::protocol::{
     Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, NormalBroadcast,
-    ObjectSafeRound, ObjectSafeRoundWrapper, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
-    Round, RoundId, Serializer,
+    ObjectSafeRound, ObjectSafeRoundWrapper, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError,
+    ReceiveErrorType, Round, RoundId, Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -40,14 +40,7 @@ pub trait SessionParameters: 'static {
     type Digest: Digest;
 
     /// The verifier type, which will also serve as a node identifier.
-    type Verifier: Debug
-        + Clone
-        + Ord
-        + DigestVerifier<Self::Digest, Self::Signature>
-        + Serialize
-        + for<'de> Deserialize<'de>
-        + Send
-        + Sync;
+    type Verifier: PartyId + DigestVerifier<Self::Digest, Self::Signature> + Serialize + for<'de> Deserialize<'de>;
 
     /// The signature type corresponding to [`Signer`](`Self::Signer`) and [`Verifier`](`Self::Verifier`).
     type Signature: Serialize + for<'de> Deserialize<'de>;

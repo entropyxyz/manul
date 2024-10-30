@@ -28,7 +28,7 @@ pub enum FinalizeOutcome<Id, P: Protocol> {
 
 impl<Id, P> FinalizeOutcome<Id, P>
 where
-    Id: 'static + Debug,
+    Id: PartyId,
     P: Protocol,
 {
     /// A helper method to create an [`AnotherRound`](`Self::AnotherRound`) variant.
@@ -44,7 +44,7 @@ pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = 
 
 impl<Id, P> AnotherRound<Id, P>
 where
-    Id: 'static + Debug,
+    Id: PartyId,
     P: Protocol,
 {
     /// Wraps an object implementing [`Round`].
@@ -301,7 +301,7 @@ impl Artifact {
 ///
 /// This is a round that can be created directly;
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
-pub trait FirstRound<Id>: Round<Id> + Sized {
+pub trait FirstRound<Id: PartyId>: Round<Id> + Sized {
     /// Additional inputs for the protocol (besides the mandatory ones in [`new`](`Self::new`)).
     type Inputs;
 
@@ -317,6 +317,11 @@ pub trait FirstRound<Id>: Round<Id> + Sized {
     ) -> Result<Self, LocalError>;
 }
 
+/// A trait alias for the combination of traits needed for a party identifier.
+pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync {}
+
+impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync {}
+
 /**
 A type representing a single round of a protocol.
 
@@ -326,7 +331,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id>: 'static + Debug + Send + Sync {
+pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// The protocol this round is a part of.
     type Protocol: Protocol;
 

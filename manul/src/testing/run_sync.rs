@@ -34,8 +34,8 @@ fn propagate<P, SP>(
     accum: RoundAccumulator<P, SP>,
 ) -> Result<(State<P, SP>, Vec<RoundMessage<SP>>), LocalError>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    P: Protocol,
+    SP: SessionParameters,
 {
     let mut messages = Vec::new();
 
@@ -94,8 +94,8 @@ pub fn run_sync<R, SP>(
     inputs: Vec<(SP::Signer, R::Inputs)>,
 ) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
 where
-    R: 'static + FirstRound<SP::Verifier>,
-    SP: 'static + SessionParameters,
+    R: FirstRound<SP::Verifier>,
+    SP: SessionParameters,
 {
     let session_id = SessionId::random::<SP>(rng);
 

@@ -23,7 +23,7 @@ pub use errors::{
 };
 pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart};
 pub use round::{
-    AnotherRound, Artifact, FinalizeOutcome, FirstRound, Payload, Protocol, ProtocolError, Round, RoundId,
+    AnotherRound, Artifact, FinalizeOutcome, FirstRound, PartyId, Payload, Protocol, ProtocolError, Round, RoundId,
 };
 pub use serialization::{Deserializer, Serializer};
 
