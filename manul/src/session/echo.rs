@@ -17,8 +17,9 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, NormalBroadcast,
-        ObjectSafeRound, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, MessageValidationError,
+        NormalBroadcast, ObjectSafeRound, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Serializer,
     },
     utils::SerializableMap,
 };
@@ -55,7 +56,7 @@ pub(crate) enum MismatchedBroadcastsError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
-    pub(crate) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    pub(super) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
 }
 
 /// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
@@ -104,6 +105,25 @@ where
             payloads,
             artifacts,
         }
+    }
+
+    // Since the echo round doesn't have its own `Protocol`, these methods live here.
+
+    pub fn verify_direct_message_is_invalid(message: &DirectMessage) -> Result<(), MessageValidationError> {
+        // We don't send any direct messages in the echo round
+        message.verify_is_some()
+    }
+
+    pub fn verify_echo_broadcast_is_invalid(message: &EchoBroadcast) -> Result<(), MessageValidationError> {
+        // We don't send any echo broadcasts in the echo round
+        message.verify_is_some()
+    }
+
+    pub fn verify_normal_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        message.verify_is_not::<EchoRoundMessage<SP>>(deserializer)
     }
 }
 

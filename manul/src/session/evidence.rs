@@ -4,7 +4,7 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    echo::{EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
+    echo::{EchoRound, EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
     message::{MessageVerificationError, MissingMessage, SignedMessage},
     session::SessionParameters,
     transcript::Transcript,
@@ -254,7 +254,7 @@ where
             EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(party, &deserializer),
             EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(party, &deserializer),
             EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(party, &deserializer),
-            EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(party),
+            EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(party, &deserializer),
             EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party, &deserializer),
             EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(party),
         }
@@ -368,11 +368,17 @@ where
         SP: SessionParameters,
     {
         let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?;
-        Ok(P::verify_direct_message_is_invalid(
-            deserializer,
-            self.direct_message.metadata().round_id(),
-            verified_direct_message.payload(),
-        )?)
+        let payload = verified_direct_message.payload();
+
+        if self.direct_message.metadata().round_id().is_echo() {
+            Ok(EchoRound::<P, SP>::verify_direct_message_is_invalid(payload)?)
+        } else {
+            Ok(P::verify_direct_message_is_invalid(
+                deserializer,
+                self.direct_message.metadata().round_id(),
+                payload,
+            )?)
+        }
     }
 }
 
@@ -392,11 +398,17 @@ where
         SP: SessionParameters,
     {
         let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?;
-        Ok(P::verify_echo_broadcast_is_invalid(
-            deserializer,
-            self.echo_broadcast.metadata().round_id(),
-            verified_echo_broadcast.payload(),
-        )?)
+        let payload = verified_echo_broadcast.payload();
+
+        if self.echo_broadcast.metadata().round_id().is_echo() {
+            Ok(EchoRound::<P, SP>::verify_echo_broadcast_is_invalid(payload)?)
+        } else {
+            Ok(P::verify_echo_broadcast_is_invalid(
+                deserializer,
+                self.echo_broadcast.metadata().round_id(),
+                payload,
+            )?)
+        }
     }
 }
 
@@ -411,15 +423,25 @@ impl<P> InvalidNormalBroadcastEvidence<P>
 where
     P: Protocol,
 {
-    fn verify<SP>(&self, verifier: &SP::Verifier) -> Result<(), EvidenceError>
+    fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
     where
         SP: SessionParameters,
     {
         let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?;
-        Ok(P::verify_normal_broadcast_is_invalid(
-            self.normal_broadcast.metadata().round_id(),
-            verified_normal_broadcast.payload(),
-        )?)
+        let payload = verified_normal_broadcast.payload();
+
+        if self.normal_broadcast.metadata().round_id().is_echo() {
+            Ok(EchoRound::<P, SP>::verify_normal_broadcast_is_invalid(
+                deserializer,
+                payload,
+            )?)
+        } else {
+            Ok(P::verify_normal_broadcast_is_invalid(
+                deserializer,
+                self.normal_broadcast.metadata().round_id(),
+                payload,
+            )?)
+        }
     }
 }
 

@@ -84,6 +84,11 @@ impl RoundId {
         }
     }
 
+    /// Returns `true` if this is an ID of an echo broadcast round.
+    pub(crate) fn is_echo(&self) -> bool {
+        self.is_echo
+    }
+
     /// Returns the identifier of the echo round corresponding to the given non-echo round.
     ///
     /// Panics if `self` is already an echo round identifier.
@@ -161,6 +166,7 @@ pub trait Protocol: 'static + Sized {
     ///
     /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
     fn verify_normal_broadcast_is_invalid(
+        #[allow(unused_variables)] deserializer: &Deserializer,
         round_id: RoundId,
         #[allow(unused_variables)] message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
