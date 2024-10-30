@@ -1,4 +1,9 @@
-use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
+use alloc::{
+    collections::BTreeMap,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
@@ -139,7 +144,7 @@ where
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
-        let description = format!("Protocol error: {:?}", error);
+        let description = format!("Protocol error: {}", error.description());
 
         Ok(Self {
             guilty_party: verifier.clone(),
@@ -162,7 +167,7 @@ where
         normal_broadcast: SignedMessage<NormalBroadcast>,
         error: EchoRoundError<SP::Verifier>,
     ) -> Result<Self, LocalError> {
-        let description = format!("{:?}", error);
+        let description = format!("Echo round error: {}", error.description());
         match error {
             EchoRoundError::InvalidEcho(from) => Ok(Self {
                 guilty_party: verifier.clone(),
@@ -196,7 +201,7 @@ where
     ) -> Self {
         Self {
             guilty_party: verifier.clone(),
-            description: format!("{:?}", error),
+            description: error.to_string(),
             evidence: EvidenceEnum::InvalidDirectMessage(InvalidDirectMessageEvidence {
                 direct_message,
                 phantom: core::marker::PhantomData,
@@ -211,7 +216,7 @@ where
     ) -> Self {
         Self {
             guilty_party: verifier.clone(),
-            description: format!("{:?}", error),
+            description: error.to_string(),
             evidence: EvidenceEnum::InvalidEchoBroadcast(InvalidEchoBroadcastEvidence {
                 echo_broadcast,
                 phantom: core::marker::PhantomData,
@@ -226,7 +231,7 @@ where
     ) -> Self {
         Self {
             guilty_party: verifier.clone(),
-            description: format!("{:?}", error),
+            description: error.to_string(),
             evidence: EvidenceEnum::InvalidNormalBroadcast(InvalidNormalBroadcastEvidence {
                 normal_broadcast,
                 phantom: core::marker::PhantomData,

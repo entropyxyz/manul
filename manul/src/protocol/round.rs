@@ -2,6 +2,7 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
+    string::String,
     vec::Vec,
 };
 use core::{any::Any, fmt::Debug};
@@ -121,7 +122,7 @@ impl RoundId {
 }
 
 /// A distributed protocol.
-pub trait Protocol: 'static + Sized {
+pub trait Protocol: 'static {
     /// The successful result of an execution of this protocol.
     type Result: Debug;
 
@@ -181,6 +182,11 @@ pub trait Protocol: 'static + Sized {
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
 pub trait ProtocolError: Debug + Clone + Send {
+    /// A description of the error that will be included in the generated evidence.
+    ///
+    /// Make it short and informative.
+    fn description(&self) -> String;
+
     /// The rounds direct messages from which are required to prove malicious behavior for this error.
     ///
     /// **Note:** Should not include the round where the error happened.

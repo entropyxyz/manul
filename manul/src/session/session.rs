@@ -771,7 +771,7 @@ fn filter_messages<SP: SessionParameters>(
 
 #[cfg(test)]
 mod tests {
-    use alloc::{collections::BTreeMap, vec::Vec};
+    use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
     use impls::impls;
     use serde::{Deserialize, Serialize};
@@ -801,6 +801,10 @@ mod tests {
         struct DummyProtocolError;
 
         impl ProtocolError for DummyProtocolError {
+            fn description(&self) -> String {
+                unimplemented!()
+            }
+
             fn verify_messages_constitute_error(
                 &self,
                 _deserializer: &Deserializer,

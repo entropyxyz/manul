@@ -1,6 +1,9 @@
 extern crate alloc;
 
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    string::String,
+};
 use core::fmt::Debug;
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -23,6 +26,9 @@ pub struct EmptyProtocol;
 pub struct EmptyProtocolError;
 
 impl ProtocolError for EmptyProtocolError {
+    fn description(&self) -> String {
+        unimplemented!()
+    }
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,

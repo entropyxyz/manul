@@ -2,6 +2,7 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
+    string::String,
     vec::Vec,
 };
 use core::fmt::Debug;
@@ -44,6 +45,17 @@ pub(crate) enum EchoRoundError<Id> {
         we_received: SignedMessage<EchoBroadcast>,
         echoed_to_us: SignedMessage<EchoBroadcast>,
     },
+}
+
+impl<Id> EchoRoundError<Id> {
+    pub(crate) fn description(&self) -> String {
+        match self {
+            Self::InvalidEcho(_) => "Invalid message received among the ones echoed".into(),
+            Self::MismatchedBroadcasts { .. } => {
+                "The echoed message is different from the originally received one".into()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
