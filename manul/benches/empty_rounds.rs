@@ -10,8 +10,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
         Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, LocalError,
-        NormalBroadcast, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
-        Round, RoundId, Serializer,
+        NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
+        ReceiveError, Round, RoundId, Serializer,
     },
     session::{signature::Keypair, SessionOutcome},
     testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
@@ -73,7 +73,7 @@ struct Round1Payload;
 
 struct Round1Artifact;
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for EmptyRound<Id> {
+impl<Id: PartyId> FirstRound<Id> for EmptyRound<Id> {
     type Inputs = Inputs<Id>;
     fn new(
         _rng: &mut impl CryptoRngCore,
@@ -88,7 +88,7 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for EmptyRo
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<Id> {
+impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     type Protocol = EmptyProtocol;
 
     fn id(&self) -> RoundId {
