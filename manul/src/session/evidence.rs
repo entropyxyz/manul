@@ -250,18 +250,18 @@ where
     }
 
     /// Attempts to verify that the attached data constitutes enough evidence
-    /// to prove the malicious behavior.
+    /// to prove the malicious behavior of [`Self::guilty_party`].
     ///
     /// Returns `Ok(())` if it is the case.
-    pub fn verify(&self, party: &SP::Verifier) -> Result<(), EvidenceError> {
+    pub fn verify(&self) -> Result<(), EvidenceError> {
         let deserializer = Deserializer::new::<SP::WireFormat>();
         match &self.evidence {
-            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(party, &deserializer),
-            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(party, &deserializer),
-            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(party, &deserializer),
-            EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(party, &deserializer),
-            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(party, &deserializer),
-            EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(party),
+            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(&self.guilty_party, &deserializer),
+            EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(&self.guilty_party),
         }
     }
 }
