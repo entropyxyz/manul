@@ -4,14 +4,14 @@ use alloc::{
 };
 use core::fmt::Debug;
 
-use super::{evidence::Evidence, message::SignedMessage, session::SessionParameters, LocalError, RemoteError};
+use super::{evidence::Evidence, message::SignedMessagePart, session::SessionParameters, LocalError, RemoteError};
 use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId};
 
 #[derive(Debug)]
 pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
-    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>>,
-    normal_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<NormalBroadcast>>>,
-    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>>,
+    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>>,
+    normal_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>>,
+    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
     missing_messages: BTreeMap<RoundId, BTreeSet<SP::Verifier>>,
@@ -37,9 +37,9 @@ where
     pub fn update(
         self,
         round_id: RoundId,
-        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
-        normal_broadcasts: BTreeMap<SP::Verifier, SignedMessage<NormalBroadcast>>,
-        direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
+        normal_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>,
+        direct_messages: BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>,
         provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
         unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
         missing_messages: BTreeSet<SP::Verifier>,
@@ -116,7 +116,7 @@ where
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<EchoBroadcast>, LocalError> {
+    ) -> Result<SignedMessagePart<EchoBroadcast>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {round_id:?}")))?
@@ -129,7 +129,7 @@ where
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<NormalBroadcast>, LocalError> {
+    ) -> Result<SignedMessagePart<NormalBroadcast>, LocalError> {
         self.normal_broadcasts
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No normal broadcasts registered for {round_id:?}")))?
@@ -142,7 +142,7 @@ where
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<DirectMessage>, LocalError> {
+    ) -> Result<SignedMessagePart<DirectMessage>, LocalError> {
         self.direct_messages
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {round_id:?}")))?
@@ -158,7 +158,7 @@ where
     pub fn echo_broadcasts(
         &self,
         round_id: RoundId,
-    ) -> Result<BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>, LocalError> {
+    ) -> Result<BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .cloned()

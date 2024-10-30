@@ -5,8 +5,8 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use manul::{
     protocol::Protocol,
     session::{
-        signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId,
-        SessionParameters, SessionReport,
+        signature::Keypair, CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters,
+        SessionReport,
     },
     testing::{BinaryFormat, TestSessionParams, TestSigner},
 };
@@ -23,12 +23,12 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: MessageBundle,
+    message: Message<SP::Verifier>,
 }
 
 struct MessageIn<SP: SessionParameters> {
     from: SP::Verifier,
-    message: MessageBundle,
+    message: Message<SP::Verifier>,
 }
 
 /// Runs a session. Simulates what each participating party would run as the protocol progresses.

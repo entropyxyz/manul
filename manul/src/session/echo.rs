@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    message::{MessageVerificationError, SignedMessage},
+    message::{MessageVerificationError, SignedMessagePart},
     session::SessionParameters,
     LocalError,
 };
@@ -42,8 +42,8 @@ pub(crate) enum EchoRoundError<Id> {
     MismatchedBroadcasts {
         guilty_party: Id,
         error: MismatchedBroadcastsError,
-        we_received: SignedMessage<EchoBroadcast>,
-        echoed_to_us: SignedMessage<EchoBroadcast>,
+        we_received: SignedMessagePart<EchoBroadcast>,
+        echoed_to_us: SignedMessagePart<EchoBroadcast>,
     },
 }
 
@@ -68,7 +68,7 @@ pub(crate) enum MismatchedBroadcastsError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
-    pub(super) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    pub(super) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
 }
 
 /// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
@@ -77,7 +77,7 @@ pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
 #[derive_where::derive_where(Debug)]
 pub struct EchoRound<P, SP: SessionParameters> {
     verifier: SP::Verifier,
-    echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
     destinations: BTreeSet<SP::Verifier>,
     expected_echos: BTreeSet<SP::Verifier>,
     main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
@@ -92,8 +92,8 @@ where
 {
     pub fn new(
         verifier: SP::Verifier,
-        my_echo_broadcast: SignedMessage<EchoBroadcast>,
-        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+        my_echo_broadcast: SignedMessagePart<EchoBroadcast>,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
         main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
