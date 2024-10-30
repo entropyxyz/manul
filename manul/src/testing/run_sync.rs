@@ -137,7 +137,7 @@ where
             let mut accum = accum;
             let preprocessed = session.preprocess_message(&mut accum, &message.from, message.message)?;
 
-            if let Some(verified) = preprocessed {
+            if let Some(verified) = preprocessed.ok() {
                 let processed = session.process_message(rng, verified);
                 session.add_processed_message(&mut accum, processed)?;
             }
