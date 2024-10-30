@@ -120,7 +120,10 @@ where
             let incoming = rx.recv().await.unwrap();
 
             // Perform quick checks before proceeding with the verification.
-            match session.preprocess_message(&mut accum, &incoming.from, incoming.message)? {
+            match session
+                .preprocess_message(&mut accum, &incoming.from, incoming.message)?
+                .ok()
+            {
                 Some(preprocessed) => {
                     // In production usage, this would happen in a separate task.
                     debug!("{key:?}: Applying a message from {:?}", incoming.from);

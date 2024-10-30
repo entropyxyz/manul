@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added normal broadcasts support in addition to echo ones; signatures of `Round` methods changed accordingly; added `Round::make_normal_broadcast()`. ([#47])
 - Serialization format is a part of `SessionParameters` now; `Round` and `Protocol` methods receive dynamic serializers/deserializers. ([#33])
 - Renamed `(Verified)MessageBundle` to `(Verified)Message`. Both are now generic over `Verifier`. ([#56])
+- `Session::preprocess_message()` now returns a `PreprocessOutcome` instead of just an `Option`. ([#57])
 
 
 ### Added
@@ -39,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#46]: https://github.com/entropyxyz/manul/pull/46
 [#47]: https://github.com/entropyxyz/manul/pull/47
 [#56]: https://github.com/entropyxyz/manul/pull/56
+[#57]: https://github.com/entropyxyz/manul/pull/57
 
 
 ## [0.0.1] - 2024-10-12

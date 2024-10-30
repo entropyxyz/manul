@@ -2,6 +2,7 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
+    string::String,
     vec::Vec,
 };
 use core::fmt::Debug;
@@ -287,12 +288,12 @@ where
         accum: &mut RoundAccumulator<P, SP>,
         from: &SP::Verifier,
         message: Message<SP::Verifier>,
-    ) -> Result<Option<VerifiedMessage<SP::Verifier>>, LocalError> {
+    ) -> Result<PreprocessOutcome<SP::Verifier>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
         let key = self.verifier();
         if self.transcript.is_banned(from) || accum.is_banned(from) {
             trace!("{key:?} Banned.");
-            return Ok(None);
+            return Ok(PreprocessOutcome::remote_error("The sender is banned"));
         }
 
         let checked_message = match message.unify_metadata() {
@@ -301,7 +302,7 @@ where
                 let err = "Mismatched metadata in bundled messages.";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
                 trace!("{key:?} {err}");
-                return Ok(None);
+                return Ok(PreprocessOutcome::remote_error(err));
             }
         };
         let message_round_id = checked_message.metadata().round_id();
@@ -310,29 +311,36 @@ where
             let err = "The received message has an incorrect session ID";
             accum.register_unprovable_error(from, RemoteError::new(err))?;
             trace!("{key:?} {err}");
-            return Ok(None);
+            return Ok(PreprocessOutcome::remote_error(err));
         }
 
-        if message_round_id == self.round_id() {
+        enum MessageFor {
+            ThisRound,
+            NextRound,
+        }
+
+        let message_for = if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
                 let err = "Message from this party is already being processed";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
                 trace!("{key:?} {err}");
-                return Ok(None);
+                return Ok(PreprocessOutcome::remote_error(err));
             }
+            MessageFor::ThisRound
         } else if self.possible_next_rounds.contains(&message_round_id) {
             if accum.message_is_cached(from, message_round_id) {
                 let err = format!("Message for {:?} is already cached", message_round_id);
                 accum.register_unprovable_error(from, RemoteError::new(&err))?;
                 trace!("{key:?} {err}");
-                return Ok(None);
+                return Ok(PreprocessOutcome::remote_error(err));
             }
+            MessageFor::NextRound
         } else {
             let err = format!("Unexpected message round ID: {:?}", message_round_id);
             accum.register_unprovable_error(from, RemoteError::new(&err))?;
             trace!("{key:?} {err}");
-            return Ok(None);
-        }
+            return Ok(PreprocessOutcome::remote_error(err));
+        };
 
         // Verify the signature now
 
@@ -342,37 +350,28 @@ where
                 let err = "The signature could not be deserialized.";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
                 trace!("{key:?} {err}");
-                return Ok(None);
+                return Ok(PreprocessOutcome::remote_error(err));
             }
             Err(MessageVerificationError::SignatureMismatch) => {
                 let err = "Message verification failed.";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
                 trace!("{key:?} {err}");
-                return Ok(None);
+                return Ok(PreprocessOutcome::remote_error(err));
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
         };
-        debug!(
-            "{key:?}: Received {:?} message from {:?}",
-            verified_message.metadata().round_id(),
-            from
-        );
+        debug!("{key:?}: Received {message_round_id:?} message from {from:?}");
 
-        if message_round_id == self.round_id() {
-            accum.mark_processing(&verified_message)?;
-            Ok(Some(verified_message))
-        } else if self.possible_next_rounds.contains(&message_round_id) {
-            debug!(
-                "{key:?}: Caching message from {:?} for {:?}",
-                verified_message.from(),
-                verified_message.metadata().round_id()
-            );
-            accum.cache_message(verified_message)?;
-            // TODO(dp): this is a bit awkward. It means "all good, but nothing to do here right
-            // now".
-            Ok(None)
-        } else {
-            unreachable!()
+        match message_for {
+            MessageFor::ThisRound => {
+                accum.mark_processing(&verified_message)?;
+                Ok(PreprocessOutcome::ToProcess(verified_message))
+            }
+            MessageFor::NextRound => {
+                debug!("{key:?}: Caching message from {from:?} for {message_round_id:?}");
+                accum.cache_message(verified_message)?;
+                Ok(PreprocessOutcome::Cached)
+            }
         }
     }
 
@@ -757,6 +756,40 @@ pub struct ProcessedArtifact<SP: SessionParameters> {
 pub struct ProcessedMessage<P: Protocol, SP: SessionParameters> {
     message: VerifiedMessage<SP::Verifier>,
     processed: Result<Payload, ReceiveError<SP::Verifier, P>>,
+}
+
+/// The result of preprocessing an incoming message.
+#[derive(Debug, Clone)]
+pub enum PreprocessOutcome<Verifier> {
+    /// The message was successfully verified, pass it on to [`Session::process_message`].
+    ToProcess(VerifiedMessage<Verifier>),
+    /// The message was intended for the next round and was cached.
+    ///
+    /// No action required now, cached messages will be returned on successful [`Session::finalize_round`].
+    Cached,
+    /// There was an error verifying the message.
+    ///
+    /// The error has been recorded in the accumulator, and will be included in the [`SessionReport`].
+    /// The attached value may be used for logging purposes.
+    Error(RemoteError),
+}
+
+impl<Verifier> PreprocessOutcome<Verifier> {
+    pub(crate) fn remote_error(message: impl Into<String>) -> Self {
+        Self::Error(RemoteError::new(message))
+    }
+
+    /// Returns the verified message for further processing, if any, otherwise returns `None`.
+    ///
+    /// All the other variants of [`PreprocessOutcome`] are purely informative
+    /// (all the required actions have already been performed internally)
+    /// so the user may choose to ignore them if no logging is desired.
+    pub fn ok(self) -> Option<VerifiedMessage<Verifier>> {
+        match self {
+            Self::ToProcess(message) => Some(message),
+            _ => None,
+        }
+    }
 }
 
 fn filter_messages<Verifier>(

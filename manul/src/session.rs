@@ -18,7 +18,9 @@ mod wire_format;
 pub use crate::protocol::{LocalError, RemoteError};
 pub use evidence::{Evidence, EvidenceError};
 pub use message::{Message, VerifiedMessage};
-pub use session::{CanFinalize, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters};
+pub use session::{
+    CanFinalize, PreprocessOutcome, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
+};
 pub use transcript::{SessionOutcome, SessionReport};
 pub use wire_format::WireFormat;
 
