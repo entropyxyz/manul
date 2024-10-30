@@ -39,7 +39,7 @@ impl RngCore for BoxedRng<'_> {
 // Since we want `Round` methods to take `&mut impl CryptoRngCore` arguments
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
-pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
+pub(crate) trait ObjectSafeRound<Id>: 'static + Debug + Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;

@@ -137,7 +137,7 @@ pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
 impl<P, SP> Session<P, SP>
 where
     P: Protocol,
-    SP: SessionParameters + Debug,
+    SP: SessionParameters,
 {
     /// Initializes a new session.
     pub fn new<R>(
@@ -538,7 +538,7 @@ pub enum CanFinalize {
 }
 
 /// A mutable accumulator for collecting the results and errors from processing messages for a single round.
-#[derive(Debug)]
+#[derive_where::derive_where(Debug)]
 pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
     expecting_messages_from: BTreeSet<SP::Verifier>,
@@ -795,7 +795,6 @@ mod tests {
         // Send/Sync. But we want to make sure that if the generic parameters are
         // Send/Sync, our types are too.
 
-        #[derive(Debug)]
         struct DummyProtocol;
 
         #[derive(Debug, Clone, Serialize, Deserialize)]
