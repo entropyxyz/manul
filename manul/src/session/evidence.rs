@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     echo::{EchoRound, EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
-    message::{MessageVerificationError, MissingMessage, SignedMessage},
+    message::{MessageVerificationError, SignedMessagePart},
     session::SessionParameters,
     transcript::Transcript,
     LocalError,
@@ -89,9 +89,9 @@ where
 {
     pub(crate) fn new_protocol_error(
         verifier: &SP::Verifier,
-        echo_broadcast: SignedMessage<EchoBroadcast>,
-        normal_broadcast: SignedMessage<NormalBroadcast>,
-        direct_message: SignedMessage<DirectMessage>,
+        echo_broadcast: SignedMessagePart<EchoBroadcast>,
+        normal_broadcast: SignedMessagePart<NormalBroadcast>,
+        direct_message: SignedMessagePart<DirectMessage>,
         error: P::ProtocolError,
         transcript: &Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
@@ -155,7 +155,7 @@ where
 
     pub(crate) fn new_echo_round_error(
         verifier: &SP::Verifier,
-        normal_broadcast: SignedMessage<NormalBroadcast>,
+        normal_broadcast: SignedMessagePart<NormalBroadcast>,
         error: EchoRoundError<SP::Verifier>,
     ) -> Result<Self, LocalError> {
         let description = format!("Echo round error: {}", error.description());
@@ -187,7 +187,7 @@ where
 
     pub(crate) fn new_invalid_direct_message(
         verifier: &SP::Verifier,
-        direct_message: SignedMessage<DirectMessage>,
+        direct_message: SignedMessagePart<DirectMessage>,
         error: DirectMessageError,
     ) -> Self {
         Self {
@@ -202,7 +202,7 @@ where
 
     pub(crate) fn new_invalid_echo_broadcast(
         verifier: &SP::Verifier,
-        echo_broadcast: SignedMessage<EchoBroadcast>,
+        echo_broadcast: SignedMessagePart<EchoBroadcast>,
         error: EchoBroadcastError,
     ) -> Self {
         Self {
@@ -217,7 +217,7 @@ where
 
     pub(crate) fn new_invalid_normal_broadcast(
         verifier: &SP::Verifier,
-        normal_broadcast: SignedMessage<NormalBroadcast>,
+        normal_broadcast: SignedMessagePart<NormalBroadcast>,
         error: NormalBroadcastError,
     ) -> Self {
         Self {
@@ -271,7 +271,7 @@ enum EvidenceEnum<P: Protocol, SP: SessionParameters> {
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidEchoPackEvidence<SP: SessionParameters> {
-    normal_broadcast: SignedMessage<NormalBroadcast>,
+    normal_broadcast: SignedMessagePart<NormalBroadcast>,
     invalid_echo_sender: SP::Verifier,
 }
 
@@ -315,8 +315,8 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MismatchedBroadcastsEvidence {
     error: MismatchedBroadcastsError,
-    we_received: SignedMessage<EchoBroadcast>,
-    echoed_to_us: SignedMessage<EchoBroadcast>,
+    we_received: SignedMessagePart<EchoBroadcast>,
+    echoed_to_us: SignedMessagePart<EchoBroadcast>,
 }
 
 impl MismatchedBroadcastsEvidence {
@@ -351,7 +351,7 @@ impl MismatchedBroadcastsEvidence {
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidDirectMessageEvidence<P: Protocol> {
-    direct_message: SignedMessage<DirectMessage>,
+    direct_message: SignedMessagePart<DirectMessage>,
     phantom: core::marker::PhantomData<P>,
 }
 
@@ -381,7 +381,7 @@ where
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidEchoBroadcastEvidence<P: Protocol> {
-    echo_broadcast: SignedMessage<EchoBroadcast>,
+    echo_broadcast: SignedMessagePart<EchoBroadcast>,
     phantom: core::marker::PhantomData<P>,
 }
 
@@ -411,7 +411,7 @@ where
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidNormalBroadcastEvidence<P: Protocol> {
-    normal_broadcast: SignedMessage<NormalBroadcast>,
+    normal_broadcast: SignedMessagePart<NormalBroadcast>,
     phantom: core::marker::PhantomData<P>,
 }
 
@@ -445,13 +445,13 @@ where
 #[derive(Clone, Serialize, Deserialize)]
 struct ProtocolEvidence<P: Protocol> {
     error: P::ProtocolError,
-    direct_message: SignedMessage<DirectMessage>,
-    echo_broadcast: SignedMessage<EchoBroadcast>,
-    normal_broadcast: SignedMessage<NormalBroadcast>,
-    direct_messages: SerializableMap<RoundId, SignedMessage<DirectMessage>>,
-    echo_broadcasts: SerializableMap<RoundId, SignedMessage<EchoBroadcast>>,
-    normal_broadcasts: SerializableMap<RoundId, SignedMessage<NormalBroadcast>>,
-    combined_echos: SerializableMap<RoundId, SignedMessage<NormalBroadcast>>,
+    direct_message: SignedMessagePart<DirectMessage>,
+    echo_broadcast: SignedMessagePart<EchoBroadcast>,
+    normal_broadcast: SignedMessagePart<NormalBroadcast>,
+    direct_messages: SerializableMap<RoundId, SignedMessagePart<DirectMessage>>,
+    echo_broadcasts: SerializableMap<RoundId, SignedMessagePart<EchoBroadcast>>,
+    normal_broadcasts: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
+    combined_echos: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
 }
 
 impl<P> ProtocolEvidence<P>

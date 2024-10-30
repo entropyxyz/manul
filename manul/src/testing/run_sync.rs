@@ -8,7 +8,7 @@ use tracing::debug;
 use crate::{
     protocol::{FirstRound, Protocol},
     session::{
-        CanFinalize, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
+        CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
         SessionReport,
     },
 };
@@ -21,10 +21,10 @@ enum State<P: Protocol, SP: SessionParameters> {
     Finished(SessionReport<P, SP>),
 }
 
-struct Message<SP: SessionParameters> {
+struct RoundMessage<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: MessageBundle,
+    message: Message,
 }
 
 #[allow(clippy::type_complexity)]
@@ -32,7 +32,7 @@ fn propagate<P, SP>(
     rng: &mut impl CryptoRngCore,
     session: Session<P, SP>,
     accum: RoundAccumulator<P, SP>,
-) -> Result<(State<P, SP>, Vec<Message<SP>>), LocalError>
+) -> Result<(State<P, SP>, Vec<RoundMessage<SP>>), LocalError>
 where
     P: 'static + Protocol,
     SP: 'static + SessionParameters,
@@ -74,7 +74,7 @@ where
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
-            messages.push(Message {
+            messages.push(RoundMessage {
                 from: session.verifier().clone(),
                 to: destination.clone(),
                 message,
@@ -110,7 +110,7 @@ where
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
-            messages.push(Message {
+            messages.push(RoundMessage {
                 from: session.verifier().clone(),
                 to: destination.clone(),
                 message,
