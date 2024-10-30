@@ -37,15 +37,6 @@ pub enum EvidenceError {
     InvalidEvidence(String),
 }
 
-// Other nodes would send a signed message with the payload being either Some(...) or None.
-// We expect the messages in the evidence only be the Some(...) ones, so if it's not the case, it's invalid evidence.
-// It's hard to enforce statically since we have to keep the signed messages as they were created by remote nodes.
-impl From<MissingMessage> for EvidenceError {
-    fn from(_error: MissingMessage) -> Self {
-        Self::InvalidEvidence("The signed message is missing the expected payload".into())
-    }
-}
-
 impl From<MessageVerificationError> for EvidenceError {
     fn from(error: MessageVerificationError) -> Self {
         match error {

@@ -152,9 +152,6 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct MissingMessage;
-
 #[derive(Debug, Clone)]
 pub struct VerifiedMessage<M> {
     signature: SerializedSignature,
