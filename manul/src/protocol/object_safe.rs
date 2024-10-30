@@ -39,7 +39,7 @@ impl RngCore for BoxedRng<'_> {
 // Since we want `Round` methods to take `&mut impl CryptoRngCore` arguments
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
-pub(crate) trait ObjectSafeRound<Id>: 'static + Send + Sync + Debug {
+pub(crate) trait ObjectSafeRound<Id>: 'static + Debug + Send + Sync {
     type Protocol: Protocol;
 
     fn id(&self) -> RoundId;
@@ -204,7 +204,7 @@ where
 impl<Id, P> dyn ObjectSafeRound<Id, Protocol = P>
 where
     Id: 'static,
-    P: 'static + Protocol,
+    P: Protocol,
 {
     pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
         if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.get_type_id() {

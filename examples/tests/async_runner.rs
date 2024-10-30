@@ -1,7 +1,5 @@
 extern crate alloc;
 
-use std::fmt::Debug;
-
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
@@ -41,7 +39,7 @@ async fn run_session<P, SP>(
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
     P: Protocol,
-    SP: SessionParameters + Debug,
+    SP: SessionParameters,
 {
     let rng = &mut OsRng;
 
@@ -155,7 +153,7 @@ async fn message_dispatcher<SP>(
     txs: BTreeMap<SP::Verifier, mpsc::Sender<MessageIn<SP>>>,
     rx: mpsc::Receiver<MessageOut<SP>>,
 ) where
-    SP: SessionParameters + Debug,
+    SP: SessionParameters,
 {
     let mut rx = rx;
     let mut messages = Vec::<MessageOut<SP>>::new();
@@ -197,7 +195,7 @@ async fn message_dispatcher<SP>(
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
     P: Protocol + Send,
-    SP: SessionParameters + Debug,
+    SP: SessionParameters,
     P::Result: Send,
     SP::Signer: Send,
 {

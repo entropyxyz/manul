@@ -70,7 +70,8 @@ impl From<ProtocolValidationError> for EvidenceError {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Evidence<P: Protocol, SP: SessionParameters> {
     guilty_party: SP::Verifier,
     description: String,
@@ -246,7 +247,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 enum EvidenceEnum<P: Protocol, SP: SessionParameters> {
     Protocol(ProtocolEvidence<P>),
     InvalidDirectMessage(InvalidDirectMessageEvidence<P>),
@@ -256,7 +258,8 @@ enum EvidenceEnum<P: Protocol, SP: SessionParameters> {
     MismatchedBroadcasts(MismatchedBroadcastsEvidence),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidEchoPackEvidence<SP: SessionParameters> {
     normal_broadcast: SignedMessage<NormalBroadcast>,
     invalid_echo_sender: SP::Verifier,
@@ -324,7 +327,8 @@ impl MismatchedBroadcastsEvidence {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidDirectMessageEvidence<P: Protocol> {
     direct_message: SignedMessage<DirectMessage>,
     phantom: core::marker::PhantomData<P>,
@@ -347,7 +351,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidEchoBroadcastEvidence<P: Protocol> {
     echo_broadcast: SignedMessage<EchoBroadcast>,
     phantom: core::marker::PhantomData<P>,
@@ -370,7 +375,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InvalidNormalBroadcastEvidence<P: Protocol> {
     normal_broadcast: SignedMessage<NormalBroadcast>,
     phantom: core::marker::PhantomData<P>,
@@ -392,7 +398,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 struct ProtocolEvidence<P: Protocol> {
     error: P::ProtocolError,
     direct_message: SignedMessage<DirectMessage>,

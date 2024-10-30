@@ -116,7 +116,7 @@ impl RoundId {
 }
 
 /// A distributed protocol.
-pub trait Protocol: 'static + Debug + Sized {
+pub trait Protocol: 'static + Sized {
     /// The successful result of an execution of this protocol.
     type Result: Debug;
 
@@ -289,7 +289,7 @@ impl Artifact {
 ///
 /// This is a round that can be created directly;
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
-pub trait FirstRound<Id: 'static>: Round<Id> + Sized {
+pub trait FirstRound<Id>: Round<Id> + Sized {
     /// Additional inputs for the protocol (besides the mandatory ones in [`new`](`Self::new`)).
     type Inputs;
 
@@ -314,7 +314,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id>: 'static + Send + Sync + Debug {
+pub trait Round<Id>: 'static + Debug + Send + Sync {
     /// The protocol this round is a part of.
     type Protocol: Protocol;
 

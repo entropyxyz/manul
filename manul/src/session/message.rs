@@ -250,7 +250,8 @@ impl CheckedMessageBundle {
 /// A `VerifiedMessageBundle` is the final evolution of a [`MessageBundle`]. At this point in the
 /// process, the [`DirectMessage`] and an eventual [`EchoBroadcast`] have been fully checked and the
 /// signature on the [`SignedMessage`] from the original [`MessageBundle`] successfully verified.
-#[derive(Clone, Debug)]
+#[derive_where::derive_where(Debug)]
+#[derive(Clone)]
 pub struct VerifiedMessageBundle<SP: SessionParameters> {
     from: SP::Verifier,
     metadata: MessageMetadata,
