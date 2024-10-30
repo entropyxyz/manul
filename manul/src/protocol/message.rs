@@ -15,6 +15,12 @@ mod private {
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     pub struct MessagePayload(#[serde(with = "SliceLike::<Base64>")] pub Box<[u8]>);
 
+    impl AsRef<[u8]> for MessagePayload {
+        fn as_ref(&self) -> &[u8] {
+            &self.0
+        }
+    }
+
     pub trait ProtocolMessageWrapper: Sized {
         fn new_inner(maybe_message: Option<MessagePayload>) -> Self;
         fn maybe_message(&self) -> &Option<MessagePayload>;
