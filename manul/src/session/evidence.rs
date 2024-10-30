@@ -331,13 +331,24 @@ impl MismatchedBroadcastsEvidence {
         let we_received = self.we_received.clone().verify::<SP>(verifier)?;
         let echoed_to_us = self.echoed_to_us.clone().verify::<SP>(verifier)?;
 
-        if we_received.metadata() == echoed_to_us.metadata() && we_received.payload() != echoed_to_us.payload() {
-            return Ok(());
-        }
+        let evidence_is_valid = match self.error {
+            MismatchedBroadcastsError::DifferentPayloads => {
+                we_received.metadata() == echoed_to_us.metadata() && we_received.payload() != echoed_to_us.payload()
+            }
+            MismatchedBroadcastsError::DifferentSignatures => {
+                self.we_received != self.echoed_to_us
+                    && we_received.metadata() == echoed_to_us.metadata()
+                    && we_received.payload() == echoed_to_us.payload()
+            }
+        };
 
-        Err(EvidenceError::InvalidEvidence(
-            "The attached messages don't constitute malicious behavior".into(),
-        ))
+        if evidence_is_valid {
+            Ok(())
+        } else {
+            Err(EvidenceError::InvalidEvidence(
+                "The attached messages don't constitute malicious behavior".into(),
+            ))
+        }
     }
 }
 
