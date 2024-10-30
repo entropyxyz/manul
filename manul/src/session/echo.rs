@@ -109,8 +109,8 @@ where
 
 impl<P, SP> Round<SP::Verifier> for EchoRound<P, SP>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters,
+    P: Protocol,
+    SP: SessionParameters,
 {
     type Protocol = P;
 

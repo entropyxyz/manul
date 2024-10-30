@@ -204,7 +204,7 @@ where
 impl<Id, P> dyn ObjectSafeRound<Id, Protocol = P>
 where
     Id: 'static,
-    P: 'static + Protocol,
+    P: Protocol,
 {
     pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
         if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.get_type_id() {
