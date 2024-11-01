@@ -68,15 +68,15 @@ impl<Id: PartyId> RoundOverride<Id> for MaliciousRound1<Id> {
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         if matches!(self.behavior, Behavior::SerializedGarbage) {
-            DirectMessage::new(serializer, [99u8])
+            Ok((DirectMessage::new(serializer, [99u8])?, None))
         } else if matches!(self.behavior, Behavior::AttributableFailure) {
             let message = Round1Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            DirectMessage::new(serializer, message)
+            Ok((DirectMessage::new(serializer, message)?, None))
         } else {
             self.inner_round_ref().make_direct_message(rng, serializer, destination)
         }
@@ -131,13 +131,13 @@ impl<Id: PartyId> RoundOverride<Id> for MaliciousRound2<Id> {
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         if matches!(self.behavior, Behavior::AttributableFailureRound2) {
             let message = Round2Message {
                 my_position: self.round.context.ids_to_positions[&self.round.context.id],
                 your_position: self.round.context.ids_to_positions[&self.round.context.id],
             };
-            DirectMessage::new(serializer, message)
+            Ok((DirectMessage::new(serializer, message)?, None))
         } else {
             self.inner_round_ref().make_direct_message(rng, serializer, destination)
         }

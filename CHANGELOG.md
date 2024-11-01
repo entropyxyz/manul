@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SessionId::new()` renamed to `from_seed()`. ([#41])
 - `FirstRound::new()` takes a `&[u8]` instead of a `SessionId` object. ([#41])
 - The signatures of `Round::make_echo_broadcast()`, `Round::make_direct_message()`, and `Round::receive_message()`, take messages without `Option`s. ([#46])
-- `Round::make_direct_message_with_artifact()` is the method returning an artifact now; `Round::make_direct_message()` is a shortcut for cases where no artifact is returned. ([#46])
 - `Artifact::empty()` removed, the user should return `None` instead. ([#46])
 - `EchoBroadcast` and `DirectMessage` now use `ProtocolMessagePart` trait for their methods. ([#47])
 - Added normal broadcasts support in addition to echo ones; signatures of `Round` methods changed accordingly; added `Round::make_normal_broadcast()`. ([#47])

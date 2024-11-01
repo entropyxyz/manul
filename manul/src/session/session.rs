@@ -226,9 +226,7 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) =
-            self.round
-                .make_direct_message_with_artifact(rng, &self.serializer, destination)?;
+        let (direct_message, artifact) = self.round.make_direct_message(rng, &self.serializer, destination)?;
 
         let message = Message::new::<SP>(
             rng,

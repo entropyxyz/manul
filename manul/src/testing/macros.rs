@@ -25,24 +25,13 @@ pub trait RoundWrapper<Id: PartyId>: 'static + Sized + Send + Sync {
 ///
 /// The blanket implementations delegate to the methods of the wrapped round.
 pub trait RoundOverride<Id: PartyId>: RoundWrapper<Id> {
-    /// An override for [`Round::make_direct_message_with_artifact`].
-    fn make_direct_message_with_artifact(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = self.make_direct_message(rng, serializer, destination)?;
-        Ok((dm, None))
-    }
-
     /// An override for [`Round::make_direct_message`].
     fn make_direct_message(
         &self,
         rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         self.inner_round_ref().make_direct_message(rng, serializer, destination)
     }
 
@@ -113,17 +102,8 @@ macro_rules! round_override {
                 rng: &mut impl CryptoRngCore,
                 serializer: &$crate::protocol::Serializer,
                 destination: &Id,
-            ) -> Result<$crate::protocol::DirectMessage, $crate::protocol::LocalError> {
-                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, serializer, destination)
-            }
-
-            fn make_direct_message_with_artifact(
-                &self,
-                rng: &mut impl CryptoRngCore,
-                serializer: &$crate::protocol::Serializer,
-                destination: &Id,
             ) -> Result<($crate::protocol::DirectMessage, Option<$crate::protocol::Artifact>), $crate::protocol::LocalError> {
-                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message_with_artifact(self, rng, serializer, destination)
+                <Self as $crate::testing::RoundOverride<Id>>::make_direct_message(self, rng, serializer, destination)
             }
 
             fn make_echo_broadcast(

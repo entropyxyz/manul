@@ -119,7 +119,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         }
     }
 
-    fn make_direct_message_with_artifact(
+    fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         serializer: &Serializer,

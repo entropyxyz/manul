@@ -48,7 +48,7 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
-    fn make_direct_message_with_artifact(
+    fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
@@ -130,15 +130,14 @@ where
         self.round.message_destinations()
     }
 
-    fn make_direct_message_with_artifact(
+    fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round
-            .make_direct_message_with_artifact(&mut boxed_rng, serializer, destination)
+        self.round.make_direct_message(&mut boxed_rng, serializer, destination)
     }
 
     fn make_echo_broadcast(

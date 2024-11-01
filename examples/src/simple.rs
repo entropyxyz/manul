@@ -228,14 +228,15 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        DirectMessage::new(serializer, message)
+        let dm = DirectMessage::new(serializer, message)?;
+        Ok((dm, None))
     }
 
     fn receive_message(
@@ -325,14 +326,15 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round2Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        DirectMessage::new(serializer, message)
+        let dm = DirectMessage::new(serializer, message)?;
+        Ok((dm, None))
     }
 
     fn receive_message(
