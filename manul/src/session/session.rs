@@ -816,17 +816,11 @@ fn filter_messages<Verifier>(
 
 #[cfg(test)]
 mod tests {
-    use alloc::{collections::BTreeMap, string::String, vec::Vec};
-
     use impls::impls;
-    use serde::{Deserialize, Serialize};
 
     use super::{Message, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessage};
     use crate::{
-        protocol::{
-            Deserializer, DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, ProtocolError,
-            ProtocolValidationError, RoundId,
-        },
+        protocol::Protocol,
         testing::{BinaryFormat, TestSessionParams, TestVerifier},
     };
 
@@ -842,32 +836,9 @@ mod tests {
 
         struct DummyProtocol;
 
-        #[derive(Debug, Clone, Serialize, Deserialize)]
-        struct DummyProtocolError;
-
-        impl ProtocolError for DummyProtocolError {
-            fn description(&self) -> String {
-                unimplemented!()
-            }
-
-            fn verify_messages_constitute_error(
-                &self,
-                _deserializer: &Deserializer,
-                _echo_broadcast: &EchoBroadcast,
-                _normal_broadcast: &NormalBroadcast,
-                _direct_message: &DirectMessage,
-                _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-                _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-                _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-                _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
-            ) -> Result<(), ProtocolValidationError> {
-                unimplemented!()
-            }
-        }
-
         impl Protocol for DummyProtocol {
             type Result = ();
-            type ProtocolError = DummyProtocolError;
+            type ProtocolError = ();
             type CorrectnessProof = ();
         }
 

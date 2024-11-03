@@ -201,6 +201,28 @@ pub trait ProtocolError: Debug + Clone + Send {
     ) -> Result<(), ProtocolValidationError>;
 }
 
+// A convenience implementation for protocols that don't define any errors.
+// Have to do it for `()`, since `!` is unstable.
+impl ProtocolError for () {
+    fn description(&self) -> String {
+        panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
+    }
+
+    fn verify_messages_constitute_error(
+        &self,
+        _deserializer: &Deserializer,
+        _echo_broadcast: &EchoBroadcast,
+        _normal_broadcast: &NormalBroadcast,
+        _direct_message: &DirectMessage,
+        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
+        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+    ) -> Result<(), ProtocolValidationError> {
+        panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
+    }
+}
+
 /// Message payload created in [`Round::receive_message`].
 #[derive(Debug)]
 pub struct Payload(pub Box<dyn Any + Send + Sync>);
