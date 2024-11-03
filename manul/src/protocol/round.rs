@@ -301,7 +301,7 @@ impl Artifact {
 ///
 /// This is a round that can be created directly;
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
-pub trait FirstRound<Id: PartyId>: Round<Id> + Sized {
+pub trait EntryPoint<Id: PartyId>: Round<Id> + Sized {
     /// Additional inputs for the protocol (besides the mandatory ones in [`new`](`Self::new`)).
     type Inputs;
 

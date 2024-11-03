@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed `(Verified)MessageBundle` to `(Verified)Message`. Both are now generic over `Verifier`. ([#56])
 - `Session::preprocess_message()` now returns a `PreprocessOutcome` instead of just an `Option`. ([#57])
 - `Session::terminate_due_to_errors()` replaces `terminate()`; `terminate()` now signals user interrupt. ([#58])
+- Renamed `FirstRound` trait to `EntryPoint`. ([#60])
 
 
 ### Added
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#57]: https://github.com/entropyxyz/manul/pull/57
 [#58]: https://github.com/entropyxyz/manul/pull/58
 [#59]: https://github.com/entropyxyz/manul/pull/59
+[#60]: https://github.com/entropyxyz/manul/pull/60
 
 
 ## [0.0.1] - 2024-10-12

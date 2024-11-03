@@ -9,7 +9,7 @@ use core::fmt::Debug;
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
-        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, LocalError,
+        Artifact, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome, LocalError,
         NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
         ReceiveError, Round, RoundId, Serializer,
     },
@@ -73,7 +73,7 @@ struct Round1Payload;
 
 struct Round1Artifact;
 
-impl<Id: PartyId> FirstRound<Id> for EmptyRound<Id> {
+impl<Id: PartyId> EntryPoint<Id> for EmptyRound<Id> {
     type Inputs = Inputs<Id>;
     fn new(
         _rng: &mut impl CryptoRngCore,

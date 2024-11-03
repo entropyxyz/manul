@@ -4,7 +4,7 @@ API for protocol implementors.
 A protocol is a directed acyclic graph with the nodes being objects of types implementing [`Round`]
 (to be specific, "acyclic" means that the values returned by [`Round::id`]
 should not repeat during the protocol execution; the types might).
-The starting point is a type that implements [`FirstRound`].
+The starting point is a type that implements [`EntryPoint`].
 All the rounds must have their associated type [`Round::Protocol`] set to the same [`Protocol`] instance
 to be executed by a [`Session`](`crate::session::Session`).
 
@@ -23,7 +23,7 @@ pub use errors::{
 };
 pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart};
 pub use round::{
-    AnotherRound, Artifact, FinalizeOutcome, FirstRound, PartyId, Payload, Protocol, ProtocolError, Round, RoundId,
+    AnotherRound, Artifact, EntryPoint, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round, RoundId,
 };
 pub use serialization::{Deserializer, Serializer};
 

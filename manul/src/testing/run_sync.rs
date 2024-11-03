@@ -6,7 +6,7 @@ use signature::Keypair;
 use tracing::debug;
 
 use crate::{
-    protocol::{FirstRound, Protocol},
+    protocol::{EntryPoint, Protocol},
     session::{
         CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
         SessionReport,
@@ -94,7 +94,7 @@ pub fn run_sync<R, SP>(
     inputs: Vec<(SP::Signer, R::Inputs)>,
 ) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
 where
-    R: FirstRound<SP::Verifier>,
+    R: EntryPoint<SP::Verifier>,
     SP: SessionParameters,
 {
     let session_id = SessionId::random::<SP>(rng);

@@ -3,7 +3,7 @@ use core::fmt::Debug;
 
 use manul::{
     protocol::{
-        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, PartyId, Payload,
+        Artifact, DirectMessage, EntryPoint, FinalizeError, FinalizeOutcome, LocalError, PartyId, Payload,
         ProtocolMessagePart, Round, Serializer,
     },
     session::signature::Keypair,
@@ -46,7 +46,7 @@ impl<Id: PartyId> RoundWrapper<Id> for MaliciousRound1<Id> {
     }
 }
 
-impl<Id: PartyId> FirstRound<Id> for MaliciousRound1<Id> {
+impl<Id: PartyId> EntryPoint<Id> for MaliciousRound1<Id> {
     type Inputs = MaliciousInputs<Id>;
     fn new(
         rng: &mut impl CryptoRngCore,

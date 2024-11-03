@@ -23,7 +23,7 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, NormalBroadcast,
+    Artifact, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome, NormalBroadcast,
     ObjectSafeRound, ObjectSafeRoundWrapper, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError,
     ReceiveErrorType, Round, RoundId, Serializer,
 };
@@ -141,7 +141,7 @@ where
         inputs: R::Inputs,
     ) -> Result<Self, LocalError>
     where
-        R: FirstRound<SP::Verifier> + Round<SP::Verifier, Protocol = P>,
+        R: EntryPoint<SP::Verifier> + Round<SP::Verifier, Protocol = P>,
     {
         let verifier = signer.verifying_key();
         let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(

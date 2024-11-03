@@ -149,7 +149,7 @@ struct Round1Payload {
     x: u8,
 }
 
-impl<Id: PartyId> FirstRound<Id> for Round1<Id> {
+impl<Id: PartyId> EntryPoint<Id> for Round1<Id> {
     type Inputs = Inputs<Id>;
     fn new(
         _rng: &mut impl CryptoRngCore,
