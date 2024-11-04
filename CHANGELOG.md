@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed `FirstRound` trait to `EntryPoint`. ([#60])
 - Added `Protocol` type to `EntryPoint`. ([#60])
 - `EntryPoint` and `FinalizeOutcome::AnotherRound` now use a new `BoxedRound` wrapper type. ([#60])
+- `PartyId` and `ProtocolError` are now bound on `Serialize`/`Deserialize`. ([#60])
 
 
 ### Added

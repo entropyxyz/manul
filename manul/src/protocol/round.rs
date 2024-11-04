@@ -84,12 +84,12 @@ pub trait Protocol: 'static {
     type Result: Debug;
 
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
-    type ProtocolError: ProtocolError + Serialize + for<'de> Deserialize<'de>;
+    type ProtocolError: ProtocolError;
 
     /// An object of this type will be returned when an unattributable error happens during [`Round::finalize`].
     ///
     /// It proves that the node did its job correctly, to be adjudicated by a third party.
-    type CorrectnessProof: CorrectnessProof + Serialize + for<'de> Deserialize<'de>;
+    type CorrectnessProof: CorrectnessProof;
 
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
@@ -138,7 +138,7 @@ pub trait Protocol: 'static {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError: Debug + Clone + Send {
+pub trait ProtocolError: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
     /// A description of the error that will be included in the generated evidence.
     ///
     /// Make it short and informative.
@@ -229,7 +229,7 @@ impl ProtocolError for () {
 /// each node must generate a correctness proof proving that they performed their duties correctly,
 /// and the collection of proofs is verified by a third party.
 /// One of the proofs will necessarily be missing or invalid.
-pub trait CorrectnessProof: Debug + Clone + Send {}
+pub trait CorrectnessProof: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {}
 
 // A convenience implementation for protocols that don't define any errors.
 // Have to do it for `()`, since `!` is unstable.
@@ -312,9 +312,9 @@ pub trait EntryPoint<Id: PartyId> {
 }
 
 /// A trait alias for the combination of traits needed for a party identifier.
-pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync {}
+pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
 
-impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync {}
+impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
 
 /**
 A type representing a single round of a protocol.
