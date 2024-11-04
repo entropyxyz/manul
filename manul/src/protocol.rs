@@ -23,7 +23,9 @@ pub use errors::{
 };
 pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart};
 pub use object_safe::BoxedRound;
-pub use round::{Artifact, EntryPoint, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round, RoundId};
+pub use round::{
+    Artifact, CorrectnessProof, EntryPoint, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round, RoundId,
+};
 pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;
