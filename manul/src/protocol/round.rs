@@ -13,60 +13,17 @@ use serde::{Deserialize, Serialize};
 use super::{
     errors::{FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
-    object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
+    object_safe::BoxedRound,
     serialization::{Deserializer, Serializer},
 };
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
-pub enum FinalizeOutcome<Id, P: Protocol> {
+pub enum FinalizeOutcome<Id: PartyId, P: Protocol> {
     /// Transition to a new round.
-    AnotherRound(AnotherRound<Id, P>),
+    AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
     Result(P::Result),
-}
-
-impl<Id, P> FinalizeOutcome<Id, P>
-where
-    Id: PartyId,
-    P: Protocol,
-{
-    /// A helper method to create an [`AnotherRound`](`Self::AnotherRound`) variant.
-    pub fn another_round(round: impl Round<Id, Protocol = P>) -> Self {
-        Self::AnotherRound(AnotherRound::new(round))
-    }
-}
-
-// We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
-/// A wrapped new round that may be returned by [`Round::finalize`].
-#[derive(Debug)]
-pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = P>>);
-
-impl<Id, P> AnotherRound<Id, P>
-where
-    Id: PartyId,
-    P: Protocol,
-{
-    /// Wraps an object implementing [`Round`].
-    pub fn new(round: impl Round<Id, Protocol = P>) -> Self {
-        Self(Box::new(ObjectSafeRoundWrapper::new(round)))
-    }
-
-    /// Returns the inner boxed type.
-    /// This is an internal method to be used in `Session`.
-    pub(crate) fn into_boxed(self) -> Box<dyn ObjectSafeRound<Id, Protocol = P>> {
-        self.0
-    }
-
-    /// Attempts to extract an object of a concrete type.
-    pub fn downcast<T: Round<Id>>(self) -> Result<T, LocalError> {
-        self.0.downcast::<T>()
-    }
-
-    /// Attempts to extract an object of a concrete type, preserving the original on failure.
-    pub fn try_downcast<T: Round<Id>>(self) -> Result<T, Self> {
-        self.0.try_downcast::<T>().map_err(Self)
-    }
 }
 
 /// A round identifier.
@@ -301,9 +258,12 @@ impl Artifact {
 ///
 /// This is a round that can be created directly;
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
-pub trait EntryPoint<Id: PartyId>: Round<Id> + Sized {
+pub trait EntryPoint<Id: PartyId> {
     /// Additional inputs for the protocol (besides the mandatory ones in [`new`](`Self::new`)).
     type Inputs;
+
+    /// The protocol implemented by the round this entry points returns.
+    type Protocol: Protocol;
 
     /// Creates the round.
     ///
@@ -314,7 +274,7 @@ pub trait EntryPoint<Id: PartyId>: Round<Id> + Sized {
         shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
-    ) -> Result<Self, LocalError>;
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError>;
 }
 
 /// A trait alias for the combination of traits needed for a party identifier.

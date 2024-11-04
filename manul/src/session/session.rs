@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome, NormalBroadcast,
-    ObjectSafeRound, ObjectSafeRoundWrapper, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError,
-    ReceiveErrorType, Round, RoundId, Serializer,
+    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
+    NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundId,
+    Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -106,7 +106,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
     serializer: Serializer,
     deserializer: Deserializer,
-    round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+    round: BoxedRound<SP::Verifier, P>,
     message_destinations: BTreeSet<SP::Verifier>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
@@ -141,15 +141,10 @@ where
         inputs: R::Inputs,
     ) -> Result<Self, LocalError>
     where
-        R: EntryPoint<SP::Verifier> + Round<SP::Verifier, Protocol = P>,
+        R: EntryPoint<SP::Verifier, Protocol = P>,
     {
         let verifier = signer.verifying_key();
-        let first_round = Box::new(ObjectSafeRoundWrapper::new(R::new(
-            rng,
-            session_id.as_ref(),
-            verifier.clone(),
-            inputs,
-        )?));
+        let first_round = R::new(rng, session_id.as_ref(), verifier.clone(), inputs)?;
         let serializer = Serializer::new::<SP::WireFormat>();
         let deserializer = Deserializer::new::<SP::WireFormat>();
         Self::new_for_next_round(
@@ -169,23 +164,23 @@ where
         signer: SP::Signer,
         serializer: Serializer,
         deserializer: Deserializer,
-        round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+        round: BoxedRound<SP::Verifier, P>,
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
 
-        let echo = round.make_echo_broadcast(rng, &serializer)?;
-        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
+        let echo = round.as_ref().make_echo_broadcast(rng, &serializer)?;
+        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.as_ref().id(), echo)?;
 
-        let normal = round.make_normal_broadcast(rng, &serializer)?;
-        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
+        let normal = round.as_ref().make_normal_broadcast(rng, &serializer)?;
+        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.as_ref().id(), normal)?;
 
-        let message_destinations = round.message_destinations().clone();
+        let message_destinations = round.as_ref().message_destinations().clone();
 
         let possible_next_rounds = if echo_broadcast.payload().is_none() {
-            round.possible_next_rounds()
+            round.as_ref().possible_next_rounds()
         } else {
-            BTreeSet::from([round.id().echo()])
+            BTreeSet::from([round.as_ref().id().echo()])
         };
 
         Ok(Self {
@@ -226,13 +221,16 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self.round.make_direct_message(rng, &self.serializer, destination)?;
+        let (direct_message, artifact) = self
+            .round
+            .as_ref()
+            .make_direct_message(rng, &self.serializer, destination)?;
 
         let message = Message::new::<SP>(
             rng,
             &self.signer,
             &self.session_id,
-            self.round.id(),
+            self.round.as_ref().id(),
             destination,
             direct_message,
             self.echo_broadcast.clone(),
@@ -258,7 +256,7 @@ where
 
     /// Returns the ID of the current round.
     pub fn round_id(&self) -> RoundId {
-        self.round.id()
+        self.round.as_ref().id()
     }
 
     /// Performs some preliminary checks on the message to verify its integrity.
@@ -374,7 +372,7 @@ where
         rng: &mut impl CryptoRngCore,
         message: VerifiedMessage<SP::Verifier>,
     ) -> ProcessedMessage<P, SP> {
-        let processed = self.round.receive_message(
+        let processed = self.round.as_ref().receive_message(
             rng,
             &self.deserializer,
             message.from(),
@@ -398,7 +396,7 @@ where
 
     /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, SP> {
-        RoundAccumulator::new(self.round.expecting_messages_from())
+        RoundAccumulator::new(self.round.as_ref().expecting_messages_from())
     }
 
     fn terminate_inner(
@@ -460,15 +458,15 @@ where
         let echo_round_needed = !self.echo_broadcast.payload().is_none();
 
         if echo_round_needed {
-            let round = Box::new(ObjectSafeRoundWrapper::new(EchoRound::<P, SP>::new(
+            let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
                 self.echo_broadcast,
                 transcript.echo_broadcasts(round_id)?,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
-            )));
-            let cached_messages = filter_messages(accum.cached, round.id());
+            ));
+            let cached_messages = filter_messages(accum.cached, round.as_ref().id());
             let session = Session::new_for_next_round(
                 rng,
                 self.session_id,
@@ -484,24 +482,25 @@ where
             });
         }
 
-        match self.round.finalize(rng, accum.payloads, accum.artifacts) {
+        match self.round.into_boxed().finalize(rng, accum.payloads, accum.artifacts) {
             Ok(result) => Ok(match result {
                 FinalizeOutcome::Result(result) => {
                     RoundOutcome::Finished(SessionReport::new(SessionOutcome::Result(result), transcript))
                 }
-                FinalizeOutcome::AnotherRound(another_round) => {
-                    let round = another_round.into_boxed();
-
+                FinalizeOutcome::AnotherRound(round) => {
                     // Protecting against common bugs
-                    if !self.possible_next_rounds.contains(&round.id()) {
-                        return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
+                    if !self.possible_next_rounds.contains(&round.as_ref().id()) {
+                        return Err(LocalError::new(format!(
+                            "Unexpected next round id: {:?}",
+                            round.as_ref().id()
+                        )));
                     }
 
                     // These messages could have been cached before
                     // processing messages from the same node for the current round.
                     // So there might have been some new errors, and we need to check again
                     // if the sender is already banned.
-                    let cached_messages = filter_messages(accum.cached, round.id())
+                    let cached_messages = filter_messages(accum.cached, round.as_ref().id())
                         .into_iter()
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();

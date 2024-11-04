@@ -104,7 +104,7 @@ where
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
+        let session = Session::<_, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();

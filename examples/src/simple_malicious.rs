@@ -3,7 +3,7 @@ use core::fmt::Debug;
 
 use manul::{
     protocol::{
-        Artifact, DirectMessage, EntryPoint, FinalizeError, FinalizeOutcome, LocalError, PartyId, Payload,
+        Artifact, BoxedRound, DirectMessage, EntryPoint, FinalizeError, FinalizeOutcome, LocalError, PartyId, Payload,
         ProtocolMessagePart, Round, Serializer,
     },
     session::signature::Keypair,
@@ -15,7 +15,7 @@ use manul::{
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
 
-use crate::simple::{Inputs, Round1, Round1Message, Round2, Round2Message};
+use crate::simple::{Inputs, Round1, Round1Message, Round2, Round2Message, SimpleProtocol};
 
 #[derive(Debug, Clone, Copy)]
 enum Behavior {
@@ -48,17 +48,18 @@ impl<Id: PartyId> RoundWrapper<Id> for MaliciousRound1<Id> {
 
 impl<Id: PartyId> EntryPoint<Id> for MaliciousRound1<Id> {
     type Inputs = MaliciousInputs<Id>;
+    type Protocol = SimpleProtocol;
     fn new(
         rng: &mut impl CryptoRngCore,
         shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
-    ) -> Result<Self, LocalError> {
-        let round = Round1::new(rng, shared_randomness, id, inputs.inputs)?;
-        Ok(Self {
+    ) -> Result<BoxedRound<Id, SimpleProtocol>, LocalError> {
+        let round = Round1::new(rng, shared_randomness, id, inputs.inputs)?.downcast::<Round1<Id>>()?;
+        Ok(BoxedRound::new_dynamic(Self {
             round,
             behavior: inputs.behavior,
-        })
+        }))
     }
 }
 
@@ -96,12 +97,12 @@ impl<Id: PartyId> RoundOverride<Id> for MaliciousRound1<Id> {
 
         Ok(match outcome {
             FinalizeOutcome::Result(res) => FinalizeOutcome::Result(res),
-            FinalizeOutcome::AnotherRound(another_round) => {
-                let round2 = another_round.downcast::<Round2<Id>>().map_err(FinalizeError::Local)?;
-                FinalizeOutcome::another_round(MaliciousRound2 {
+            FinalizeOutcome::AnotherRound(boxed_round) => {
+                let round2 = boxed_round.downcast::<Round2<Id>>().map_err(FinalizeError::Local)?;
+                FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(MaliciousRound2 {
                     round: round2,
                     behavior,
-                })
+                }))
             }
         })
     }

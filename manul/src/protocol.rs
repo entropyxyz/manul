@@ -22,12 +22,10 @@ pub use errors::{
     NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,
 };
 pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart};
-pub use round::{
-    AnotherRound, Artifact, EntryPoint, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round, RoundId,
-};
+pub use object_safe::BoxedRound;
+pub use round::{Artifact, EntryPoint, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round, RoundId};
 pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;
-pub(crate) use object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper};
 
 pub use digest;

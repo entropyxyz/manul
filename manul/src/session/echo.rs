@@ -1,5 +1,4 @@
 use alloc::{
-    boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
@@ -18,8 +17,8 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, MessageValidationError,
-        NormalBroadcast, ObjectSafeRound, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome,
+        MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
         Serializer,
     },
     utils::SerializableMap,
@@ -75,12 +74,12 @@ pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
 /// participants. The execution layer of the protocol guarantees that all participants have received
 /// the messages.
 #[derive_where::derive_where(Debug)]
-pub struct EchoRound<P, SP: SessionParameters> {
+pub struct EchoRound<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
     destinations: BTreeSet<SP::Verifier>,
     expected_echos: BTreeSet<SP::Verifier>,
-    main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+    main_round: BoxedRound<SP::Verifier, P>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
 }
@@ -94,7 +93,7 @@ where
         verifier: SP::Verifier,
         my_echo_broadcast: SignedMessagePart<EchoBroadcast>,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
-        main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+        main_round: BoxedRound<SP::Verifier, P>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
@@ -147,11 +146,11 @@ where
     type Protocol = P;
 
     fn id(&self) -> RoundId {
-        self.main_round.id().echo()
+        self.main_round.as_ref().id().echo()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.main_round.possible_next_rounds()
+        self.main_round.as_ref().possible_next_rounds()
     }
 
     fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
@@ -297,6 +296,8 @@ where
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, FinalizeError<Self::Protocol>> {
-        self.main_round.finalize(rng, self.payloads, self.artifacts)
+        self.main_round
+            .into_boxed()
+            .finalize(rng, self.payloads, self.artifacts)
     }
 }

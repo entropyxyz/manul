@@ -151,12 +151,13 @@ struct Round1Payload {
 
 impl<Id: PartyId> EntryPoint<Id> for Round1<Id> {
     type Inputs = Inputs<Id>;
+    type Protocol = SimpleProtocol;
     fn new(
         _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
-    ) -> Result<Self, LocalError> {
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
         // Just some numbers associated with IDs to use in the dummy protocol.
         // They will be the same on each node since IDs are ordered.
         let ids_to_positions = inputs
@@ -169,13 +170,13 @@ impl<Id: PartyId> EntryPoint<Id> for Round1<Id> {
         let mut ids = inputs.all_ids;
         ids.remove(&id);
 
-        Ok(Self {
+        Ok(BoxedRound::new_dynamic(Self {
             context: Context {
                 id,
                 other_ids: ids,
                 ids_to_positions,
             },
-        })
+        }))
     }
 }
 
@@ -282,11 +283,11 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
 
-        let round2 = Round2 {
+        let round2 = BoxedRound::new_dynamic(Round2 {
             round1_sum: sum,
             context: self.context,
-        };
-        Ok(FinalizeOutcome::another_round(round2))
+        });
+        Ok(FinalizeOutcome::AnotherRound(round2))
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id> {

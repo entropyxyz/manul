@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Session::preprocess_message()` now returns a `PreprocessOutcome` instead of just an `Option`. ([#57])
 - `Session::terminate_due_to_errors()` replaces `terminate()`; `terminate()` now signals user interrupt. ([#58])
 - Renamed `FirstRound` trait to `EntryPoint`. ([#60])
+- Added `Protocol` type to `EntryPoint`. ([#60])
+- `EntryPoint` and `FinalizeOutcome::AnotherRound` now use a new `BoxedRound` wrapper type. ([#60])
 
 
 ### Added
