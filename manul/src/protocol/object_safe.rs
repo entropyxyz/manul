@@ -10,7 +10,7 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 use super::{
     errors::{FinalizeError, LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast},
-    round::{Artifact, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
+    round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
     serialization::{Deserializer, Serializer},
 };
 
@@ -47,6 +47,10 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
     fn message_destinations(&self) -> &BTreeSet<Id>;
+
+    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id>;
 
     fn make_direct_message(
         &self,
@@ -86,8 +90,6 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>>;
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 
     /// Returns the type ID of the implementing type.
     fn get_type_id(&self) -> core::any::TypeId {
@@ -133,6 +135,14 @@ where
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
         self.round.message_destinations()
+    }
+
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        self.round.expecting_messages_from()
+    }
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
+        self.round.echo_round_participation()
     }
 
     fn make_direct_message(
@@ -194,10 +204,6 @@ where
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.finalize(&mut boxed_rng, payloads, artifacts)
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        self.round.expecting_messages_from()
     }
 }
 

@@ -494,6 +494,7 @@ dependencies = [
  "signature",
  "tinyvec",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

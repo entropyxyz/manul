@@ -12,7 +12,7 @@ use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessagePart},
-    session::SessionParameters,
+    session::{EchoRoundInfo, SessionParameters},
     LocalError,
 };
 use crate::{
@@ -77,8 +77,7 @@ pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
 pub struct EchoRound<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
-    destinations: BTreeSet<SP::Verifier>,
-    expected_echos: BTreeSet<SP::Verifier>,
+    echo_round_info: EchoRoundInfo<SP::Verifier>,
     main_round: BoxedRound<SP::Verifier, P>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
@@ -93,25 +92,19 @@ where
         verifier: SP::Verifier,
         my_echo_broadcast: SignedMessagePart<EchoBroadcast>,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
+        echo_round_info: EchoRoundInfo<SP::Verifier>,
         main_round: BoxedRound<SP::Verifier, P>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
-        let destinations = echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
-
-        // Add our own echo message because we expect it to be sent back from other nodes.
-        let mut expected_echos = destinations.clone();
-        expected_echos.insert(verifier.clone());
-
         let mut echo_broadcasts = echo_broadcasts;
         echo_broadcasts.insert(verifier.clone(), my_echo_broadcast);
 
-        debug!("{:?}: initialized echo round with {:?}", verifier, destinations);
+        debug!("{:?}: initialized echo round with {:?}", verifier, echo_round_info);
         Self {
             verifier,
             echo_broadcasts,
-            destinations,
-            expected_echos,
+            echo_round_info,
             main_round,
             payloads,
             artifacts,
@@ -154,7 +147,7 @@ where
     }
 
     fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.destinations
+        &self.echo_round_info.message_destinations
     }
 
     fn make_normal_broadcast(
@@ -180,7 +173,7 @@ where
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
-        &self.destinations
+        &self.echo_round_info.expecting_messages_from
     }
 
     fn receive_message(
@@ -199,16 +192,14 @@ where
 
         let message = normal_broadcast.deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
-        // Check that the received message contains entries from `destinations` sans `from`
+        // Check that the received message contains entries from `expected_echos`.
         // It is an unprovable fault.
 
-        let mut expected_keys = self.expected_echos.clone();
-        if !expected_keys.remove(from) {
-            return Err(ReceiveError::local(format!(
-                "The message sender {from:?} is missing from the expected senders {:?}",
-                self.destinations
-            )));
-        }
+        let mut expected_keys = self.echo_round_info.expected_echos.clone();
+
+        // We don't expect the node to send its echo the second time.
+        expected_keys.remove(from);
+
         let message_keys = message.echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();

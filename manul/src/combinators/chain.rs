@@ -382,6 +382,20 @@ where
         }
     }
 
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        match &self.state {
+            ChainState::Protocol1 { round, .. } => round.as_ref().expecting_messages_from(),
+            ChainState::Protocol2(round) => round.as_ref().expecting_messages_from(),
+        }
+    }
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
+        match &self.state {
+            ChainState::Protocol1 { round, .. } => round.as_ref().echo_round_participation(),
+            ChainState::Protocol2(round) => round.as_ref().echo_round_participation(),
+        }
+    }
+
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
@@ -512,13 +526,6 @@ where
                     ChainedCorrectnessProof::from_protocol2(proof),
                 )),
             },
-        }
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().expecting_messages_from(),
-            ChainState::Protocol2(round) => round.as_ref().expecting_messages_from(),
         }
     }
 }
