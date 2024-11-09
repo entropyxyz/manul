@@ -317,7 +317,7 @@ where
             }
             MessageFor::ThisRound
         } else if self.possible_next_rounds.contains(&message_round_id) {
-            if accum.message_is_cached(from, message_round_id) {
+            if accum.message_is_cached(from, &message_round_id) {
                 let err = format!("Message for {:?} is already cached", message_round_id);
                 accum.register_unprovable_error(from, RemoteError::new(&err))?;
                 trace!("{key:?} {err}");
@@ -354,7 +354,7 @@ where
         match message_for {
             MessageFor::ThisRound => {
                 accum.mark_processing(&verified_message)?;
-                Ok(PreprocessOutcome::ToProcess(verified_message))
+                Ok(PreprocessOutcome::ToProcess(Box::new(verified_message)))
             }
             MessageFor::NextRound => {
                 debug!("{key:?}: Caching message from {from:?} for {message_round_id}");
@@ -406,7 +406,7 @@ where
     ) -> Result<SessionReport<P, SP>, LocalError> {
         let round_id = self.round_id();
         let transcript = self.transcript.update(
-            round_id,
+            &round_id,
             accum.echo_broadcasts,
             accum.normal_broadcasts,
             accum.direct_messages,
@@ -446,7 +446,7 @@ where
         let round_id = self.round_id();
 
         let transcript = self.transcript.update(
-            round_id,
+            &round_id,
             accum.echo_broadcasts,
             accum.normal_broadcasts,
             accum.direct_messages,
@@ -604,9 +604,9 @@ where
         self.processing.contains(from)
     }
 
-    fn message_is_cached(&self, from: &SP::Verifier, round_id: RoundId) -> bool {
+    fn message_is_cached(&self, from: &SP::Verifier, round_id: &RoundId) -> bool {
         if let Some(entry) = self.cached.get(from) {
-            entry.contains_key(&round_id)
+            entry.contains_key(round_id)
         } else {
             false
         }
@@ -745,7 +745,7 @@ where
         let from = message.from().clone();
         let round_id = message.metadata().round_id();
         let cached = self.cached.entry(from.clone()).or_default();
-        if cached.insert(round_id, message).is_some() {
+        if cached.insert(round_id.clone(), message).is_some() {
             return Err(LocalError::new(format!(
                 "A message from for {:?} has already been cached",
                 round_id
@@ -771,7 +771,7 @@ pub struct ProcessedMessage<P: Protocol, SP: SessionParameters> {
 #[derive(Debug, Clone)]
 pub enum PreprocessOutcome<Verifier> {
     /// The message was successfully verified, pass it on to [`Session::process_message`].
-    ToProcess(VerifiedMessage<Verifier>),
+    ToProcess(Box<VerifiedMessage<Verifier>>),
     /// The message was intended for the next round and was cached.
     ///
     /// No action required now, cached messages will be returned on successful [`Session::finalize_round`].
@@ -795,7 +795,7 @@ impl<Verifier> PreprocessOutcome<Verifier> {
     /// so the user may choose to ignore them if no logging is desired.
     pub fn ok(self) -> Option<VerifiedMessage<Verifier>> {
         match self {
-            Self::ToProcess(message) => Some(message),
+            Self::ToProcess(message) => Some(*message),
             _ => None,
         }
     }

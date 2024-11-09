@@ -68,7 +68,7 @@ impl MessageMetadata {
     }
 
     pub fn round_id(&self) -> RoundId {
-        self.round_id
+        self.round_id.clone()
     }
 }
 
