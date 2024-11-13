@@ -29,5 +29,6 @@ pub use round::{
 pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;
+pub(crate) use object_safe::{BoxedRng, ObjectSafeRound};
 
 pub use digest;

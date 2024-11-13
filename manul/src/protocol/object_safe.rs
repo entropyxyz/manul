@@ -17,7 +17,7 @@ use super::{
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
 /// this structure wraps the dynamic object and exposes a `CryptoRngCore` interface,
 /// to be passed to statically typed round methods.
-struct BoxedRng<'a>(&'a mut dyn CryptoRngCore);
+pub(crate) struct BoxedRng<'a>(pub(crate) &'a mut dyn CryptoRngCore);
 
 impl CryptoRng for BoxedRng<'_> {}
 
@@ -52,6 +52,7 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        deserializer: &Deserializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError>;
 
@@ -59,12 +60,14 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError>;
 
     fn make_normal_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError>;
 
     fn receive_message(
@@ -87,7 +90,9 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 
     /// Returns the type ID of the implementing type.
-    fn get_type_id(&self) -> core::any::TypeId;
+    fn get_type_id(&self) -> core::any::TypeId {
+        core::any::TypeId::of::<Self>()
+    }
 }
 
 // The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be
@@ -134,6 +139,7 @@ where
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        #[allow(unused_variables)] deserializer: &Deserializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
@@ -144,6 +150,7 @@ where
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        #[allow(unused_variables)] deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_echo_broadcast(&mut boxed_rng, serializer)
@@ -153,6 +160,7 @@ where
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        #[allow(unused_variables)] deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_normal_broadcast(&mut boxed_rng, serializer)
@@ -191,10 +199,6 @@ where
     fn expecting_messages_from(&self) -> &BTreeSet<Id> {
         self.round.expecting_messages_from()
     }
-
-    fn get_type_id(&self) -> core::any::TypeId {
-        core::any::TypeId::of::<Self>()
-    }
 }
 
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
@@ -212,6 +216,13 @@ impl<Id: PartyId, P: Protocol> BoxedRound<Id, P> {
         Self {
             wrapped: true,
             round: Box::new(ObjectSafeRoundWrapper::new(round)),
+        }
+    }
+
+    pub(crate) fn new_object_safe<R: ObjectSafeRound<Id, Protocol = P>>(round: R) -> Self {
+        Self {
+            wrapped: false,
+            round: Box::new(round),
         }
     }
 
@@ -264,5 +275,10 @@ impl<Id: PartyId, P: Protocol> BoxedRound<Id, P> {
                 core::any::type_name::<T>()
             )))
         }
+    }
+
+    /// Returns the round's ID.
+    pub fn id(&self) -> RoundId {
+        self.round.id()
     }
 }

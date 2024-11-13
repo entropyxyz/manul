@@ -146,7 +146,7 @@ where
     type Protocol = P;
 
     fn id(&self) -> RoundId {
-        self.main_round.as_ref().id().echo()
+        self.main_round.id().echo()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {

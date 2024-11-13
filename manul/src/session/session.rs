@@ -169,18 +169,18 @@ where
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
 
-        let echo = round.as_ref().make_echo_broadcast(rng, &serializer)?;
-        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.as_ref().id(), echo)?;
+        let echo = round.as_ref().make_echo_broadcast(rng, &serializer, &deserializer)?;
+        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
 
-        let normal = round.as_ref().make_normal_broadcast(rng, &serializer)?;
-        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.as_ref().id(), normal)?;
+        let normal = round.as_ref().make_normal_broadcast(rng, &serializer, &deserializer)?;
+        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
 
         let message_destinations = round.as_ref().message_destinations().clone();
 
         let possible_next_rounds = if echo_broadcast.payload().is_none() {
             round.as_ref().possible_next_rounds()
         } else {
-            BTreeSet::from([round.as_ref().id().echo()])
+            BTreeSet::from([round.id().echo()])
         };
 
         Ok(Self {
@@ -221,16 +221,16 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) = self
-            .round
-            .as_ref()
-            .make_direct_message(rng, &self.serializer, destination)?;
+        let (direct_message, artifact) =
+            self.round
+                .as_ref()
+                .make_direct_message(rng, &self.serializer, &self.deserializer, destination)?;
 
         let message = Message::new::<SP>(
             rng,
             &self.signer,
             &self.session_id,
-            self.round.as_ref().id(),
+            self.round.id(),
             destination,
             direct_message,
             self.echo_broadcast.clone(),
@@ -256,7 +256,7 @@ where
 
     /// Returns the ID of the current round.
     pub fn round_id(&self) -> RoundId {
-        self.round.as_ref().id()
+        self.round.id()
     }
 
     /// Performs some preliminary checks on the message to verify its integrity.
@@ -466,7 +466,7 @@ where
                 accum.payloads,
                 accum.artifacts,
             ));
-            let cached_messages = filter_messages(accum.cached, round.as_ref().id());
+            let cached_messages = filter_messages(accum.cached, round.id());
             let session = Session::new_for_next_round(
                 rng,
                 self.session_id,
@@ -489,18 +489,15 @@ where
                 }
                 FinalizeOutcome::AnotherRound(round) => {
                     // Protecting against common bugs
-                    if !self.possible_next_rounds.contains(&round.as_ref().id()) {
-                        return Err(LocalError::new(format!(
-                            "Unexpected next round id: {:?}",
-                            round.as_ref().id()
-                        )));
+                    if !self.possible_next_rounds.contains(&round.id()) {
+                        return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
                     }
 
                     // These messages could have been cached before
                     // processing messages from the same node for the current round.
                     // So there might have been some new errors, and we need to check again
                     // if the sender is already banned.
-                    let cached_messages = filter_messages(accum.cached, round.as_ref().id())
+                    let cached_messages = filter_messages(accum.cached, round.id())
                         .into_iter()
                         .filter(|message| !transcript.is_banned(message.from()))
                         .collect::<Vec<_>>();
