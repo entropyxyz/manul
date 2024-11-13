@@ -5,7 +5,10 @@ use alloc::{
     string::String,
     vec::Vec,
 };
-use core::{any::Any, fmt::Debug};
+use core::{
+    any::Any,
+    fmt::{self, Debug, Display},
+};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -26,19 +29,86 @@ pub enum FinalizeOutcome<Id: PartyId, P: Protocol> {
     Result(P::Result),
 }
 
+// Maximum depth of group nesting in RoundIds.
+// We need this to be limited to allow the nesting to be performed in `const` context
+// (since we cannot use heap there).
+const ROUND_ID_DEPTH: usize = 8;
+
 /// A round identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RoundId {
-    round_num: u8,
+    depth: u8,
+    round_nums: [u8; ROUND_ID_DEPTH],
     is_echo: bool,
+}
+
+impl Display for RoundId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Round ")?;
+        for i in (0..self.depth as usize).rev() {
+            write!(f, "{}", self.round_nums.get(i).expect("Depth within range"))?;
+            if i != 0 {
+                write!(f, "-")?;
+            }
+        }
+        if self.is_echo {
+            write!(f, " (echo)")?;
+        }
+        Ok(())
+    }
 }
 
 impl RoundId {
     /// Creates a new round identifier.
-    pub fn new(round_num: u8) -> Self {
+    pub const fn new(round_num: u8) -> Self {
+        let mut round_nums = [0u8; ROUND_ID_DEPTH];
+        #[allow(clippy::indexing_slicing)]
+        {
+            round_nums[0] = round_num;
+        }
         Self {
-            round_num,
+            depth: 1,
+            round_nums,
             is_echo: false,
+        }
+    }
+
+    /// Prefixes this round ID (possibly already nested) with a group number.
+    ///
+    /// **Warning:** the maximum nesting depth is 8. Panics if this nesting overflows it.
+    pub(crate) const fn group_under(&self, round_num: u8) -> Self {
+        if self.depth as usize == ROUND_ID_DEPTH {
+            panic!("Maximum depth reached");
+        }
+        let mut round_nums = self.round_nums;
+
+        // Would use `expect("Depth within range")` here, but `expect()` in const fns is unstable.
+        #[allow(clippy::indexing_slicing)]
+        {
+            round_nums[self.depth as usize] = round_num;
+        }
+
+        Self {
+            depth: self.depth + 1,
+            round_nums,
+            is_echo: self.is_echo,
+        }
+    }
+
+    /// Removes the top group prefix from this round ID.
+    ///
+    /// Returns the `Err` variant if the round ID is not nested.
+    pub(crate) fn ungroup(&self) -> Result<Self, LocalError> {
+        if self.depth == 1 {
+            Err(LocalError::new("This round ID is not in a group"))
+        } else {
+            let mut round_nums = self.round_nums;
+            *round_nums.get_mut(self.depth as usize - 1).expect("Depth within range") = 0;
+            Ok(Self {
+                depth: self.depth - 1,
+                round_nums,
+                is_echo: self.is_echo,
+            })
         }
     }
 
@@ -57,7 +127,8 @@ impl RoundId {
             panic!("This is already an echo round ID");
         }
         Self {
-            round_num: self.round_num,
+            depth: self.depth,
+            round_nums: self.round_nums,
             is_echo: true,
         }
     }
@@ -72,7 +143,8 @@ impl RoundId {
             panic!("This is already an non-echo round ID");
         }
         Self {
-            round_num: self.round_num,
+            depth: self.depth,
+            round_nums: self.round_nums,
             is_echo: false,
         }
     }
@@ -298,6 +370,11 @@ pub trait EntryPoint<Id: PartyId> {
 
     /// The protocol implemented by the round this entry points returns.
     type Protocol: Protocol;
+
+    /// Returns the ID of the round returned by [`Self::new`].
+    fn entry_round() -> RoundId {
+        RoundId::new(1)
+    }
 
     /// Creates the round.
     ///

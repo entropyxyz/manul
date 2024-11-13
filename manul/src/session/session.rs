@@ -349,7 +349,7 @@ where
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
         };
-        debug!("{key:?}: Received {message_round_id:?} message from {from:?}");
+        debug!("{key:?}: Received {message_round_id} message from {from:?}");
 
         match message_for {
             MessageFor::ThisRound => {
@@ -357,7 +357,7 @@ where
                 Ok(PreprocessOutcome::ToProcess(verified_message))
             }
             MessageFor::NextRound => {
-                debug!("{key:?}: Caching message from {from:?} for {message_round_id:?}");
+                debug!("{key:?}: Caching message from {from:?} for {message_round_id}");
                 accum.cache_message(verified_message)?;
                 Ok(PreprocessOutcome::Cached)
             }
@@ -734,7 +734,7 @@ where
             }
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
-                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, error)?;
+                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, *error)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),

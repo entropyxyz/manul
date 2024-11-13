@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An impl of `ProtocolError` for `()` for protocols that don't use errors. ([#60])
 - A dummy `CorrectnessProof` trait. ([#60])
 - A `misbehave` combinator, intended primarily for testing. ([#60])
+- A `chain` combinator for chaining two protocols. ([#60])
+- `EntryPoint::ENTRY_ROUND` constant. ([#60])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32

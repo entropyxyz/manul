@@ -45,7 +45,7 @@ where
     let state = loop {
         match session.can_finalize(&accum) {
             CanFinalize::Yes => {
-                debug!("{:?}: finalizing {:?}", session.verifier(), session.round_id(),);
+                debug!("{:?}: finalizing {}", session.verifier(), session.round_id());
                 match session.finalize_round(rng, accum)? {
                     RoundOutcome::Finished(report) => break State::Finished(report),
                     RoundOutcome::AnotherRound {
