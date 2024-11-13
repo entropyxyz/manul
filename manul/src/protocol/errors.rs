@@ -1,4 +1,4 @@
-use alloc::{format, string::String};
+use alloc::{boxed::Box, format, string::String};
 use core::fmt::Debug;
 
 use super::round::Protocol;
@@ -50,7 +50,7 @@ pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
     // so this whole enum is crate-private and the variants are created
     // via constructors and From impls.
     /// An echo round error occurred.
-    Echo(EchoRoundError<Id>),
+    Echo(Box<EchoRoundError<Id>>),
 }
 
 impl<Id, P: Protocol> ReceiveError<Id, P> {
@@ -67,6 +67,33 @@ impl<Id, P: Protocol> ReceiveError<Id, P> {
     /// A provable error occurred.
     pub fn protocol(error: P::ProtocolError) -> Self {
         Self(ReceiveErrorType::Protocol(error))
+    }
+
+    /// Maps the error to a different protocol, given the mapping function for protocol errors.
+    pub(crate) fn map<T, F>(self, f: F) -> ReceiveError<Id, T>
+    where
+        F: Fn(P::ProtocolError) -> T::ProtocolError,
+        T: Protocol,
+    {
+        ReceiveError(self.0.map::<T, F>(f))
+    }
+}
+
+impl<Id, P: Protocol> ReceiveErrorType<Id, P> {
+    pub(crate) fn map<T, F>(self, f: F) -> ReceiveErrorType<Id, T>
+    where
+        F: Fn(P::ProtocolError) -> T::ProtocolError,
+        T: Protocol,
+    {
+        match self {
+            Self::Local(err) => ReceiveErrorType::Local(err),
+            Self::InvalidDirectMessage(err) => ReceiveErrorType::InvalidDirectMessage(err),
+            Self::InvalidEchoBroadcast(err) => ReceiveErrorType::InvalidEchoBroadcast(err),
+            Self::InvalidNormalBroadcast(err) => ReceiveErrorType::InvalidNormalBroadcast(err),
+            Self::Unprovable(err) => ReceiveErrorType::Unprovable(err),
+            Self::Echo(err) => ReceiveErrorType::Echo(err),
+            Self::Protocol(err) => ReceiveErrorType::Protocol(f(err)),
+        }
     }
 }
 
@@ -93,7 +120,7 @@ where
     P: Protocol,
 {
     fn from(error: EchoRoundError<Id>) -> Self {
-        Self(ReceiveErrorType::Echo(error))
+        Self(ReceiveErrorType::Echo(Box::new(error)))
     }
 }
 

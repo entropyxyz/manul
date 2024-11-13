@@ -17,7 +17,7 @@ use super::{
 /// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
 /// this structure wraps the dynamic object and exposes a `CryptoRngCore` interface,
 /// to be passed to statically typed round methods.
-struct BoxedRng<'a>(&'a mut dyn CryptoRngCore);
+pub(crate) struct BoxedRng<'a>(pub(crate) &'a mut dyn CryptoRngCore);
 
 impl CryptoRng for BoxedRng<'_> {}
 
@@ -48,10 +48,11 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
-    fn make_direct_message_with_artifact(
+    fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        deserializer: &Deserializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError>;
 
@@ -59,12 +60,14 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError>;
 
     fn make_normal_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError>;
 
     fn receive_message(
@@ -87,7 +90,9 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 
     /// Returns the type ID of the implementing type.
-    fn get_type_id(&self) -> core::any::TypeId;
+    fn get_type_id(&self) -> core::any::TypeId {
+        core::any::TypeId::of::<Self>()
+    }
 }
 
 // The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be
@@ -130,21 +135,22 @@ where
         self.round.message_destinations()
     }
 
-    fn make_direct_message_with_artifact(
+    fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        #[allow(unused_variables)] deserializer: &Deserializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round
-            .make_direct_message_with_artifact(&mut boxed_rng, serializer, destination)
+        self.round.make_direct_message(&mut boxed_rng, serializer, destination)
     }
 
     fn make_echo_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        #[allow(unused_variables)] deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_echo_broadcast(&mut boxed_rng, serializer)
@@ -154,6 +160,7 @@ where
         &self,
         rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
+        #[allow(unused_variables)] deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.make_normal_broadcast(&mut boxed_rng, serializer)
@@ -192,29 +199,53 @@ where
     fn expecting_messages_from(&self) -> &BTreeSet<Id> {
         self.round.expecting_messages_from()
     }
-
-    fn get_type_id(&self) -> core::any::TypeId {
-        core::any::TypeId::of::<Self>()
-    }
 }
 
-// When we are wrapping types implementing Round and overriding `finalize()`,
-// we need to unbox the result of `finalize()`, set it as an attribute of the wrapping round,
-// and then box the result.
-//
-// Because of Rust's peculiarities, Box<dyn Round> that we return in `finalize()`
-// cannot be unboxed into an object of a concrete type with `downcast()`,
-// so we have to provide this workaround.
-impl<Id, P> dyn ObjectSafeRound<Id, Protocol = P>
-where
-    Id: PartyId,
-    P: Protocol,
-{
-    pub fn try_downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, Box<Self>> {
-        if core::any::TypeId::of::<ObjectSafeRoundWrapper<Id, T>>() == self.get_type_id() {
-            // This should be safe since we just checked that we are casting to a correct type.
+// We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
+/// A wrapped new round that may be returned by [`Round::finalize`]
+/// or [`EntryPoint::new`](`crate::protocol::EntryPoint::new`).
+#[derive_where::derive_where(Debug)]
+pub struct BoxedRound<Id: PartyId, P: Protocol> {
+    wrapped: bool,
+    round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
+}
+
+impl<Id: PartyId, P: Protocol> BoxedRound<Id, P> {
+    /// Wraps an object implementing the dynamic round trait ([`Round`](`crate::protocol::Round`)).
+    pub fn new_dynamic<R: Round<Id, Protocol = P>>(round: R) -> Self {
+        Self {
+            wrapped: true,
+            round: Box::new(ObjectSafeRoundWrapper::new(round)),
+        }
+    }
+
+    pub(crate) fn new_object_safe<R: ObjectSafeRound<Id, Protocol = P>>(round: R) -> Self {
+        Self {
+            wrapped: false,
+            round: Box::new(round),
+        }
+    }
+
+    pub(crate) fn as_ref(&self) -> &dyn ObjectSafeRound<Id, Protocol = P> {
+        self.round.as_ref()
+    }
+
+    pub(crate) fn into_boxed(self) -> Box<dyn ObjectSafeRound<Id, Protocol = P>> {
+        self.round
+    }
+
+    fn boxed_type_is<T: 'static>(&self) -> bool {
+        core::any::TypeId::of::<T>() == self.round.get_type_id()
+    }
+
+    /// Attempts to extract an object of a concrete type, preserving the original on failure.
+    pub fn try_downcast<T: Round<Id>>(self) -> Result<T, Self> {
+        if self.wrapped && self.boxed_type_is::<ObjectSafeRoundWrapper<Id, T>>() {
+            // Safety: This is safe since we just checked that we are casting to the correct type.
             let boxed_downcast = unsafe {
-                Box::<ObjectSafeRoundWrapper<Id, T>>::from_raw(Box::into_raw(self) as *mut ObjectSafeRoundWrapper<Id, T>)
+                Box::<ObjectSafeRoundWrapper<Id, T>>::from_raw(
+                    Box::into_raw(self.round) as *mut ObjectSafeRoundWrapper<Id, T>
+                )
             };
             Ok(boxed_downcast.round)
         } else {
@@ -222,8 +253,32 @@ where
         }
     }
 
-    pub fn downcast<T: Round<Id>>(self: Box<Self>) -> Result<T, LocalError> {
+    /// Attempts to extract an object of a concrete type.
+    ///
+    /// Fails if the wrapped type is not `T`.
+    pub fn downcast<T: Round<Id>>(self) -> Result<T, LocalError> {
         self.try_downcast()
             .map_err(|_| LocalError::new(format!("Failed to downcast into type {}", core::any::type_name::<T>())))
+    }
+
+    /// Attempts to provide a reference to an object of a concrete type.
+    ///
+    /// Fails if the wrapped type is not `T`.
+    pub fn downcast_ref<T: Round<Id>>(&self) -> Result<&T, LocalError> {
+        if self.wrapped && self.boxed_type_is::<ObjectSafeRoundWrapper<Id, T>>() {
+            let ptr: *const dyn ObjectSafeRound<Id, Protocol = P> = self.round.as_ref();
+            // Safety: This is safe since we just checked that we are casting to the correct type.
+            Ok(unsafe { &*(ptr as *const T) })
+        } else {
+            Err(LocalError::new(format!(
+                "Failed to downcast into type {}",
+                core::any::type_name::<T>()
+            )))
+        }
+    }
+
+    /// Returns the round's ID.
+    pub fn id(&self) -> RoundId {
+        self.round.id()
     }
 }

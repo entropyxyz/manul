@@ -1,17 +1,14 @@
 extern crate alloc;
 
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    string::String,
-};
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
-        Artifact, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound, LocalError,
-        NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
-        ReceiveError, Round, RoundId, Serializer,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
+        LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Serializer,
     },
     session::{signature::Keypair, SessionOutcome},
     testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
@@ -22,31 +19,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug)]
 pub struct EmptyProtocol;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmptyProtocolError;
-
-impl ProtocolError for EmptyProtocolError {
-    fn description(&self) -> String {
-        unimplemented!()
-    }
-    fn verify_messages_constitute_error(
-        &self,
-        _deserializer: &Deserializer,
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        _direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
-    ) -> Result<(), ProtocolValidationError> {
-        unimplemented!()
-    }
-}
-
 impl Protocol for EmptyProtocol {
     type Result = ();
-    type ProtocolError = EmptyProtocolError;
+    type ProtocolError = ();
     type CorrectnessProof = ();
 }
 
@@ -73,18 +48,19 @@ struct Round1Payload;
 
 struct Round1Artifact;
 
-impl<Id: PartyId> FirstRound<Id> for EmptyRound<Id> {
+impl<Id: PartyId> EntryPoint<Id> for EmptyRound<Id> {
     type Inputs = Inputs<Id>;
+    type Protocol = EmptyProtocol;
     fn new(
         _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
         _id: Id,
         inputs: Self::Inputs,
-    ) -> Result<Self, LocalError> {
-        Ok(Self {
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
+        Ok(BoxedRound::new_dynamic(Self {
             round_counter: 1,
             inputs,
-        })
+        }))
     }
 }
 
@@ -119,7 +95,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         }
     }
 
-    fn make_direct_message_with_artifact(
+    fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
@@ -165,11 +141,11 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         if self.round_counter == self.inputs.rounds_num {
             Ok(FinalizeOutcome::Result(()))
         } else {
-            let round = EmptyRound {
+            let round = BoxedRound::new_dynamic(EmptyRound {
                 round_counter: self.round_counter + 1,
                 inputs: self.inputs,
-            };
-            Ok(FinalizeOutcome::another_round(round))
+            });
+            Ok(FinalizeOutcome::AnotherRound(round))
         }
     }
 

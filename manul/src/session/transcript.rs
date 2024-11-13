@@ -36,7 +36,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         self,
-        round_id: RoundId,
+        round_id: &RoundId,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
         normal_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>,
         direct_messages: BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>,
@@ -45,7 +45,7 @@ where
         missing_messages: BTreeSet<SP::Verifier>,
     ) -> Result<Self, LocalError> {
         let mut all_echo_broadcasts = self.echo_broadcasts;
-        match all_echo_broadcasts.entry(round_id) {
+        match all_echo_broadcasts.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(echo_broadcasts),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
@@ -55,7 +55,7 @@ where
         };
 
         let mut all_normal_broadcasts = self.normal_broadcasts;
-        match all_normal_broadcasts.entry(round_id) {
+        match all_normal_broadcasts.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(normal_broadcasts),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
@@ -65,7 +65,7 @@ where
         };
 
         let mut all_direct_messages = self.direct_messages;
-        match all_direct_messages.entry(round_id) {
+        match all_direct_messages.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(direct_messages),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
@@ -93,7 +93,7 @@ where
         }
 
         let mut all_missing_messages = self.missing_messages;
-        match all_missing_messages.entry(round_id) {
+        match all_missing_messages.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(missing_messages),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(

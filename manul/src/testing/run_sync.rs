@@ -6,7 +6,7 @@ use signature::Keypair;
 use tracing::debug;
 
 use crate::{
-    protocol::{FirstRound, Protocol},
+    protocol::{EntryPoint, Protocol},
     session::{
         CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
         SessionReport,
@@ -45,7 +45,7 @@ where
     let state = loop {
         match session.can_finalize(&accum) {
             CanFinalize::Yes => {
-                debug!("{:?}: finalizing {:?}", session.verifier(), session.round_id(),);
+                debug!("{:?}: finalizing {}", session.verifier(), session.round_id());
                 match session.finalize_round(rng, accum)? {
                     RoundOutcome::Finished(report) => break State::Finished(report),
                     RoundOutcome::AnotherRound {
@@ -94,7 +94,7 @@ pub fn run_sync<R, SP>(
     inputs: Vec<(SP::Signer, R::Inputs)>,
 ) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
 where
-    R: FirstRound<SP::Verifier>,
+    R: EntryPoint<SP::Verifier>,
     SP: SessionParameters,
 {
     let session_id = SessionId::random::<SP>(rng);
@@ -104,7 +104,7 @@ where
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
+        let session = Session::<_, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();

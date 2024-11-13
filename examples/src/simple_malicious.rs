@@ -1,16 +1,14 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::collections::BTreeSet;
 use core::fmt::Debug;
 
 use manul::{
+    combinators::misbehave::{Misbehaving, MisbehavingEntryPoint, MisbehavingInputs},
     protocol::{
-        Artifact, DirectMessage, FinalizeError, FinalizeOutcome, FirstRound, LocalError, PartyId, Payload,
-        ProtocolMessagePart, Round, Serializer,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
+        RoundId, Serializer,
     },
     session::signature::Keypair,
-    testing::{
-        round_override, run_sync, BinaryFormat, RoundOverride, RoundWrapper, TestSessionParams, TestSigner,
-        TestVerifier,
-    },
+    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
@@ -19,132 +17,59 @@ use crate::simple::{Inputs, Round1, Round1Message, Round2, Round2Message};
 
 #[derive(Debug, Clone, Copy)]
 enum Behavior {
-    Lawful,
     SerializedGarbage,
     AttributableFailure,
     AttributableFailureRound2,
 }
 
-struct MaliciousInputs<Id> {
-    inputs: Inputs<Id>,
-    behavior: Behavior,
-}
+struct MaliciousLogic;
 
-#[derive(Debug)]
-struct MaliciousRound1<Id> {
-    round: Round1<Id>,
-    behavior: Behavior,
-}
+impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
+    type EntryPoint = Round1<Id>;
 
-impl<Id: PartyId> RoundWrapper<Id> for MaliciousRound1<Id> {
-    type InnerRound = Round1<Id>;
-    fn inner_round_ref(&self) -> &Self::InnerRound {
-        &self.round
-    }
-    fn inner_round(self) -> Self::InnerRound {
-        self.round
-    }
-}
-
-impl<Id: PartyId> FirstRound<Id> for MaliciousRound1<Id> {
-    type Inputs = MaliciousInputs<Id>;
-    fn new(
-        rng: &mut impl CryptoRngCore,
-        shared_randomness: &[u8],
-        id: Id,
-        inputs: Self::Inputs,
-    ) -> Result<Self, LocalError> {
-        let round = Round1::new(rng, shared_randomness, id, inputs.inputs)?;
-        Ok(Self {
-            round,
-            behavior: inputs.behavior,
-        })
-    }
-}
-
-impl<Id: PartyId> RoundOverride<Id> for MaliciousRound1<Id> {
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
+    fn modify_direct_message(
+        _rng: &mut impl CryptoRngCore,
+        round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
+        behavior: &Behavior,
         serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
-        if matches!(self.behavior, Behavior::SerializedGarbage) {
-            DirectMessage::new(serializer, [99u8])
-        } else if matches!(self.behavior, Behavior::AttributableFailure) {
-            let message = Round1Message {
-                my_position: self.round.context.ids_to_positions[&self.round.context.id],
-                your_position: self.round.context.ids_to_positions[&self.round.context.id],
-            };
-            DirectMessage::new(serializer, message)
-        } else {
-            self.inner_round_ref().make_direct_message(rng, serializer, destination)
-        }
-    }
-
-    fn finalize(
-        self,
-        rng: &mut impl CryptoRngCore,
-        payloads: BTreeMap<Id, Payload>,
-        artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<
-        FinalizeOutcome<Id, <<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
-        FinalizeError<<<Self as RoundWrapper<Id>>::InnerRound as Round<Id>>::Protocol>,
-    > {
-        let behavior = self.behavior;
-        let outcome = self.inner_round().finalize(rng, payloads, artifacts)?;
-
-        Ok(match outcome {
-            FinalizeOutcome::Result(res) => FinalizeOutcome::Result(res),
-            FinalizeOutcome::AnotherRound(another_round) => {
-                let round2 = another_round.downcast::<Round2<Id>>().map_err(FinalizeError::Local)?;
-                FinalizeOutcome::another_round(MaliciousRound2 {
-                    round: round2,
-                    behavior,
-                })
+        _deserializer: &Deserializer,
+        _destination: &Id,
+        direct_message: DirectMessage,
+        artifact: Option<Artifact>,
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+        let dm = if round.id() == RoundId::new(1) {
+            match behavior {
+                Behavior::SerializedGarbage => DirectMessage::new(serializer, [99u8])?,
+                Behavior::AttributableFailure => {
+                    let round1 = round.downcast_ref::<Round1<Id>>()?;
+                    let message = Round1Message {
+                        my_position: round1.context.ids_to_positions[&round1.context.id],
+                        your_position: round1.context.ids_to_positions[&round1.context.id],
+                    };
+                    DirectMessage::new(serializer, message)?
+                }
+                _ => direct_message,
             }
-        })
-    }
-}
-
-round_override!(MaliciousRound1);
-
-#[derive(Debug)]
-struct MaliciousRound2<Id> {
-    round: Round2<Id>,
-    behavior: Behavior,
-}
-
-impl<Id: PartyId> RoundWrapper<Id> for MaliciousRound2<Id> {
-    type InnerRound = Round2<Id>;
-    fn inner_round_ref(&self) -> &Self::InnerRound {
-        &self.round
-    }
-    fn inner_round(self) -> Self::InnerRound {
-        self.round
-    }
-}
-
-impl<Id: PartyId> RoundOverride<Id> for MaliciousRound2<Id> {
-    fn make_direct_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
-        if matches!(self.behavior, Behavior::AttributableFailureRound2) {
-            let message = Round2Message {
-                my_position: self.round.context.ids_to_positions[&self.round.context.id],
-                your_position: self.round.context.ids_to_positions[&self.round.context.id],
-            };
-            DirectMessage::new(serializer, message)
+        } else if round.id() == RoundId::new(2) {
+            match behavior {
+                Behavior::AttributableFailureRound2 => {
+                    let round2 = round.downcast_ref::<Round2<Id>>()?;
+                    let message = Round2Message {
+                        my_position: round2.context.ids_to_positions[&round2.context.id],
+                        your_position: round2.context.ids_to_positions[&round2.context.id],
+                    };
+                    DirectMessage::new(serializer, message)?
+                }
+                _ => direct_message,
+            }
         } else {
-            self.inner_round_ref().make_direct_message(rng, serializer, destination)
-        }
+            direct_message
+        };
+        Ok((dm, artifact))
     }
 }
 
-round_override!(MaliciousRound2);
+type MaliciousEntryPoint<Id> = MisbehavingEntryPoint<Id, Behavior, MaliciousLogic>;
 
 #[test]
 fn serialized_garbage() {
@@ -160,13 +85,13 @@ fn serialized_garbage() {
         .enumerate()
         .map(|(idx, signer)| {
             let behavior = if idx == 0 {
-                Behavior::SerializedGarbage
+                Some(Behavior::SerializedGarbage)
             } else {
-                Behavior::Lawful
+                None
             };
 
-            let malicious_inputs = MaliciousInputs {
-                inputs: inputs.clone(),
+            let malicious_inputs = MisbehavingInputs {
+                inner_inputs: inputs.clone(),
                 behavior,
             };
             (*signer, malicious_inputs)
@@ -177,7 +102,7 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -206,13 +131,13 @@ fn attributable_failure() {
         .enumerate()
         .map(|(idx, signer)| {
             let behavior = if idx == 0 {
-                Behavior::AttributableFailure
+                Some(Behavior::AttributableFailure)
             } else {
-                Behavior::Lawful
+                None
             };
 
-            let malicious_inputs = MaliciousInputs {
-                inputs: inputs.clone(),
+            let malicious_inputs = MisbehavingInputs {
+                inner_inputs: inputs.clone(),
                 behavior,
             };
             (*signer, malicious_inputs)
@@ -223,7 +148,7 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -252,13 +177,13 @@ fn attributable_failure_round2() {
         .enumerate()
         .map(|(idx, signer)| {
             let behavior = if idx == 0 {
-                Behavior::AttributableFailureRound2
+                Some(Behavior::AttributableFailureRound2)
             } else {
-                Behavior::Lawful
+                None
             };
 
-            let malicious_inputs = MaliciousInputs {
-                inputs: inputs.clone(),
+            let malicious_inputs = MisbehavingInputs {
+                inner_inputs: inputs.clone(),
                 behavior,
             };
             (*signer, malicious_inputs)
@@ -269,7 +194,7 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousRound1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<MaliciousEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
     });
 
     let v0 = signers[0].verifying_key();

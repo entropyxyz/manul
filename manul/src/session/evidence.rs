@@ -100,8 +100,8 @@ where
             .iter()
             .map(|round_id| {
                 transcript
-                    .get_echo_broadcast(*round_id, verifier)
-                    .map(|echo| (*round_id, echo))
+                    .get_echo_broadcast(round_id.clone(), verifier)
+                    .map(|echo| (round_id.clone(), echo))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
@@ -110,8 +110,8 @@ where
             .iter()
             .map(|round_id| {
                 transcript
-                    .get_normal_broadcast(*round_id, verifier)
-                    .map(|bc| (*round_id, bc))
+                    .get_normal_broadcast(round_id.clone(), verifier)
+                    .map(|bc| (round_id.clone(), bc))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
@@ -120,8 +120,8 @@ where
             .iter()
             .map(|round_id| {
                 transcript
-                    .get_direct_message(*round_id, verifier)
-                    .map(|dm| (*round_id, dm))
+                    .get_direct_message(round_id.clone(), verifier)
+                    .map(|dm| (round_id.clone(), dm))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
@@ -131,7 +131,7 @@ where
             .map(|round_id| {
                 transcript
                     .get_normal_broadcast(round_id.echo(), verifier)
-                    .map(|dm| (*round_id, dm))
+                    .map(|dm| (round_id.clone(), dm))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
@@ -470,12 +470,12 @@ where
         for (round_id, direct_message) in self.direct_messages.iter() {
             let verified_direct_message = direct_message.clone().verify::<SP>(verifier)?;
             let metadata = verified_direct_message.metadata();
-            if metadata.session_id() != session_id || metadata.round_id() != *round_id {
+            if metadata.session_id() != session_id || &metadata.round_id() != round_id {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_direct_messages.insert(*round_id, verified_direct_message.payload().clone());
+            verified_direct_messages.insert(round_id.clone(), verified_direct_message.payload().clone());
         }
 
         let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.payload().clone();
@@ -500,31 +500,31 @@ where
         for (round_id, echo_broadcast) in self.echo_broadcasts.iter() {
             let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(verifier)?;
             let metadata = verified_echo_broadcast.metadata();
-            if metadata.session_id() != session_id || metadata.round_id() != *round_id {
+            if metadata.session_id() != session_id || &metadata.round_id() != round_id {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_echo_broadcasts.insert(*round_id, verified_echo_broadcast.payload().clone());
+            verified_echo_broadcasts.insert(round_id.clone(), verified_echo_broadcast.payload().clone());
         }
 
         let mut verified_normal_broadcasts = BTreeMap::new();
         for (round_id, normal_broadcast) in self.normal_broadcasts.iter() {
             let verified_normal_broadcast = normal_broadcast.clone().verify::<SP>(verifier)?;
             let metadata = verified_normal_broadcast.metadata();
-            if metadata.session_id() != session_id || metadata.round_id() != *round_id {
+            if metadata.session_id() != session_id || &metadata.round_id() != round_id {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_normal_broadcasts.insert(*round_id, verified_normal_broadcast.payload().clone());
+            verified_normal_broadcasts.insert(round_id.clone(), verified_normal_broadcast.payload().clone());
         }
 
         let mut combined_echos = BTreeMap::new();
         for (round_id, combined_echo) in self.combined_echos.iter() {
             let verified_combined_echo = combined_echo.clone().verify::<SP>(verifier)?;
             let metadata = verified_combined_echo.metadata();
-            if metadata.session_id() != session_id || metadata.round_id().non_echo() != *round_id {
+            if metadata.session_id() != session_id || &metadata.round_id().non_echo() != round_id {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));
@@ -537,14 +537,14 @@ where
             for (other_verifier, echo_broadcast) in echo_set.echo_broadcasts.iter() {
                 let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(other_verifier)?;
                 let metadata = verified_echo_broadcast.metadata();
-                if metadata.session_id() != session_id || metadata.round_id() != *round_id {
+                if metadata.session_id() != session_id || &metadata.round_id() != round_id {
                     return Err(EvidenceError::InvalidEvidence(
                         "Invalid attached message metadata".into(),
                     ));
                 }
                 verified_echo_set.push(verified_echo_broadcast.payload().clone());
             }
-            combined_echos.insert(*round_id, verified_echo_set);
+            combined_echos.insert(round_id.clone(), verified_echo_set);
         }
 
         Ok(self.error.verify_messages_constitute_error(

@@ -3,85 +3,89 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
+    vec,
     vec::Vec,
 };
-use core::{any::Any, fmt::Debug};
+use core::{
+    any::Any,
+    fmt::{self, Debug, Display},
+};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
+use tinyvec::{tiny_vec, TinyVec};
 
 use super::{
     errors::{FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
-    object_safe::{ObjectSafeRound, ObjectSafeRoundWrapper},
+    object_safe::BoxedRound,
     serialization::{Deserializer, Serializer},
 };
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
-pub enum FinalizeOutcome<Id, P: Protocol> {
+pub enum FinalizeOutcome<Id: PartyId, P: Protocol> {
     /// Transition to a new round.
-    AnotherRound(AnotherRound<Id, P>),
+    AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
     Result(P::Result),
 }
 
-impl<Id, P> FinalizeOutcome<Id, P>
-where
-    Id: PartyId,
-    P: Protocol,
-{
-    /// A helper method to create an [`AnotherRound`](`Self::AnotherRound`) variant.
-    pub fn another_round(round: impl Round<Id, Protocol = P>) -> Self {
-        Self::AnotherRound(AnotherRound::new(round))
-    }
-}
-
-// We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
-/// A wrapped new round that may be returned by [`Round::finalize`].
-#[derive(Debug)]
-pub struct AnotherRound<Id, P: Protocol>(Box<dyn ObjectSafeRound<Id, Protocol = P>>);
-
-impl<Id, P> AnotherRound<Id, P>
-where
-    Id: PartyId,
-    P: Protocol,
-{
-    /// Wraps an object implementing [`Round`].
-    pub fn new(round: impl Round<Id, Protocol = P>) -> Self {
-        Self(Box::new(ObjectSafeRoundWrapper::new(round)))
-    }
-
-    /// Returns the inner boxed type.
-    /// This is an internal method to be used in `Session`.
-    pub(crate) fn into_boxed(self) -> Box<dyn ObjectSafeRound<Id, Protocol = P>> {
-        self.0
-    }
-
-    /// Attempts to extract an object of a concrete type.
-    pub fn downcast<T: Round<Id>>(self) -> Result<T, LocalError> {
-        self.0.downcast::<T>()
-    }
-
-    /// Attempts to extract an object of a concrete type, preserving the original on failure.
-    pub fn try_downcast<T: Round<Id>>(self) -> Result<T, Self> {
-        self.0.try_downcast::<T>().map_err(Self)
-    }
-}
-
 /// A round identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RoundId {
-    round_num: u8,
+    round_nums: TinyVec<[u8; 4]>,
     is_echo: bool,
+}
+
+impl Display for RoundId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "Round ")?;
+        for (i, round_num) in self.round_nums.iter().enumerate().rev() {
+            write!(f, "{}", round_num)?;
+            if i != 0 {
+                write!(f, "-")?;
+            }
+        }
+        if self.is_echo {
+            write!(f, " (echo)")?;
+        }
+        Ok(())
+    }
 }
 
 impl RoundId {
     /// Creates a new round identifier.
     pub fn new(round_num: u8) -> Self {
         Self {
-            round_num,
+            round_nums: tiny_vec!(round_num, 0, 0, 0),
             is_echo: false,
+        }
+    }
+
+    /// Prefixes this round ID (possibly already nested) with a group number.
+    pub(crate) fn group_under(&self, round_num: u8) -> Self {
+        let mut round_nums = self.round_nums.clone();
+        round_nums.push(round_num);
+        Self {
+            round_nums,
+            is_echo: self.is_echo,
+        }
+    }
+
+    /// Removes the top group prefix from this round ID.
+    ///
+    /// Returns the `Err` variant if the round ID is not nested.
+    pub(crate) fn ungroup(&self) -> Result<Self, LocalError> {
+        if self.round_nums.len() == 1 {
+            Err(LocalError::new("This round ID is not in a group"))
+        } else {
+            let mut round_nums = self.round_nums.clone();
+            round_nums.pop().expect("vector size greater than 1");
+            Ok(Self {
+                round_nums,
+                is_echo: self.is_echo,
+            })
         }
     }
 
@@ -100,7 +104,7 @@ impl RoundId {
             panic!("This is already an echo round ID");
         }
         Self {
-            round_num: self.round_num,
+            round_nums: self.round_nums.clone(),
             is_echo: true,
         }
     }
@@ -115,7 +119,7 @@ impl RoundId {
             panic!("This is already an non-echo round ID");
         }
         Self {
-            round_num: self.round_num,
+            round_nums: self.round_nums.clone(),
             is_echo: false,
         }
     }
@@ -127,12 +131,12 @@ pub trait Protocol: 'static {
     type Result: Debug;
 
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
-    type ProtocolError: ProtocolError + Serialize + for<'de> Deserialize<'de>;
+    type ProtocolError: ProtocolError;
 
     /// An object of this type will be returned when an unattributable error happens during [`Round::finalize`].
     ///
     /// It proves that the node did its job correctly, to be adjudicated by a third party.
-    type CorrectnessProof: Send + Serialize + for<'de> Deserialize<'de> + Debug;
+    type CorrectnessProof: CorrectnessProof;
 
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
@@ -181,7 +185,7 @@ pub trait Protocol: 'static {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError: Debug + Clone + Send {
+pub trait ProtocolError: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
     /// A description of the error that will be included in the generated evidence.
     ///
     /// Make it short and informative.
@@ -244,6 +248,40 @@ pub trait ProtocolError: Debug + Clone + Send {
     ) -> Result<(), ProtocolValidationError>;
 }
 
+// A convenience implementation for protocols that don't define any errors.
+// Have to do it for `()`, since `!` is unstable.
+impl ProtocolError for () {
+    fn description(&self) -> String {
+        panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
+    }
+
+    fn verify_messages_constitute_error(
+        &self,
+        _deserializer: &Deserializer,
+        _echo_broadcast: &EchoBroadcast,
+        _normal_broadcast: &NormalBroadcast,
+        _direct_message: &DirectMessage,
+        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
+        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+    ) -> Result<(), ProtocolValidationError> {
+        panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
+    }
+}
+
+/// Describes unattributable errors originating during protocol execution.
+///
+/// In the situations where no specific message can be blamed for an error,
+/// each node must generate a correctness proof proving that they performed their duties correctly,
+/// and the collection of proofs is verified by a third party.
+/// One of the proofs will necessarily be missing or invalid.
+pub trait CorrectnessProof: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {}
+
+// A convenience implementation for protocols that don't define any errors.
+// Have to do it for `()`, since `!` is unstable.
+impl CorrectnessProof for () {}
+
 /// Message payload created in [`Round::receive_message`].
 #[derive(Debug)]
 pub struct Payload(pub Box<dyn Any + Send + Sync>);
@@ -301,9 +339,17 @@ impl Artifact {
 ///
 /// This is a round that can be created directly;
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
-pub trait FirstRound<Id: PartyId>: Round<Id> + Sized {
+pub trait EntryPoint<Id: PartyId> {
     /// Additional inputs for the protocol (besides the mandatory ones in [`new`](`Self::new`)).
     type Inputs;
+
+    /// The protocol implemented by the round this entry points returns.
+    type Protocol: Protocol;
+
+    /// Returns the ID of the round returned by [`Self::new`].
+    fn entry_round() -> RoundId {
+        RoundId::new(1)
+    }
 
     /// Creates the round.
     ///
@@ -314,13 +360,13 @@ pub trait FirstRound<Id: PartyId>: Round<Id> + Sized {
         shared_randomness: &[u8],
         id: Id,
         inputs: Self::Inputs,
-    ) -> Result<Self, LocalError>;
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError>;
 }
 
 /// A trait alias for the combination of traits needed for a party identifier.
-pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync {}
+pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
 
-impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync {}
+impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
 
 /**
 A type representing a single round of a protocol.
@@ -358,35 +404,16 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     ///
     /// Return [`DirectMessage::none`] if this round does not send direct messages.
     ///
-    /// Falls back to [`make_direct_message`](`Self::make_direct_message`) if not implemented.
-    /// This is the method that will be called by the upper layer when creating direct messages.
-    ///
     /// In some protocols, when a message to another node is created, there is some associated information
     /// that needs to be retained for later (randomness, proofs of knowledge, and so on).
     /// These should be put in an [`Artifact`] and will be available at the time of [`finalize`](`Self::finalize`).
-    fn make_direct_message_with_artifact(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        serializer: &Serializer,
-        destination: &Id,
-    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        Ok((self.make_direct_message(rng, serializer, destination)?, None))
-    }
-
-    /// Returns the direct message to the given destination.
-    ///
-    /// This method will not be called by the upper layer directly,
-    /// only via [`make_direct_message_with_artifact`](`Self::make_direct_message_with_artifact`).
-    ///
-    /// Return [`DirectMessage::none`] if this round does not send direct messages.
-    /// This is also the blanket implementation.
     fn make_direct_message(
         &self,
         #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
         #[allow(unused_variables)] serializer: &Serializer,
         #[allow(unused_variables)] destination: &Id,
-    ) -> Result<DirectMessage, LocalError> {
-        Ok(DirectMessage::none())
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+        Ok((DirectMessage::none(), None))
     }
 
     /// Returns the echo broadcast for this round.
@@ -438,7 +465,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     ///
     /// `payloads` here are the ones previously generated by [`receive_message`](`Self::receive_message`),
     /// and `artifacts` are the ones previously generated by
-    /// [`make_direct_message_with_artifact`](`Self::make_direct_message_with_artifact`).
+    /// [`make_direct_message`](`Self::make_direct_message`).
     fn finalize(
         self,
         rng: &mut impl CryptoRngCore,
