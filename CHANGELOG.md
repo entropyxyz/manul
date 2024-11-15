@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Entry points are now stateful; combinator API reworked accordingly. ([#68])
 - `run_sync()` now returns an `ExecutionResult` object. ([#71])
 - `testing` module and feature renamed to `dev` to avoid confusion with tests. ([#71])
+- Correctness proofs are removed from the API. Consequently, `FinalizeError` is removed, and `Round::finalize()` returns a `Result<..., LocalError>`) ([#72])
 
 
 ### Added
@@ -63,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#67]: https://github.com/entropyxyz/manul/pull/67
 [#68]: https://github.com/entropyxyz/manul/pull/68
 [#71]: https://github.com/entropyxyz/manul/pull/71
+[#72]: https://github.com/entropyxyz/manul/pull/72
 
 
 ## [0.0.1] - 2024-10-12

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use tinyvec::TinyVec;
 
 use super::{
-    errors::{FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
+    errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
     object_safe::BoxedRound,
     serialization::{Deserializer, Serializer},
@@ -133,11 +133,6 @@ pub trait Protocol: 'static {
 
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
     type ProtocolError: ProtocolError;
-
-    /// An object of this type will be returned when an unattributable error happens during [`Round::finalize`].
-    ///
-    /// It proves that the node did its job correctly, to be adjudicated by a third party.
-    type CorrectnessProof: CorrectnessProof;
 
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
@@ -270,18 +265,6 @@ impl ProtocolError for () {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
     }
 }
-
-/// Describes unattributable errors originating during protocol execution.
-///
-/// In the situations where no specific message can be blamed for an error,
-/// each node must generate a correctness proof proving that they performed their duties correctly,
-/// and the collection of proofs is verified by a third party.
-/// One of the proofs will necessarily be missing or invalid.
-pub trait CorrectnessProof: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {}
-
-// A convenience implementation for protocols that don't define any errors.
-// Have to do it for `()`, since `!` is unstable.
-impl CorrectnessProof for () {}
 
 /// Message payload created in [`Round::receive_message`].
 #[derive(Debug)]
@@ -510,5 +493,5 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
         rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>>;
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError>;
 }

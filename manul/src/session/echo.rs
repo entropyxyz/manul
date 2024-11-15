@@ -17,9 +17,8 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome,
-        MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
-        Serializer,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeOutcome, MessageValidationError,
+        NormalBroadcast, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     utils::SerializableMap,
 };
@@ -286,7 +285,7 @@ where
         rng: &mut impl CryptoRngCore,
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
-    ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, LocalError> {
         self.main_round
             .into_boxed()
             .finalize(rng, self.payloads, self.artifacts)

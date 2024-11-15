@@ -151,21 +151,6 @@ where
     }
 }
 
-/// An error that can occur during [`Round::finalize`](`super::Round::finalize`).
-#[derive(Debug)]
-pub enum FinalizeError<P: Protocol> {
-    /// A local error, usually indicating a bug in the implementation.
-    Local(LocalError),
-    /// An unattributable error, with an attached proof that this node performed its duties correctly.
-    Unattributable(P::CorrectnessProof),
-}
-
-impl<P: Protocol> From<LocalError> for FinalizeError<P> {
-    fn from(error: LocalError) -> Self {
-        Self::Local(error)
-    }
-}
-
 /// An error that can occur during the validation of an evidence of an invalid message.
 #[derive(Debug, Clone)]
 pub enum MessageValidationError {

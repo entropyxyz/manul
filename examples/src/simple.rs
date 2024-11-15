@@ -85,7 +85,6 @@ impl ProtocolError for SimpleProtocolError {
 impl Protocol for SimpleProtocol {
     type Result = u8;
     type ProtocolError = SimpleProtocolError;
-    type CorrectnessProof = ();
 
     fn verify_direct_message_is_invalid(
         deserializer: &Deserializer,
@@ -275,7 +274,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
             self.context.id,
@@ -378,7 +377,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
             self.context.id,
@@ -388,16 +387,11 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         let typed_payloads = payloads
             .into_values()
             .map(|payload| payload.try_to_typed::<Round1Payload>())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(FinalizeError::Local)?;
+            .collect::<Result<Vec<_>, _>>()?;
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
 
-        if sum != self.round1_sum {
-            return Err(FinalizeError::Unattributable(()));
-        }
-
-        Ok(FinalizeOutcome::Result(sum))
+        Ok(FinalizeOutcome::Result(sum + self.round1_sum))
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id> {
@@ -435,7 +429,7 @@ mod tests {
             .unwrap();
 
         for (_id, result) in results {
-            assert_eq!(result, 3); // 0 + 1 + 2
+            assert_eq!(result, 6); // (0 + 1 + 2) * 2
         }
     }
 }

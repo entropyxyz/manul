@@ -221,49 +221,12 @@ where
     }
 }
 
-/// The correctness proof type for the chained protocol.
-#[derive_where::derive_where(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "
-    <C::Protocol1 as Protocol>::CorrectnessProof: Serialize,
-    <C::Protocol2 as Protocol>::CorrectnessProof: Serialize,
-"))]
-#[serde(bound(deserialize = "
-    <C::Protocol1 as Protocol>::CorrectnessProof: for<'x> Deserialize<'x>,
-    <C::Protocol2 as Protocol>::CorrectnessProof: for<'x> Deserialize<'x>,
-"))]
-pub enum ChainedCorrectnessProof<C>
-where
-    C: ChainedProtocol,
-{
-    /// A correctness proof from the first protocol.
-    Protocol1(<C::Protocol1 as Protocol>::CorrectnessProof),
-    /// A correctness proof from the second protocol.
-    Protocol2(<C::Protocol2 as Protocol>::CorrectnessProof),
-}
-
-impl<C> ChainedCorrectnessProof<C>
-where
-    C: ChainedProtocol,
-{
-    fn from_protocol1(proof: <C::Protocol1 as Protocol>::CorrectnessProof) -> Self {
-        Self::Protocol1(proof)
-    }
-
-    fn from_protocol2(proof: <C::Protocol2 as Protocol>::CorrectnessProof) -> Self {
-        Self::Protocol2(proof)
-    }
-}
-
-impl<C> CorrectnessProof for ChainedCorrectnessProof<C> where C: ChainedProtocol {}
-
 impl<C> Protocol for C
 where
     C: ChainedProtocol,
 {
     type Result = <C::Protocol2 as Protocol>::Result;
     type ProtocolError = ChainedProtocolError<C>;
-    type CorrectnessProof = ChainedCorrectnessProof<C>;
 }
 
 /// A trait defining how the entry point for the whole chained protocol
@@ -504,15 +467,15 @@ where
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         match self.state {
             ChainState::Protocol1 {
                 id,
                 round,
                 transition,
                 shared_randomness,
-            } => match round.into_boxed().finalize(rng, payloads, artifacts) {
-                Ok(FinalizeOutcome::Result(result)) => {
+            } => match round.into_boxed().finalize(rng, payloads, artifacts)? {
+                FinalizeOutcome::Result(result) => {
                     let mut boxed_rng = BoxedRng(rng);
                     let entry_point2 = transition.make_entry_point2(result);
                     let round = entry_point2.make_round(&mut boxed_rng, &shared_randomness, &id)?;
@@ -523,32 +486,24 @@ where
                         },
                     )))
                 }
-                Ok(FinalizeOutcome::AnotherRound(round)) => Ok(FinalizeOutcome::AnotherRound(
-                    BoxedRound::new_object_safe(ChainedRound::<Id, T> {
+                FinalizeOutcome::AnotherRound(round) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
+                    ChainedRound::<Id, T> {
                         state: ChainState::Protocol1 {
                             id,
                             shared_randomness,
                             round,
                             transition,
                         },
-                    }),
-                )),
-                Err(FinalizeError::Local(err)) => Err(FinalizeError::Local(err)),
-                Err(FinalizeError::Unattributable(proof)) => Err(FinalizeError::Unattributable(
-                    ChainedCorrectnessProof::from_protocol1(proof),
-                )),
+                    },
+                ))),
             },
-            ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts) {
-                Ok(FinalizeOutcome::Result(result)) => Ok(FinalizeOutcome::Result(result)),
-                Ok(FinalizeOutcome::AnotherRound(round)) => Ok(FinalizeOutcome::AnotherRound(
-                    BoxedRound::new_object_safe(ChainedRound::<Id, T> {
+            ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts)? {
+                FinalizeOutcome::Result(result) => Ok(FinalizeOutcome::Result(result)),
+                FinalizeOutcome::AnotherRound(round) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
+                    ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
-                    }),
-                )),
-                Err(FinalizeError::Local(err)) => Err(FinalizeError::Local(err)),
-                Err(FinalizeError::Unattributable(proof)) => Err(FinalizeError::Unattributable(
-                    ChainedCorrectnessProof::from_protocol2(proof),
-                )),
+                    },
+                ))),
             },
         }
     }
