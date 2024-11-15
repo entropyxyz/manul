@@ -209,7 +209,7 @@ where
 
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
 /// A wrapped new round that may be returned by [`Round::finalize`]
-/// or [`EntryPoint::new`](`crate::protocol::EntryPoint::new`).
+/// or [`EntryPoint::make_round`](`crate::protocol::EntryPoint::make_round`).
 #[derive_where::derive_where(Debug)]
 pub struct BoxedRound<Id: PartyId, P: Protocol> {
     wrapped: bool,

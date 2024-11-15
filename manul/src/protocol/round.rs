@@ -341,13 +341,10 @@ impl Artifact {
 /// This is a round that can be created directly;
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
 pub trait EntryPoint<Id: PartyId> {
-    /// Additional inputs for the protocol (besides the mandatory ones in [`new`](`Self::new`)).
-    type Inputs;
-
     /// The protocol implemented by the round this entry points returns.
     type Protocol: Protocol;
 
-    /// Returns the ID of the round returned by [`Self::new`].
+    /// Returns the ID of the round returned by [`Self::make_round`].
     fn entry_round() -> RoundId {
         RoundId::new(1)
     }
@@ -356,11 +353,11 @@ pub trait EntryPoint<Id: PartyId> {
     ///
     /// `session_id` can be assumed to be the same for each node participating in a session.
     /// `id` is the ID of this node.
-    fn new(
+    fn make_round(
+        self,
         rng: &mut impl CryptoRngCore,
         shared_randomness: &[u8],
-        id: Id,
-        inputs: Self::Inputs,
+        id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError>;
 }
 

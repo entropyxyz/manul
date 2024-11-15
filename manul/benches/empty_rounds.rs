@@ -11,7 +11,7 @@ use manul::{
         Serializer,
     },
     session::{signature::Keypair, SessionOutcome},
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
+    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -48,18 +48,17 @@ struct Round1Payload;
 
 struct Round1Artifact;
 
-impl<Id: PartyId> EntryPoint<Id> for EmptyRound<Id> {
-    type Inputs = Inputs<Id>;
+impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
     type Protocol = EmptyProtocol;
-    fn new(
+    fn make_round(
+        self,
         _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
-        _id: Id,
-        inputs: Self::Inputs,
+        _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_dynamic(Self {
+        Ok(BoxedRound::new_dynamic(EmptyRound {
             round_counter: 1,
-            inputs,
+            inputs: self,
         }))
     }
 }
@@ -170,7 +169,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
 
-    let inputs_no_echo = signers
+    let entry_points_no_echo = signers
         .iter()
         .cloned()
         .map(|signer| {
@@ -189,17 +188,16 @@ fn bench_empty_rounds(c: &mut Criterion) {
 
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
-            assert!(run_sync::<EmptyRound<TestVerifier>, TestSessionParams<BinaryFormat>>(
-                &mut OsRng,
-                inputs_no_echo.clone()
+            assert!(
+                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_no_echo.clone())
+                    .unwrap()
+                    .values()
+                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
             )
-            .unwrap()
-            .values()
-            .all(|report| matches!(report.outcome, SessionOutcome::Result(_))))
         })
     });
 
-    let inputs_echo = signers
+    let entry_points_echo = signers
         .iter()
         .cloned()
         .map(|signer| {
@@ -220,13 +218,12 @@ fn bench_empty_rounds(c: &mut Criterion) {
 
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
-            assert!(run_sync::<EmptyRound<TestVerifier>, TestSessionParams<BinaryFormat>>(
-                &mut OsRng,
-                inputs_echo.clone()
+            assert!(
+                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_echo.clone())
+                    .unwrap()
+                    .values()
+                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
             )
-            .unwrap()
-            .values()
-            .all(|report| matches!(report.outcome, SessionOutcome::Result(_))))
         })
     });
 

@@ -1,37 +1,69 @@
+use alloc::collections::BTreeSet;
 use core::fmt::Debug;
 
 use manul::{
-    combinators::chain::{Chained, ChainedEntryPoint},
-    protocol::PartyId,
+    combinators::{
+        chain::{Chain, ChainedJoin, ChainedProtocol, ChainedSplit},
+        CombinatorEntryPoint,
+    },
+    protocol::{PartyId, Protocol},
 };
 
-use super::simple::{Inputs, Round1};
+use super::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
 
-pub struct ChainedSimple;
+/// A protocol that runs the [`SimpleProtocol`] twice, in sequence.
+/// Illustrates the chain protocol combinator.
+#[derive(Debug)]
+pub struct DoubleSimpleProtocol;
+
+impl ChainedProtocol for DoubleSimpleProtocol {
+    type Protocol1 = SimpleProtocol;
+    type Protocol2 = SimpleProtocol;
+}
+
+pub struct DoubleSimpleEntryPoint<Id> {
+    all_ids: BTreeSet<Id>,
+}
+
+impl<Id: PartyId> DoubleSimpleEntryPoint<Id> {
+    pub fn new(all_ids: BTreeSet<Id>) -> Self {
+        Self { all_ids }
+    }
+}
+
+impl<Id> CombinatorEntryPoint for DoubleSimpleEntryPoint<Id> {
+    type Combinator = Chain;
+}
+
+impl<Id> ChainedSplit<Id> for DoubleSimpleEntryPoint<Id>
+where
+    Id: PartyId,
+{
+    type Protocol = DoubleSimpleProtocol;
+    type EntryPoint = SimpleProtocolEntryPoint<Id>;
+    fn make_entry_point1(self) -> (Self::EntryPoint, impl ChainedJoin<Id, Protocol = Self::Protocol>) {
+        (
+            SimpleProtocolEntryPoint::new(self.all_ids.clone()),
+            DoubleSimpleProtocolTransition { all_ids: self.all_ids },
+        )
+    }
+}
 
 #[derive(Debug)]
-pub struct NewInputs<Id>(Inputs<Id>);
+struct DoubleSimpleProtocolTransition<Id> {
+    all_ids: BTreeSet<Id>,
+}
 
-impl<'a, Id: PartyId> From<&'a NewInputs<Id>> for Inputs<Id> {
-    fn from(source: &'a NewInputs<Id>) -> Self {
-        source.0.clone()
+impl<Id> ChainedJoin<Id> for DoubleSimpleProtocolTransition<Id>
+where
+    Id: PartyId,
+{
+    type Protocol = DoubleSimpleProtocol;
+    type EntryPoint = SimpleProtocolEntryPoint<Id>;
+    fn make_entry_point2(self, _result: <SimpleProtocol as Protocol>::Result) -> Self::EntryPoint {
+        SimpleProtocolEntryPoint::new(self.all_ids)
     }
 }
-
-impl<Id: PartyId> From<(NewInputs<Id>, u8)> for Inputs<Id> {
-    fn from(source: (NewInputs<Id>, u8)) -> Self {
-        let (inputs, _result) = source;
-        inputs.0
-    }
-}
-
-impl<Id: PartyId> Chained<Id> for ChainedSimple {
-    type Inputs = NewInputs<Id>;
-    type EntryPoint1 = Round1<Id>;
-    type EntryPoint2 = Round1<Id>;
-}
-
-pub type DoubleSimpleEntryPoint<Id> = ChainedEntryPoint<Id, ChainedSimple>;
 
 #[cfg(test)]
 mod tests {
@@ -39,13 +71,12 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
+        testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
 
-    use super::{DoubleSimpleEntryPoint, NewInputs};
-    use crate::simple::Inputs;
+    use super::DoubleSimpleEntryPoint;
 
     #[test]
     fn round() {
@@ -54,24 +85,16 @@ mod tests {
             .iter()
             .map(|signer| signer.verifying_key())
             .collect::<BTreeSet<_>>();
-        let inputs = signers
+        let entry_points = signers
             .into_iter()
-            .map(|signer| {
-                (
-                    signer,
-                    NewInputs(Inputs {
-                        all_ids: all_ids.clone(),
-                    }),
-                )
-            })
+            .map(|signer| (signer, DoubleSimpleEntryPoint::new(all_ids.clone())))
             .collect::<Vec<_>>();
 
         let my_subscriber = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<DoubleSimpleEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, inputs)
-                .unwrap()
+            run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
         });
 
         for (_id, report) in reports {

@@ -51,17 +51,15 @@ impl ProtocolError for PartialEchoProtocolError {
 
 #[derive(Debug, Clone)]
 struct Inputs<Id> {
-    message_destinations: Vec<Id>,
-    expecting_messages_from: Vec<Id>,
+    id: Id,
+    message_destinations: BTreeSet<Id>,
+    expecting_messages_from: BTreeSet<Id>,
     echo_round_participation: EchoRoundParticipation<Id>,
 }
 
 #[derive(Debug)]
 struct Round1<Id> {
-    id: Id,
-    message_destinations: BTreeSet<Id>,
-    expecting_messages_from: BTreeSet<Id>,
-    echo_round_participation: EchoRoundParticipation<Id>,
+    inputs: Inputs<Id>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,23 +67,15 @@ struct Round1Echo<Id> {
     sender: Id,
 }
 
-impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Round1<Id> {
-    type Inputs = Inputs<Id>;
+impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inputs<Id> {
     type Protocol = PartialEchoProtocol;
-    fn new(
+    fn make_round(
+        self,
         _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
-        id: Id,
-        inputs: Self::Inputs,
+        _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        let message_destinations = BTreeSet::from_iter(inputs.message_destinations);
-        let expecting_messages_from = BTreeSet::from_iter(inputs.expecting_messages_from);
-        Ok(BoxedRound::new_dynamic(Self {
-            id,
-            message_destinations,
-            expecting_messages_from,
-            echo_round_participation: inputs.echo_round_participation,
-        }))
+        Ok(BoxedRound::new_dynamic(Round1 { inputs: self }))
     }
 }
 
@@ -101,15 +91,15 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
-        &self.message_destinations
+        &self.inputs.message_destinations
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        &self.expecting_messages_from
+        &self.inputs.expecting_messages_from
     }
 
     fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        self.echo_round_participation.clone()
+        self.inputs.echo_round_participation.clone()
     }
 
     fn make_echo_broadcast(
@@ -117,13 +107,13 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         _rng: &mut impl CryptoRngCore,
         serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
-        if self.message_destinations.is_empty() {
+        if self.inputs.message_destinations.is_empty() {
             Ok(EchoBroadcast::none())
         } else {
             EchoBroadcast::new(
                 serializer,
                 Round1Echo {
-                    sender: self.id.clone(),
+                    sender: self.inputs.id.clone(),
                 },
             )
         }
@@ -141,12 +131,12 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         normal_broadcast.assert_is_none()?;
         direct_message.assert_is_none()?;
 
-        if self.expecting_messages_from.is_empty() {
+        if self.inputs.expecting_messages_from.is_empty() {
             echo_broadcast.assert_is_none()?;
         } else {
             let echo = echo_broadcast.deserialize::<Round1Echo<Id>>(deserializer)?;
             assert_eq!(&echo.sender, from);
-            assert!(self.expecting_messages_from.contains(from));
+            assert!(self.inputs.expecting_messages_from.contains(from));
         }
 
         Ok(Payload::new(()))
@@ -175,24 +165,27 @@ fn partial_echo() {
     let node0 = (
         signers[0],
         Inputs {
-            message_destinations: [ids[1], ids[2], ids[3]].into(),
-            expecting_messages_from: [].into(),
+            id: signers[0].verifying_key(),
+            message_destinations: BTreeSet::from([ids[1], ids[2], ids[3]]),
+            expecting_messages_from: BTreeSet::new(),
             echo_round_participation: EchoRoundParticipation::Send,
         },
     );
     let node1 = (
         signers[1],
         Inputs {
-            message_destinations: [ids[2], ids[3]].into(),
-            expecting_messages_from: [ids[0]].into(),
+            id: signers[1].verifying_key(),
+            message_destinations: BTreeSet::from([ids[2], ids[3]]),
+            expecting_messages_from: BTreeSet::from([ids[0]]),
             echo_round_participation: EchoRoundParticipation::Default,
         },
     );
     let node2 = (
         signers[2],
         Inputs {
-            message_destinations: [].into(),
-            expecting_messages_from: [ids[0], ids[1]].into(),
+            id: signers[2].verifying_key(),
+            message_destinations: BTreeSet::new(),
+            expecting_messages_from: BTreeSet::from([ids[0], ids[1]]),
             echo_round_participation: EchoRoundParticipation::Receive {
                 echo_targets: BTreeSet::from([ids[1], ids[3]]),
             },
@@ -201,8 +194,9 @@ fn partial_echo() {
     let node3 = (
         signers[3],
         Inputs {
-            message_destinations: [].into(),
-            expecting_messages_from: [ids[0], ids[1]].into(),
+            id: signers[3].verifying_key(),
+            message_destinations: BTreeSet::new(),
+            expecting_messages_from: BTreeSet::from([ids[0], ids[1]]),
             echo_round_participation: EchoRoundParticipation::Receive {
                 echo_targets: BTreeSet::from([ids[1], ids[2]]),
             },
@@ -211,19 +205,20 @@ fn partial_echo() {
     let node4 = (
         signers[4],
         Inputs {
-            message_destinations: [].into(),
-            expecting_messages_from: [].into(),
+            id: signers[4].verifying_key(),
+            message_destinations: BTreeSet::new(),
+            expecting_messages_from: BTreeSet::new(),
             echo_round_participation: EchoRoundParticipation::<TestVerifier>::Default,
         },
     );
 
-    let inputs = vec![node0, node1, node2, node3, node4];
+    let entry_points = vec![node0, node1, node2, node3, node4];
 
     let my_subscriber = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<Round1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, inputs).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
     });
 
     for (_id, report) in reports {
