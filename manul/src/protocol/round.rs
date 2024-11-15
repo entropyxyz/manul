@@ -3,7 +3,6 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
-    vec,
     vec::Vec,
 };
 use core::{
@@ -13,7 +12,7 @@ use core::{
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use tinyvec::{tiny_vec, TinyVec};
+use tinyvec::TinyVec;
 
 use super::{
     errors::{FinalizeError, LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
@@ -57,8 +56,10 @@ impl Display for RoundId {
 impl RoundId {
     /// Creates a new round identifier.
     pub fn new(round_num: u8) -> Self {
+        let mut round_nums = TinyVec::new();
+        round_nums.push(round_num);
         Self {
-            round_nums: tiny_vec!(round_num, 0, 0, 0),
+            round_nums,
             is_echo: false,
         }
     }
