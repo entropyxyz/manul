@@ -46,6 +46,8 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
+    fn may_produce_result(&self) -> bool;
+
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
@@ -131,6 +133,10 @@ where
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
         self.round.possible_next_rounds()
+    }
+
+    fn may_produce_result(&self) -> bool {
+        self.round.may_produce_result()
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {

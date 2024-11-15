@@ -375,11 +375,11 @@ where
                     .map(|round_id| round_id.group_under(1))
                     .collect::<BTreeSet<_>>();
 
-                // If there are no next rounds, this is the result round.
-                // This means that in the chain the next round will be the entry round of the second protocol.
-                if next_rounds.is_empty() {
+                if round.as_ref().may_produce_result() {
+                    tracing::debug!("Adding {}", T::EntryPoint::entry_round().group_under(2));
                     next_rounds.insert(T::EntryPoint::entry_round().group_under(2));
                 }
+
                 next_rounds
             }
             ChainState::Protocol2(round) => round
@@ -388,6 +388,13 @@ where
                 .into_iter()
                 .map(|round_id| round_id.group_under(2))
                 .collect(),
+        }
+    }
+
+    fn may_produce_result(&self) -> bool {
+        match &self.state {
+            ChainState::Protocol1 { .. } => false,
+            ChainState::Protocol2(round) => round.as_ref().may_produce_result(),
         }
     }
 

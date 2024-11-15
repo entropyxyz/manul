@@ -324,6 +324,10 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         BTreeSet::new()
     }
 
+    fn may_produce_result(&self) -> bool {
+        true
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         &self.context.other_ids
     }

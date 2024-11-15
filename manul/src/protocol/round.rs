@@ -408,6 +408,13 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// Returns an empty set if this round only finalizes into a result.
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
+    /// Returns ``true`` if this round's [`Round::finalize`] may return [`FinalizeOutcome::Result`].
+    ///
+    /// The blanket implementation returns ``false``.
+    fn may_produce_result(&self) -> bool {
+        false
+    }
+
     /// The destinations of the messages to be sent out by this round.
     ///
     /// The way it is interpreted by the execution layer is

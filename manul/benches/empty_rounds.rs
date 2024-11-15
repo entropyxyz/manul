@@ -78,6 +78,10 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         }
     }
 
+    fn may_produce_result(&self) -> bool {
+        self.inputs.rounds_num == self.round_counter
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         &self.inputs.other_ids
     }

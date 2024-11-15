@@ -179,6 +179,10 @@ where
         self.round.as_ref().possible_next_rounds()
     }
 
+    fn may_produce_result(&self) -> bool {
+        self.round.as_ref().may_produce_result()
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         self.round.as_ref().message_destinations()
     }
