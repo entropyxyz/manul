@@ -2,18 +2,18 @@ use alloc::collections::BTreeSet;
 use core::fmt::Debug;
 
 use manul::{
-    combinators::misbehave::{Misbehaving, MisbehavingEntryPoint, MisbehavingInputs},
+    combinators::misbehave::{Misbehaving, MisbehavingEntryPoint},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
         RoundId, Serializer,
     },
     session::signature::Keypair,
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
+    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;
 
-use crate::simple::{Inputs, Round1, Round1Message, Round2, Round2Message};
+use crate::simple::{Round1, Round1Message, Round2, Round2Message, SimpleProtocolEntryPoint};
 
 #[derive(Debug, Clone, Copy)]
 enum Behavior {
@@ -25,7 +25,7 @@ enum Behavior {
 struct MaliciousLogic;
 
 impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
-    type EntryPoint = Round1<Id>;
+    type EntryPoint = SimpleProtocolEntryPoint<Id>;
 
     fn modify_direct_message(
         _rng: &mut impl CryptoRngCore,
@@ -78,9 +78,8 @@ fn serialized_garbage() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let inputs = Inputs { all_ids };
 
-    let run_inputs = signers
+    let entry_points = signers
         .iter()
         .enumerate()
         .map(|(idx, signer)| {
@@ -90,11 +89,8 @@ fn serialized_garbage() {
                 None
             };
 
-            let malicious_inputs = MisbehavingInputs {
-                inner_inputs: inputs.clone(),
-                behavior,
-            };
-            (*signer, malicious_inputs)
+            let entry_point = MaliciousEntryPoint::new(SimpleProtocolEntryPoint::new(all_ids.clone()), behavior);
+            (*signer, entry_point)
         })
         .collect::<Vec<_>>();
 
@@ -102,7 +98,7 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -124,9 +120,8 @@ fn attributable_failure() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let inputs = Inputs { all_ids };
 
-    let run_inputs = signers
+    let entry_points = signers
         .iter()
         .enumerate()
         .map(|(idx, signer)| {
@@ -136,11 +131,8 @@ fn attributable_failure() {
                 None
             };
 
-            let malicious_inputs = MisbehavingInputs {
-                inner_inputs: inputs.clone(),
-                behavior,
-            };
-            (*signer, malicious_inputs)
+            let entry_point = MaliciousEntryPoint::new(SimpleProtocolEntryPoint::new(all_ids.clone()), behavior);
+            (*signer, entry_point)
         })
         .collect::<Vec<_>>();
 
@@ -148,7 +140,7 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
     });
 
     let v0 = signers[0].verifying_key();
@@ -170,9 +162,8 @@ fn attributable_failure_round2() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let inputs = Inputs { all_ids };
 
-    let run_inputs = signers
+    let entry_points = signers
         .iter()
         .enumerate()
         .map(|(idx, signer)| {
@@ -182,11 +173,8 @@ fn attributable_failure_round2() {
                 None
             };
 
-            let malicious_inputs = MisbehavingInputs {
-                inner_inputs: inputs.clone(),
-                behavior,
-            };
-            (*signer, malicious_inputs)
+            let entry_point = MaliciousEntryPoint::new(SimpleProtocolEntryPoint::new(all_ids.clone()), behavior);
+            (*signer, entry_point)
         })
         .collect::<Vec<_>>();
 
@@ -194,7 +182,7 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<MaliciousEntryPoint<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, run_inputs).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
     });
 
     let v0 = signers[0].verifying_key();

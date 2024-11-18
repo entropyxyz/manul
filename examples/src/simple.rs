@@ -10,6 +10,7 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+#[derive(Debug)]
 pub struct SimpleProtocol;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,11 +112,6 @@ impl Protocol for SimpleProtocol {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Inputs<Id> {
-    pub all_ids: BTreeSet<Id>,
-}
-
 #[derive(Debug)]
 pub(crate) struct Context<Id> {
     pub(crate) id: Id,
@@ -149,30 +145,40 @@ struct Round1Payload {
     x: u8,
 }
 
-impl<Id: PartyId> EntryPoint<Id> for Round1<Id> {
-    type Inputs = Inputs<Id>;
+#[derive(Debug, Clone)]
+pub struct SimpleProtocolEntryPoint<Id> {
+    all_ids: BTreeSet<Id>,
+}
+
+impl<Id: PartyId> SimpleProtocolEntryPoint<Id> {
+    pub fn new(all_ids: BTreeSet<Id>) -> Self {
+        Self { all_ids }
+    }
+}
+
+impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
     type Protocol = SimpleProtocol;
-    fn new(
+    fn make_round(
+        self,
         _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
-        id: Id,
-        inputs: Self::Inputs,
+        id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
         // Just some numbers associated with IDs to use in the dummy protocol.
         // They will be the same on each node since IDs are ordered.
-        let ids_to_positions = inputs
+        let ids_to_positions = self
             .all_ids
             .iter()
             .enumerate()
             .map(|(idx, id)| (id.clone(), idx as u8))
             .collect::<BTreeMap<_, _>>();
 
-        let mut ids = inputs.all_ids;
-        ids.remove(&id);
+        let mut ids = self.all_ids;
+        ids.remove(id);
 
-        Ok(BoxedRound::new_dynamic(Self {
+        Ok(BoxedRound::new_dynamic(Round1 {
             context: Context {
-                id,
+                id: id.clone(),
                 other_ids: ids,
                 ids_to_positions,
             },
@@ -318,6 +324,10 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         BTreeSet::new()
     }
 
+    fn may_produce_result(&self) -> bool {
+        true
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         &self.context.other_ids
     }
@@ -401,12 +411,12 @@ mod tests {
 
     use manul::{
         session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
+        testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;
 
-    use super::{Inputs, Round1};
+    use super::SimpleProtocolEntryPoint;
 
     #[test]
     fn round() {
@@ -415,23 +425,16 @@ mod tests {
             .iter()
             .map(|signer| signer.verifying_key())
             .collect::<BTreeSet<_>>();
-        let inputs = signers
+        let entry_points = signers
             .into_iter()
-            .map(|signer| {
-                (
-                    signer,
-                    Inputs {
-                        all_ids: all_ids.clone(),
-                    },
-                )
-            })
+            .map(|signer| (signer, SimpleProtocolEntryPoint::new(all_ids.clone())))
             .collect::<Vec<_>>();
 
         let my_subscriber = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
         let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<Round1<TestVerifier>, TestSessionParams<BinaryFormat>>(&mut OsRng, inputs).unwrap()
+            run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
         });
 
         for (_id, report) in reports {

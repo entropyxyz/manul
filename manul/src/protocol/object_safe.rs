@@ -46,6 +46,8 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
+    fn may_produce_result(&self) -> bool;
+
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
     fn expecting_messages_from(&self) -> &BTreeSet<Id>;
@@ -133,6 +135,10 @@ where
         self.round.possible_next_rounds()
     }
 
+    fn may_produce_result(&self) -> bool {
+        self.round.may_produce_result()
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         self.round.message_destinations()
     }
@@ -209,7 +215,7 @@ where
 
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
 /// A wrapped new round that may be returned by [`Round::finalize`]
-/// or [`EntryPoint::new`](`crate::protocol::EntryPoint::new`).
+/// or [`EntryPoint::make_round`](`crate::protocol::EntryPoint::make_round`).
 #[derive_where::derive_where(Debug)]
 pub struct BoxedRound<Id: PartyId, P: Protocol> {
     wrapped: bool,

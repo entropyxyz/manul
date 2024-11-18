@@ -142,17 +142,16 @@ where
     SP: SessionParameters,
 {
     /// Initializes a new session.
-    pub fn new<R>(
+    pub fn new<EP>(
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
         signer: SP::Signer,
-        inputs: R::Inputs,
+        entry_point: EP,
     ) -> Result<Self, LocalError>
     where
-        R: EntryPoint<SP::Verifier, Protocol = P>,
+        EP: EntryPoint<SP::Verifier, Protocol = P>,
     {
-        let verifier = signer.verifying_key();
-        let first_round = R::new(rng, session_id.as_ref(), verifier.clone(), inputs)?;
+        let first_round = entry_point.make_round(rng, session_id.as_ref(), &signer.verifying_key())?;
         let serializer = Serializer::new::<SP::WireFormat>();
         let deserializer = Deserializer::new::<SP::WireFormat>();
         Self::new_for_next_round(

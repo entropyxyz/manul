@@ -1,12 +1,12 @@
 /*!
 A combinator allowing one to intercept outgoing messages from a round, and replace or modify them.
 
-The usage is as follows:
+Usage:
 
 1. Define a behavior type, subject to [`Behavior`] bounds.
    This will represent the possible actions the override may perform.
 
-2. Implement [`Misbehaving`] for a type of your choice. Usually it will be an empty token type.
+2. Implement [`Misbehaving`] for a type of your choice. Usually it will be a ZST.
    You will need to specify the entry point for the unmodified protocol,
    and some of `modify_*` methods (the blanket implementations simply pass through the original messages).
 
@@ -18,6 +18,9 @@ The usage is as follows:
 
 5. You can get access to the typed `Round` object by using
    [`BoxedRound::downcast_ref`](`crate::protocol::BoxedRound::downcast_ref`).
+
+6. Use [`MisbehavingEntryPoint`] parametrized by `Id`, the behavior type from step 1, and the type from step 2
+   as the entry point of the new protocol.
 */
 
 use alloc::{
@@ -39,20 +42,6 @@ pub trait Behavior: 'static + Debug + Send + Sync {}
 
 impl<T: 'static + Debug + Send + Sync> Behavior for T {}
 
-/// The new entry point for the misbehaving rounds.
-///
-/// Use as an entry point to run the session, with your ID, behavior `B` and the misbehavior definition `M` set.
-#[derive_where::derive_where(Debug)]
-pub struct MisbehavingEntryPoint<Id, B, M>
-where
-    Id: PartyId,
-    B: Behavior,
-    M: Misbehaving<Id, B>,
-{
-    round: BoxedRound<Id, <M::EntryPoint as EntryPoint<Id>>::Protocol>,
-    behavior: Option<B>,
-}
-
 /// A trait defining a sequence of misbehaving rounds modifying or replacing the messages sent by some existing ones.
 ///
 /// Override one or more optional methods to modify the specific messages.
@@ -62,7 +51,7 @@ where
     B: Behavior,
 {
     /// The entry point of the wrapped rounds.
-    type EntryPoint: EntryPoint<Id>;
+    type EntryPoint: Debug + EntryPoint<Id>;
 
     /// Called after [`Round::make_echo_broadcast`](`crate::protocol::Round::make_echo_broadcast`)
     /// and may modify its result.
@@ -115,20 +104,30 @@ where
     }
 }
 
-/// The inputs for the misbehaving rounds.
-#[derive_where::derive_where(Debug; <M::EntryPoint as EntryPoint<Id>>::Inputs)]
-pub struct MisbehavingInputs<Id, B, M>
+/// The new entry point for the misbehaving rounds.
+///
+/// Use as an entry point to run the session, with your ID, the behavior `B` and the misbehavior definition `M` set.
+#[derive_where::derive_where(Debug)]
+pub struct MisbehavingEntryPoint<Id, B, M>
 where
     Id: PartyId,
     B: Behavior,
     M: Misbehaving<Id, B>,
 {
-    /// The behavior for the rounds starting with these inputs.
-    ///
-    /// If `None`, all the changed behavior will be skipped.
-    pub behavior: Option<B>,
-    /// The inputs for the wrapped rounds.
-    pub inner_inputs: <M::EntryPoint as EntryPoint<Id>>::Inputs,
+    entry_point: M::EntryPoint,
+    behavior: Option<B>,
+}
+
+impl<Id, B, M> MisbehavingEntryPoint<Id, B, M>
+where
+    Id: PartyId,
+    B: Behavior,
+    M: Misbehaving<Id, B>,
+{
+    /// Creates an entry point for the misbehaving protocol using an entry point for the inner protocol.
+    pub fn new(entry_point: M::EntryPoint, behavior: Option<B>) -> Self {
+        Self { entry_point, behavior }
+    }
 }
 
 impl<Id, B, M> EntryPoint<Id> for MisbehavingEntryPoint<Id, B, M>
@@ -137,24 +136,34 @@ where
     B: Behavior,
     M: Misbehaving<Id, B>,
 {
-    type Inputs = MisbehavingInputs<Id, B, M>;
     type Protocol = <M::EntryPoint as EntryPoint<Id>>::Protocol;
 
-    fn new(
+    fn make_round(
+        self,
         rng: &mut impl CryptoRngCore,
         shared_randomness: &[u8],
-        id: Id,
-        inputs: Self::Inputs,
-    ) -> Result<BoxedRound<Id, <M::EntryPoint as EntryPoint<Id>>::Protocol>, LocalError> {
-        let round = M::EntryPoint::new(rng, shared_randomness, id, inputs.inner_inputs)?;
-        Ok(BoxedRound::new_object_safe(Self {
+        id: &Id,
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
+        let round = self.entry_point.make_round(rng, shared_randomness, id)?;
+        Ok(BoxedRound::new_object_safe(MisbehavingRound::<Id, B, M> {
             round,
-            behavior: inputs.behavior,
+            behavior: self.behavior,
         }))
     }
 }
 
-impl<Id, B, M> ObjectSafeRound<Id> for MisbehavingEntryPoint<Id, B, M>
+#[derive_where::derive_where(Debug)]
+struct MisbehavingRound<Id, B, M>
+where
+    Id: PartyId,
+    B: Behavior,
+    M: Misbehaving<Id, B>,
+{
+    round: BoxedRound<Id, <M::EntryPoint as EntryPoint<Id>>::Protocol>,
+    behavior: Option<B>,
+}
+
+impl<Id, B, M> ObjectSafeRound<Id> for MisbehavingRound<Id, B, M>
 where
     Id: PartyId,
     B: Behavior,
@@ -168,6 +177,10 @@ where
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
         self.round.as_ref().possible_next_rounds()
+    }
+
+    fn may_produce_result(&self) -> bool {
+        self.round.as_ref().may_produce_result()
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
@@ -284,12 +297,12 @@ where
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
         match self.round.into_boxed().finalize(rng, payloads, artifacts) {
             Ok(FinalizeOutcome::Result(result)) => Ok(FinalizeOutcome::Result(result)),
-            Ok(FinalizeOutcome::AnotherRound(round)) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
-                MisbehavingEntryPoint::<Id, B, M> {
+            Ok(FinalizeOutcome::AnotherRound(round)) => {
+                Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(Self {
                     round,
                     behavior: self.behavior,
-                },
-            ))),
+                })))
+            }
             Err(err) => Err(err),
         }
     }

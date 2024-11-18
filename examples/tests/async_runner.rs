@@ -10,7 +10,7 @@ use manul::{
     },
     testing::{BinaryFormat, TestSessionParams, TestSigner},
 };
-use manul_example::simple::{Inputs, Round1, SimpleProtocol};
+use manul_example::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
 use rand::Rng;
 use rand_core::OsRng;
 use tokio::{
@@ -256,10 +256,8 @@ async fn async_run() {
     let sessions = signers
         .into_iter()
         .map(|signer| {
-            let inputs = Inputs {
-                all_ids: all_ids.clone(),
-            };
-            SimpleSession::new::<Round1<_>>(&mut OsRng, session_id.clone(), signer, inputs).unwrap()
+            let entry_point = SimpleProtocolEntryPoint::new(all_ids.clone());
+            SimpleSession::new(&mut OsRng, session_id.clone(), signer, entry_point).unwrap()
         })
         .collect::<Vec<_>>();
 

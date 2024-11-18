@@ -86,15 +86,15 @@ where
     Ok((state, messages))
 }
 
-/// Execute sessions for multiple nodes concurrently, given the the inputs
-/// for the first round `R` and the signer for each node.
+/// Execute sessions for multiple nodes concurrently,
+/// given a vector of the signer and the entry point as a tuple for each node.
 #[allow(clippy::type_complexity)]
-pub fn run_sync<R, SP>(
+pub fn run_sync<EP, SP>(
     rng: &mut impl CryptoRngCore,
-    inputs: Vec<(SP::Signer, R::Inputs)>,
-) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
+    entry_points: Vec<(SP::Signer, EP)>,
+) -> Result<BTreeMap<SP::Verifier, SessionReport<EP::Protocol, SP>>, LocalError>
 where
-    R: EntryPoint<SP::Verifier>,
+    EP: EntryPoint<SP::Verifier>,
     SP: SessionParameters,
 {
     let session_id = SessionId::random::<SP>(rng);
@@ -102,9 +102,9 @@ where
     let mut messages = Vec::new();
     let mut states = BTreeMap::new();
 
-    for (signer, inputs) in inputs {
+    for (signer, entry_point) in entry_points {
         let verifier = signer.verifying_key();
-        let session = Session::<_, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
+        let session = Session::<_, SP>::new(rng, session_id.clone(), signer, entry_point)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();
