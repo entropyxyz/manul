@@ -29,8 +29,9 @@ use core::fmt::Debug;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError,
-    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ReceiveError, RoundId, Serializer,
+    Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+    FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ReceiveError,
+    RoundId, Serializer,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -173,6 +174,14 @@ where
         self.round.as_ref().message_destinations()
     }
 
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        self.round.as_ref().expecting_messages_from()
+    }
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
+        self.round.as_ref().echo_round_participation()
+    }
+
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
@@ -283,9 +292,5 @@ where
             ))),
             Err(err) => Err(err),
         }
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        self.round.as_ref().expecting_messages_from()
     }
 }

@@ -369,6 +369,25 @@ pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for
 
 impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
 
+/// The specific way the node participates in the echo round (if any).
+#[derive(Debug, Clone)]
+pub enum EchoRoundParticipation<Id> {
+    /// The default behavior: sends broadcasts and receives echoed messages, or does neither.
+    ///
+    /// That is, this node will be a part of the echo round if [`Round::make_echo_broadcast`] generates a message.
+    Default,
+
+    /// This node sends broadcasts that will be echoed, but does not receive any.
+    Send,
+
+    /// This node receives broadcasts that it needs to echo, but does not send any itself.
+    Receive {
+        /// The other participants of the echo round
+        /// (that is, the nodes to which echoed messages will be sent).
+        echo_targets: BTreeSet<Id>,
+    },
+}
+
 /**
 A type representing a single round of a protocol.
 
@@ -400,6 +419,21 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     ///   which means [`make_direct_message`](`Self::make_direct_message`) may be called
     ///   for each element of the returned set.
     fn message_destinations(&self) -> &BTreeSet<Id>;
+
+    /// Returns the set of node IDs from which this round expects messages.
+    ///
+    /// The execution layer will not call [`finalize`](`Self::finalize`) until all these nodes have responded
+    /// (and the corresponding [`receive_message`](`Self::receive_message`) finished successfully).
+    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
+
+    /// Returns the specific way the node participates in the echo round following this round.
+    ///
+    /// Returns [`EchoRoundParticipation::Default`] by default; this works fine when every node
+    /// sends messages to every other one, or do not send or receive any echo broadcasts.
+    /// Otherwise, review the options in [`EchoRoundParticipation`] and pick the appropriate one.
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
+        EchoRoundParticipation::Default
+    }
 
     /// Returns the direct message to the given destination and (maybe) an accompanying artifact.
     ///
@@ -473,10 +507,4 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>>;
-
-    /// Returns the set of node IDs from which this round expects messages.
-    ///
-    /// The execution layer will not call [`finalize`](`Self::finalize`) until all these nodes have responded
-    /// (and the corresponding [`receive_message`](`Self::receive_message`) finished successfully).
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
 }

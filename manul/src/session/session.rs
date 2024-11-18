@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
-    NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundId,
-    Serializer,
+    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+    FinalizeError, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError,
+    ReceiveErrorType, RoundId, Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -97,6 +97,13 @@ impl AsRef<[u8]> for SessionId {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct EchoRoundInfo<Verifier> {
+    pub(crate) message_destinations: BTreeSet<Verifier>,
+    pub(crate) expecting_messages_from: BTreeSet<Verifier>,
+    pub(crate) expected_echos: BTreeSet<Verifier>,
+}
+
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
 #[derive(Debug)]
@@ -108,6 +115,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
     deserializer: Deserializer,
     round: BoxedRound<SP::Verifier, P>,
     message_destinations: BTreeSet<SP::Verifier>,
+    echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
     possible_next_rounds: BTreeSet<RoundId>,
@@ -177,10 +185,36 @@ where
 
         let message_destinations = round.as_ref().message_destinations().clone();
 
-        let possible_next_rounds = if echo_broadcast.payload().is_none() {
-            round.as_ref().possible_next_rounds()
-        } else {
+        let echo_round_participation = round.as_ref().echo_round_participation();
+
+        let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
+        let echo_round_info = match echo_round_participation {
+            EchoRoundParticipation::Default => {
+                if round_sends_echo_broadcast {
+                    // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
+                    let mut expected_echos = round.as_ref().expecting_messages_from().clone();
+                    expected_echos.insert(verifier.clone());
+                    Some(EchoRoundInfo {
+                        message_destinations: message_destinations.clone(),
+                        expecting_messages_from: message_destinations.clone(),
+                        expected_echos,
+                    })
+                } else {
+                    None
+                }
+            }
+            EchoRoundParticipation::Send => None,
+            EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
+                message_destinations: echo_targets.clone(),
+                expecting_messages_from: echo_targets,
+                expected_echos: round.as_ref().expecting_messages_from().clone(),
+            }),
+        };
+
+        let possible_next_rounds = if echo_round_info.is_some() {
             BTreeSet::from([round.id().echo()])
+        } else {
+            round.as_ref().possible_next_rounds()
         };
 
         Ok(Self {
@@ -194,6 +228,7 @@ where
             normal_broadcast,
             possible_next_rounds,
             message_destinations,
+            echo_round_info,
             transcript,
         })
     }
@@ -455,13 +490,12 @@ where
             accum.still_have_not_sent_messages,
         )?;
 
-        let echo_round_needed = !self.echo_broadcast.payload().is_none();
-
-        if echo_round_needed {
+        if let Some(echo_round_info) = self.echo_round_info {
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
                 self.echo_broadcast,
                 transcript.echo_broadcasts(round_id)?,
+                echo_round_info,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
