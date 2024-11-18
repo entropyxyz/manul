@@ -4,13 +4,14 @@ use alloc::{
 };
 use core::fmt::Debug;
 
-use super::{evidence::Evidence, message::SignedMessage, session::SessionParameters, LocalError, RemoteError};
-use crate::protocol::{DirectMessage, EchoBroadcast, Protocol, RoundId};
+use super::{evidence::Evidence, message::SignedMessagePart, session::SessionParameters, LocalError, RemoteError};
+use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId};
 
 #[derive(Debug)]
 pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
-    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>>,
-    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>>,
+    echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>>,
+    normal_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>>,
+    direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>>,
     provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
     missing_messages: BTreeMap<RoundId, BTreeSet<SP::Verifier>>,
@@ -24,6 +25,7 @@ where
     pub fn new() -> Self {
         Self {
             echo_broadcasts: BTreeMap::new(),
+            normal_broadcasts: BTreeMap::new(),
             direct_messages: BTreeMap::new(),
             provable_errors: BTreeMap::new(),
             unprovable_errors: BTreeMap::new(),
@@ -31,17 +33,19 @@ where
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         self,
-        round_id: RoundId,
-        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
-        direct_messages: BTreeMap<SP::Verifier, SignedMessage<DirectMessage>>,
+        round_id: &RoundId,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
+        normal_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>,
+        direct_messages: BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>,
         provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
         unprovable_errors: BTreeMap<SP::Verifier, RemoteError>,
         missing_messages: BTreeSet<SP::Verifier>,
     ) -> Result<Self, LocalError> {
         let mut all_echo_broadcasts = self.echo_broadcasts;
-        match all_echo_broadcasts.entry(round_id) {
+        match all_echo_broadcasts.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(echo_broadcasts),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
@@ -50,8 +54,18 @@ where
             }
         };
 
+        let mut all_normal_broadcasts = self.normal_broadcasts;
+        match all_normal_broadcasts.entry(round_id.clone()) {
+            Entry::Vacant(entry) => entry.insert(normal_broadcasts),
+            Entry::Occupied(_) => {
+                return Err(LocalError::new(format!(
+                    "A normal-broadcasts entry for {round_id:?} already exists"
+                )))
+            }
+        };
+
         let mut all_direct_messages = self.direct_messages;
-        match all_direct_messages.entry(round_id) {
+        match all_direct_messages.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(direct_messages),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
@@ -79,7 +93,7 @@ where
         }
 
         let mut all_missing_messages = self.missing_messages;
-        match all_missing_messages.entry(round_id) {
+        match all_missing_messages.entry(round_id.clone()) {
             Entry::Vacant(entry) => entry.insert(missing_messages),
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
@@ -90,6 +104,7 @@ where
 
         Ok(Self {
             echo_broadcasts: all_echo_broadcasts,
+            normal_broadcasts: all_normal_broadcasts,
             direct_messages: all_direct_messages,
             provable_errors: all_provable_errors,
             unprovable_errors: all_unprovable_errors,
@@ -101,7 +116,7 @@ where
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<EchoBroadcast>, LocalError> {
+    ) -> Result<SignedMessagePart<EchoBroadcast>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {round_id:?}")))?
@@ -110,11 +125,24 @@ where
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {from:?} in {round_id:?}")))
     }
 
+    pub fn get_normal_broadcast(
+        &self,
+        round_id: RoundId,
+        from: &SP::Verifier,
+    ) -> Result<SignedMessagePart<NormalBroadcast>, LocalError> {
+        self.normal_broadcasts
+            .get(&round_id)
+            .ok_or_else(|| LocalError::new(format!("No normal broadcasts registered for {round_id:?}")))?
+            .get(from)
+            .cloned()
+            .ok_or_else(|| LocalError::new(format!("No normal broadcasts registered for {from:?} in {round_id:?}")))
+    }
+
     pub fn get_direct_message(
         &self,
         round_id: RoundId,
         from: &SP::Verifier,
-    ) -> Result<SignedMessage<DirectMessage>, LocalError> {
+    ) -> Result<SignedMessagePart<DirectMessage>, LocalError> {
         self.direct_messages
             .get(&round_id)
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {round_id:?}")))?
@@ -130,7 +158,7 @@ where
     pub fn echo_broadcasts(
         &self,
         round_id: RoundId,
-    ) -> Result<BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>, LocalError> {
+    ) -> Result<BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>, LocalError> {
         self.echo_broadcasts
             .get(&round_id)
             .cloned()
@@ -146,10 +174,13 @@ pub enum SessionOutcome<P: Protocol> {
     /// The execution stalled because of an unattributable error,
     /// but the protocol created a proof that this node performed its duties correctly.
     ///
-    /// This protocol is supposed to be passed to a third party for adjudication.
+    /// This proof is supposed to be passed to a third party for adjudication,
+    /// along with the proofs from the other nodes.
     StalledWithProof(P::CorrectnessProof),
     /// The execution stalled because not enough messages were received to finalize the round.
     NotEnoughMessages,
+    /// The execution was terminated by the user.
+    Terminated,
 }
 
 /// The report of a session execution.

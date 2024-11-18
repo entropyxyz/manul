@@ -1,16 +1,14 @@
 extern crate alloc;
 
-use std::fmt::Debug;
-
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
     protocol::Protocol,
     session::{
-        signature::Keypair, CanFinalize, LocalError, MessageBundle, RoundOutcome, Session, SessionId,
-        SessionParameters, SessionReport,
+        signature::Keypair, CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters,
+        SessionReport,
     },
-    testing::{TestSessionParams, TestSigner},
+    testing::{BinaryFormat, TestSessionParams, TestSigner},
 };
 use manul_example::simple::{Inputs, Round1, SimpleProtocol};
 use rand::Rng;
@@ -25,12 +23,12 @@ use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: MessageBundle,
+    message: Message<SP::Verifier>,
 }
 
 struct MessageIn<SP: SessionParameters> {
     from: SP::Verifier,
-    message: MessageBundle,
+    message: Message<SP::Verifier>,
 }
 
 /// Runs a session. Simulates what each participating party would run as the protocol progresses.
@@ -40,8 +38,8 @@ async fn run_session<P, SP>(
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol,
+    SP: SessionParameters,
 {
     let rng = &mut OsRng;
 
@@ -114,7 +112,7 @@ where
                 // Terminating.
                 CanFinalize::Never => {
                     tracing::warn!("{key:?}: This session cannot ever be finalized. Terminating.");
-                    return session.terminate(accum);
+                    return session.terminate_due_to_errors(accum);
                 }
             }
 
@@ -122,7 +120,10 @@ where
             let incoming = rx.recv().await.unwrap();
 
             // Perform quick checks before proceeding with the verification.
-            match session.preprocess_message(&mut accum, &incoming.from, incoming.message)? {
+            match session
+                .preprocess_message(&mut accum, &incoming.from, incoming.message)?
+                .ok()
+            {
                 Some(preprocessed) => {
                     // In production usage, this would happen in a separate task.
                     debug!("{key:?}: Applying a message from {:?}", incoming.from);
@@ -196,8 +197,8 @@ async fn message_dispatcher<SP>(
 
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: 'static + Protocol + Send,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol + Send,
+    SP: SessionParameters,
     P::Result: Send,
     SP::Signer: Send,
 {
@@ -241,7 +242,7 @@ where
 #[tokio::test]
 async fn async_run() {
     // The kind of Session we need to run the `SimpleProtocol`.
-    type SimpleSession = Session<SimpleProtocol, TestSessionParams>;
+    type SimpleSession = Session<SimpleProtocol, TestSessionParams<BinaryFormat>>;
 
     // Create 4 parties
     let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
@@ -249,7 +250,7 @@ async fn async_run() {
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
-    let session_id = SessionId::random::<TestSessionParams>(&mut OsRng);
+    let session_id = SessionId::random::<TestSessionParams<BinaryFormat>>(&mut OsRng);
 
     // Create 4 `Session`s
     let sessions = signers

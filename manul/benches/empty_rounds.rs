@@ -6,11 +6,12 @@ use core::fmt::Debug;
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     protocol::{
-        Artifact, DeserializationError, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, FirstRound,
-        LocalError, Payload, Protocol, ProtocolError, ProtocolValidationError, ReceiveError, Round, RoundId,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
+        LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Serializer,
     },
     session::{signature::Keypair, SessionOutcome},
-    testing::{run_sync, TestSessionParams, TestSigner, TestVerifier},
+    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -18,37 +19,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug)]
 pub struct EmptyProtocol;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmptyProtocolError;
-
-impl ProtocolError for EmptyProtocolError {
-    fn verify_messages_constitute_error(
-        &self,
-        _echo_broadcast: &Option<EchoBroadcast>,
-        _direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
-    ) -> Result<(), ProtocolValidationError> {
-        unimplemented!()
-    }
-}
-
 impl Protocol for EmptyProtocol {
     type Result = ();
-    type ProtocolError = EmptyProtocolError;
+    type ProtocolError = ();
     type CorrectnessProof = ();
-
-    fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError> {
-        bincode::serde::encode_to_vec(value, bincode::config::standard())
-            .map(|vec| vec.into())
-            .map_err(|err| LocalError::new(err.to_string()))
-    }
-
-    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError> {
-        bincode::serde::decode_borrowed_from_slice(bytes, bincode::config::standard())
-            .map_err(|err| DeserializationError::new(err.to_string()))
-    }
 }
 
 #[derive(Debug)]
@@ -74,22 +48,23 @@ struct Round1Payload;
 
 struct Round1Artifact;
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> FirstRound<Id> for EmptyRound<Id> {
+impl<Id: PartyId> EntryPoint<Id> for EmptyRound<Id> {
     type Inputs = Inputs<Id>;
+    type Protocol = EmptyProtocol;
     fn new(
         _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
         _id: Id,
         inputs: Self::Inputs,
-    ) -> Result<Self, LocalError> {
-        Ok(Self {
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
+        Ok(BoxedRound::new_dynamic(Self {
             round_counter: 1,
             inputs,
-        })
+        }))
     }
 }
 
-impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<Id> {
+impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     type Protocol = EmptyProtocol;
 
     fn id(&self) -> RoundId {
@@ -108,35 +83,45 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         &self.inputs.other_ids
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Option<Result<EchoBroadcast, LocalError>> {
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
-            Some(Self::serialize_echo_broadcast(Round1EchoBroadcast))
+            EchoBroadcast::new(serializer, Round1EchoBroadcast)
         } else {
-            None
+            Ok(EchoBroadcast::none())
         }
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
         _destination: &Id,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
-        let dm = Self::serialize_direct_message(Round1DirectMessage)?;
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+        let dm = DirectMessage::new(serializer, Round1DirectMessage)?;
         let artifact = Artifact::new(Round1Artifact);
-        Ok((dm, artifact))
+        Ok((dm, Some(artifact)))
     }
 
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         _from: &Id,
-        echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        let _echo_broadcast = echo_broadcast
-            .map(|echo| echo.deserialize::<EmptyProtocol, Round1EchoBroadcast>())
-            .transpose()?;
-        let _direct_message = direct_message.deserialize::<EmptyProtocol, Round1DirectMessage>()?;
+        if self.inputs.echo {
+            let _echo_broadcast = echo_broadcast.deserialize::<Round1EchoBroadcast>(deserializer)?;
+        } else {
+            echo_broadcast.assert_is_none()?;
+        }
+        normal_broadcast.assert_is_none()?;
+        let _direct_message = direct_message.deserialize::<Round1DirectMessage>(deserializer)?;
         Ok(Payload::new(Round1Payload))
     }
 
@@ -156,11 +141,11 @@ impl<Id: 'static + Debug + Clone + Ord + Send + Sync> Round<Id> for EmptyRound<I
         if self.round_counter == self.inputs.rounds_num {
             Ok(FinalizeOutcome::Result(()))
         } else {
-            let round = EmptyRound {
+            let round = BoxedRound::new_dynamic(EmptyRound {
                 round_counter: self.round_counter + 1,
                 inputs: self.inputs,
-            };
-            Ok(FinalizeOutcome::another_round(round))
+            });
+            Ok(FinalizeOutcome::AnotherRound(round))
         }
     }
 
@@ -204,12 +189,13 @@ fn bench_empty_rounds(c: &mut Criterion) {
 
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
-            assert!(
-                run_sync::<EmptyRound<TestVerifier>, TestSessionParams>(&mut OsRng, inputs_no_echo.clone())
-                    .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+            assert!(run_sync::<EmptyRound<TestVerifier>, TestSessionParams<BinaryFormat>>(
+                &mut OsRng,
+                inputs_no_echo.clone()
             )
+            .unwrap()
+            .values()
+            .all(|report| matches!(report.outcome, SessionOutcome::Result(_))))
         })
     });
 
@@ -234,12 +220,13 @@ fn bench_empty_rounds(c: &mut Criterion) {
 
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
-            assert!(
-                run_sync::<EmptyRound<TestVerifier>, TestSessionParams>(&mut OsRng, inputs_echo.clone())
-                    .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+            assert!(run_sync::<EmptyRound<TestVerifier>, TestSessionParams<BinaryFormat>>(
+                &mut OsRng,
+                inputs_echo.clone()
             )
+            .unwrap()
+            .values()
+            .all(|report| matches!(report.outcome, SessionOutcome::Result(_))))
         })
     });
 

@@ -13,18 +13,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `Test` prefix to `testing::Signer`/`Verifier`/`Signature`/`Hasher` and renamed `TestingSessionParams` to `TestSessionParams`. ([#40])
 - `SessionId::new()` renamed to `from_seed()`. ([#41])
 - `FirstRound::new()` takes a `&[u8]` instead of a `SessionId` object. ([#41])
+- The signatures of `Round::make_echo_broadcast()`, `Round::make_direct_message()`, and `Round::receive_message()`, take messages without `Option`s. ([#46])
+- `Artifact::empty()` removed, the user should return `None` instead. ([#46])
+- `EchoBroadcast` and `DirectMessage` now use `ProtocolMessagePart` trait for their methods. ([#47])
+- Added normal broadcasts support in addition to echo ones; signatures of `Round` methods changed accordingly; added `Round::make_normal_broadcast()`. ([#47])
+- Serialization format is a part of `SessionParameters` now; `Round` and `Protocol` methods receive dynamic serializers/deserializers. ([#33])
+- Renamed `(Verified)MessageBundle` to `(Verified)Message`. Both are now generic over `Verifier`. ([#56])
+- `Session::preprocess_message()` now returns a `PreprocessOutcome` instead of just an `Option`. ([#57])
+- `Session::terminate_due_to_errors()` replaces `terminate()`; `terminate()` now signals user interrupt. ([#58])
+- Renamed `FirstRound` trait to `EntryPoint`. ([#60])
+- Added `Protocol` type to `EntryPoint`. ([#60])
+- `EntryPoint` and `FinalizeOutcome::AnotherRound` now use a new `BoxedRound` wrapper type. ([#60])
+- `PartyId` and `ProtocolError` are now bound on `Serialize`/`Deserialize`. ([#60])
 
 
 ### Added
 
 - `SerializableMap` wrapper for `BTreeMap` supporting more formats and providing some safety features. (#[32])
+- `DirectMessage::assert_is_none()` and `verify_is_some()`, same for `EchoBroadcast`. Users can now check that a part of the round message (echo or direct) is `None` as expected, and make a verifiable evidence if it is not. ([#46])
+- Re-export `digest` from the `session` module. ([#56])
+- Added `Message::destination()`. ([#56])
+- `PartyId` trait alias for the combination of bounds needed for a party identifier. ([#59])
+- An impl of `ProtocolError` for `()` for protocols that don't use errors. ([#60])
+- A dummy `CorrectnessProof` trait. ([#60])
+- A `misbehave` combinator, intended primarily for testing. ([#60])
+- A `chain` combinator for chaining two protocols. ([#60])
+- `EntryPoint::ENTRY_ROUND` constant. ([#60])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
+[#33]: https://github.com/entropyxyz/manul/pull/33
 [#36]: https://github.com/entropyxyz/manul/pull/36
 [#37]: https://github.com/entropyxyz/manul/pull/37
 [#40]: https://github.com/entropyxyz/manul/pull/40
 [#41]: https://github.com/entropyxyz/manul/pull/41
+[#46]: https://github.com/entropyxyz/manul/pull/46
+[#47]: https://github.com/entropyxyz/manul/pull/47
+[#56]: https://github.com/entropyxyz/manul/pull/56
+[#57]: https://github.com/entropyxyz/manul/pull/57
+[#58]: https://github.com/entropyxyz/manul/pull/58
+[#59]: https://github.com/entropyxyz/manul/pull/59
+[#60]: https://github.com/entropyxyz/manul/pull/60
 
 
 ## [0.0.1] - 2024-10-12

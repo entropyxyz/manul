@@ -16,6 +16,7 @@
 
 extern crate alloc;
 
+pub mod combinators;
 pub mod protocol;
 pub mod session;
 pub(crate) mod utils;

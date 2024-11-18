@@ -1,7 +1,7 @@
 use alloc::{
-    boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
+    string::String,
     vec::Vec,
 };
 use core::fmt::Debug;
@@ -11,39 +11,75 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    message::{MessageVerificationError, SignedMessage},
+    message::{MessageVerificationError, SignedMessagePart},
     session::SessionParameters,
     LocalError,
 };
 use crate::{
     protocol::{
-        Artifact, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome, ObjectSafeRound, Payload, Protocol,
-        ReceiveError, Round, RoundId,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome,
+        MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Serializer,
     },
     utils::SerializableMap,
 };
 
+/// An error that can occur on receiving a message during an echo round.
 #[derive(Debug)]
 pub(crate) enum EchoRoundError<Id> {
+    /// The node who constructed the echoed message pack included an invalid message in it.
+    ///
+    /// This is the fault of the sender of the echo pack.
+    ///
+    /// The attached identifier points out the sender for whom the echoed message was invalid,
+    /// to speed up the verification process.
     InvalidEcho(Id),
-    InvalidBroadcast(Id),
+    /// The originally received message and the one received in the echo pack were both valid,
+    /// but different.
+    ///
+    /// This is the fault of the sender of that specific broadcast.
+    MismatchedBroadcasts {
+        guilty_party: Id,
+        error: MismatchedBroadcastsError,
+        we_received: SignedMessagePart<EchoBroadcast>,
+        echoed_to_us: SignedMessagePart<EchoBroadcast>,
+    },
+}
+
+impl<Id> EchoRoundError<Id> {
+    pub(crate) fn description(&self) -> String {
+        match self {
+            Self::InvalidEcho(_) => "Invalid message received among the ones echoed".into(),
+            Self::MismatchedBroadcasts { .. } => {
+                "The echoed message is different from the originally received one".into()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) enum MismatchedBroadcastsError {
+    /// The originally received message and the echoed one had different payloads.
+    DifferentPayloads,
+    /// The originally received message and the echoed one had different signatures.
+    DifferentSignatures,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EchoRoundMessage<SP: SessionParameters> {
-    pub(crate) echo_messages: SerializableMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
+    pub(super) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
 }
 
 /// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
 /// participants. The execution layer of the protocol guarantees that all participants have received
 /// the messages.
-#[derive(Debug)]
-pub struct EchoRound<P, SP: SessionParameters> {
+#[derive_where::derive_where(Debug)]
+pub struct EchoRound<P: Protocol, SP: SessionParameters> {
     verifier: SP::Verifier,
-    echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
+    echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
     destinations: BTreeSet<SP::Verifier>,
     expected_echos: BTreeSet<SP::Verifier>,
-    main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+    main_round: BoxedRound<SP::Verifier, P>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
 }
@@ -55,25 +91,25 @@ where
 {
     pub fn new(
         verifier: SP::Verifier,
-        my_echo_message: SignedMessage<EchoBroadcast>,
-        echo_messages: BTreeMap<SP::Verifier, SignedMessage<EchoBroadcast>>,
-        main_round: Box<dyn ObjectSafeRound<SP::Verifier, Protocol = P>>,
+        my_echo_broadcast: SignedMessagePart<EchoBroadcast>,
+        echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
+        main_round: BoxedRound<SP::Verifier, P>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
-        let destinations = echo_messages.keys().cloned().collect::<BTreeSet<_>>();
+        let destinations = echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
 
         // Add our own echo message because we expect it to be sent back from other nodes.
         let mut expected_echos = destinations.clone();
         expected_echos.insert(verifier.clone());
 
-        let mut echo_messages = echo_messages;
-        echo_messages.insert(verifier.clone(), my_echo_message);
+        let mut echo_broadcasts = echo_broadcasts;
+        echo_broadcasts.insert(verifier.clone(), my_echo_broadcast);
 
         debug!("{:?}: initialized echo round with {:?}", verifier, destinations);
         Self {
             verifier,
-            echo_messages,
+            echo_broadcasts,
             destinations,
             expected_echos,
             main_round,
@@ -81,12 +117,31 @@ where
             artifacts,
         }
     }
+
+    // Since the echo round doesn't have its own `Protocol`, these methods live here.
+
+    pub fn verify_direct_message_is_invalid(message: &DirectMessage) -> Result<(), MessageValidationError> {
+        // We don't send any direct messages in the echo round
+        message.verify_is_some()
+    }
+
+    pub fn verify_echo_broadcast_is_invalid(message: &EchoBroadcast) -> Result<(), MessageValidationError> {
+        // We don't send any echo broadcasts in the echo round
+        message.verify_is_some()
+    }
+
+    pub fn verify_normal_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        message.verify_is_not::<EchoRoundMessage<SP>>(deserializer)
+    }
 }
 
 impl<P, SP> Round<SP::Verifier> for EchoRound<P, SP>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol,
+    SP: SessionParameters,
 {
     type Protocol = P;
 
@@ -95,23 +150,23 @@ where
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.main_round.possible_next_rounds()
+        self.main_round.as_ref().possible_next_rounds()
     }
 
     fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
         &self.destinations
     }
 
-    fn make_direct_message(
+    fn make_normal_broadcast(
         &self,
         _rng: &mut impl CryptoRngCore,
-        destination: &SP::Verifier,
-    ) -> Result<(DirectMessage, Artifact), LocalError> {
-        debug!("{:?}: making echo round message for {:?}", self.verifier, destination);
+        serializer: &Serializer,
+    ) -> Result<NormalBroadcast, LocalError> {
+        debug!("{:?}: making an echo round message", self.verifier);
 
         // Don't send our own message the second time
-        let mut echo_messages = self.echo_messages.clone();
-        if echo_messages.remove(&self.verifier).is_none() {
+        let mut echo_broadcasts = self.echo_broadcasts.clone();
+        if echo_broadcasts.remove(&self.verifier).is_none() {
             return Err(LocalError::new(format!(
                 "Expected {:?} to be in the set of all echo messages",
                 self.verifier
@@ -119,10 +174,9 @@ where
         }
 
         let message = EchoRoundMessage::<SP> {
-            echo_messages: echo_messages.into(),
+            echo_broadcasts: echo_broadcasts.into(),
         };
-        let dm = DirectMessage::new::<P, _>(&message)?;
-        Ok((dm, Artifact::empty()))
+        NormalBroadcast::new(serializer, message)
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
@@ -132,13 +186,18 @@ where
     fn receive_message(
         &self,
         _rng: &mut impl CryptoRngCore,
+        deserializer: &Deserializer,
         from: &SP::Verifier,
-        _echo_broadcast: Option<EchoBroadcast>,
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
-        let message = direct_message.deserialize::<P, EchoRoundMessage<SP>>()?;
+        echo_broadcast.assert_is_none()?;
+        direct_message.assert_is_none()?;
+
+        let message = normal_broadcast.deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
         // Check that the received message contains entries from `destinations` sans `from`
         // It is an unprovable fault.
@@ -150,7 +209,7 @@ where
                 self.destinations
             )));
         }
-        let message_keys = message.echo_messages.keys().cloned().collect::<BTreeSet<_>>();
+        let message_keys = message.echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
         if !missing_keys.is_empty() {
@@ -172,12 +231,12 @@ where
         // If there's a difference, it's a provable fault,
         // since we have both messages signed by `from`.
 
-        for (sender, echo) in message.echo_messages.iter() {
+        for (sender, echo) in message.echo_broadcasts.iter() {
             // We expect the key to be there since
-            // `message.echo_messages.keys()` is within `self.destinations`
-            // which was constructed as `self.echo_messages.keys()`.
+            // `message.echo_broadcasts.keys()` is within `self.destinations`
+            // which was constructed as `self.echo_broadcasts.keys()`.
             let previously_received_echo = self
-                .echo_messages
+                .echo_broadcasts
                 .get(sender)
                 .expect("the key is present by construction");
 
@@ -185,7 +244,7 @@ where
                 continue;
             }
 
-            let verified_echo = match echo.clone().verify::<P, SP>(sender) {
+            let verified_echo = match echo.clone().verify::<SP>(sender) {
                 Ok(echo) => echo,
                 Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.
@@ -207,8 +266,25 @@ where
             // `sender` sent us and `from` messages with different payloads.
             // Provable fault of `sender`.
             if verified_echo.payload() != previously_received_echo.payload() {
-                return Err(EchoRoundError::InvalidBroadcast(sender.clone()).into());
+                return Err(EchoRoundError::MismatchedBroadcasts {
+                    guilty_party: sender.clone(),
+                    error: MismatchedBroadcastsError::DifferentPayloads,
+                    we_received: previously_received_echo.clone(),
+                    echoed_to_us: echo.clone(),
+                }
+                .into());
             }
+
+            // At this point, we know that the echoed broadcast is not identical to what we initially received,
+            // but somehow they both have the correct metadata, and correct signatures.
+            // Something strange is going on.
+            return Err(EchoRoundError::MismatchedBroadcasts {
+                guilty_party: sender.clone(),
+                error: MismatchedBroadcastsError::DifferentSignatures,
+                we_received: previously_received_echo.clone(),
+                echoed_to_us: echo.clone(),
+            }
+            .into());
         }
 
         Ok(Payload::empty())
@@ -220,6 +296,8 @@ where
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, FinalizeError<Self::Protocol>> {
-        self.main_round.finalize(rng, self.payloads, self.artifacts)
+        self.main_round
+            .into_boxed()
+            .finalize(rng, self.payloads, self.artifacts)
     }
 }

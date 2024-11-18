@@ -1,5 +1,3 @@
-use core::fmt::Debug;
-
 use alloc::{collections::BTreeMap, vec::Vec};
 
 use rand::Rng;
@@ -8,9 +6,9 @@ use signature::Keypair;
 use tracing::debug;
 
 use crate::{
-    protocol::{FirstRound, Protocol},
+    protocol::{EntryPoint, Protocol},
     session::{
-        CanFinalize, LocalError, MessageBundle, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
+        CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
         SessionReport,
     },
 };
@@ -23,10 +21,10 @@ enum State<P: Protocol, SP: SessionParameters> {
     Finished(SessionReport<P, SP>),
 }
 
-struct Message<SP: SessionParameters> {
+struct RoundMessage<SP: SessionParameters> {
     from: SP::Verifier,
     to: SP::Verifier,
-    message: MessageBundle,
+    message: Message<SP::Verifier>,
 }
 
 #[allow(clippy::type_complexity)]
@@ -34,10 +32,10 @@ fn propagate<P, SP>(
     rng: &mut impl CryptoRngCore,
     session: Session<P, SP>,
     accum: RoundAccumulator<P, SP>,
-) -> Result<(State<P, SP>, Vec<Message<SP>>), LocalError>
+) -> Result<(State<P, SP>, Vec<RoundMessage<SP>>), LocalError>
 where
-    P: 'static + Protocol,
-    SP: 'static + SessionParameters + Debug,
+    P: Protocol,
+    SP: SessionParameters,
 {
     let mut messages = Vec::new();
 
@@ -47,7 +45,7 @@ where
     let state = loop {
         match session.can_finalize(&accum) {
             CanFinalize::Yes => {
-                debug!("{:?}: finalizing {:?}", session.verifier(), session.round_id(),);
+                debug!("{:?}: finalizing {}", session.verifier(), session.round_id());
                 match session.finalize_round(rng, accum)? {
                     RoundOutcome::Finished(report) => break State::Finished(report),
                     RoundOutcome::AnotherRound {
@@ -70,13 +68,13 @@ where
                 }
             }
             CanFinalize::NotYet => break State::InProgress { session, accum },
-            CanFinalize::Never => break State::Finished(session.terminate(accum)?),
+            CanFinalize::Never => break State::Finished(session.terminate_due_to_errors(accum)?),
         }
 
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
-            messages.push(Message {
+            messages.push(RoundMessage {
                 from: session.verifier().clone(),
                 to: destination.clone(),
                 message,
@@ -96,8 +94,8 @@ pub fn run_sync<R, SP>(
     inputs: Vec<(SP::Signer, R::Inputs)>,
 ) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
 where
-    R: 'static + FirstRound<SP::Verifier>,
-    SP: 'static + SessionParameters + Debug,
+    R: EntryPoint<SP::Verifier>,
+    SP: SessionParameters,
 {
     let session_id = SessionId::random::<SP>(rng);
 
@@ -106,13 +104,13 @@ where
 
     for (signer, inputs) in inputs {
         let verifier = signer.verifying_key();
-        let session = Session::<R::Protocol, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
+        let session = Session::<_, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
-            messages.push(Message {
+            messages.push(RoundMessage {
                 from: session.verifier().clone(),
                 to: destination.clone(),
                 message,
@@ -139,7 +137,7 @@ where
             let mut accum = accum;
             let preprocessed = session.preprocess_message(&mut accum, &message.from, message.message)?;
 
-            if let Some(verified) = preprocessed {
+            if let Some(verified) = preprocessed.ok() {
                 let processed = session.process_message(rng, verified);
                 session.add_processed_message(&mut accum, processed)?;
             }
