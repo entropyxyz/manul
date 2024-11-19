@@ -7,7 +7,7 @@ authors = ['Entropy Cryptography <engineering@entropy.xyz>']
 license = "AGPL-3.0-or-later"
 description = "Generic library for round-based protocols"
 repository = "https://github.com/entropyxyz/manul"
-readme = "../README.md"
+readme = "README.md"
 categories = ["cryptography", "no-std"]
 
 [dependencies]
