@@ -173,12 +173,6 @@ where
 pub enum SessionOutcome<P: Protocol> {
     /// The protocol successfully produced a result.
     Result(P::Result),
-    /// The execution stalled because of an unattributable error,
-    /// but the protocol created a proof that this node performed its duties correctly.
-    ///
-    /// This proof is supposed to be passed to a third party for adjudication,
-    /// along with the proofs from the other nodes.
-    StalledWithProof(P::CorrectnessProof),
     /// The execution stalled because not enough messages were received to finalize the round.
     NotEnoughMessages,
     /// The execution was terminated by the user.
@@ -195,7 +189,6 @@ where
             Self::Result(result) => format!("Success ({result:?})"),
             Self::NotEnoughMessages => "Not enough messages to finalize, terminated".into(),
             Self::Terminated => "Terminated by the user".into(),
-            Self::StalledWithProof(_) => "Unattributable failure during finalization".into(),
         }
     }
 }

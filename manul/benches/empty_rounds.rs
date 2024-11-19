@@ -7,9 +7,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
-        LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
-        Serializer,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
+        NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     session::signature::Keypair,
 };
@@ -22,7 +21,6 @@ pub struct EmptyProtocol;
 impl Protocol for EmptyProtocol {
     type Result = ();
     type ProtocolError = ();
-    type CorrectnessProof = ();
 }
 
 #[derive(Debug)]
@@ -133,7 +131,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         for payload in payloads.into_values() {
             let _payload = payload.try_to_typed::<Round1Payload>()?;
         }

@@ -8,7 +8,7 @@ use core::{fmt::Debug, marker::PhantomData};
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
-    errors::{FinalizeError, LocalError, ReceiveError},
+    errors::{LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast},
     round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
     serialization::{Deserializer, Serializer},
@@ -91,7 +91,7 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>>;
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError>;
 
     /// Returns the type ID of the implementing type.
     fn get_type_id(&self) -> core::any::TypeId {
@@ -207,7 +207,7 @@ where
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.finalize(&mut boxed_rng, payloads, artifacts)
     }

@@ -33,8 +33,7 @@ use rand_core::CryptoRngCore;
 
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeError, FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ReceiveError,
-    RoundId, Serializer,
+    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ReceiveError, RoundId, Serializer,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -294,16 +293,15 @@ where
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
-        match self.round.into_boxed().finalize(rng, payloads, artifacts) {
-            Ok(FinalizeOutcome::Result(result)) => Ok(FinalizeOutcome::Result(result)),
-            Ok(FinalizeOutcome::AnotherRound(round)) => {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
+        match self.round.into_boxed().finalize(rng, payloads, artifacts)? {
+            FinalizeOutcome::Result(result) => Ok(FinalizeOutcome::Result(result)),
+            FinalizeOutcome::AnotherRound(round) => {
                 Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(Self {
                     round,
                     behavior: self.behavior,
                 })))
             }
-            Err(err) => Err(err),
         }
     }
 }

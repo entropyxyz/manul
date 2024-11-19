@@ -22,7 +22,6 @@ struct PartialEchoProtocol;
 impl Protocol for PartialEchoProtocol {
     type Result = ();
     type ProtocolError = PartialEchoProtocolError;
-    type CorrectnessProof = ();
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,7 +145,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         _rng: &mut impl CryptoRngCore,
         _payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         Ok(FinalizeOutcome::Result(()))
     }
 }

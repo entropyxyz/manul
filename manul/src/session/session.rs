@@ -24,8 +24,8 @@ use super::{
 };
 use crate::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeError, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError,
-    ReceiveErrorType, RoundId, Serializer,
+    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
+    RoundId, Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -515,48 +515,40 @@ where
             });
         }
 
-        match self.round.into_boxed().finalize(rng, accum.payloads, accum.artifacts) {
-            Ok(result) => Ok(match result {
-                FinalizeOutcome::Result(result) => {
-                    RoundOutcome::Finished(SessionReport::new(SessionOutcome::Result(result), transcript))
+        match self.round.into_boxed().finalize(rng, accum.payloads, accum.artifacts)? {
+            FinalizeOutcome::Result(result) => Ok(RoundOutcome::Finished(SessionReport::new(
+                SessionOutcome::Result(result),
+                transcript,
+            ))),
+            FinalizeOutcome::AnotherRound(round) => {
+                // Protecting against common bugs
+                if !self.possible_next_rounds.contains(&round.id()) {
+                    return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
                 }
-                FinalizeOutcome::AnotherRound(round) => {
-                    // Protecting against common bugs
-                    if !self.possible_next_rounds.contains(&round.id()) {
-                        return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
-                    }
 
-                    // These messages could have been cached before
-                    // processing messages from the same node for the current round.
-                    // So there might have been some new errors, and we need to check again
-                    // if the sender is already banned.
-                    let cached_messages = filter_messages(accum.cached, round.id())
-                        .into_iter()
-                        .filter(|message| !transcript.is_banned(message.from()))
-                        .collect::<Vec<_>>();
+                // These messages could have been cached before
+                // processing messages from the same node for the current round.
+                // So there might have been some new errors, and we need to check again
+                // if the sender is already banned.
+                let cached_messages = filter_messages(accum.cached, round.id())
+                    .into_iter()
+                    .filter(|message| !transcript.is_banned(message.from()))
+                    .collect::<Vec<_>>();
 
-                    let session = Session::new_for_next_round(
-                        rng,
-                        self.session_id,
-                        self.signer,
-                        self.serializer,
-                        self.deserializer,
-                        round,
-                        transcript,
-                    )?;
-                    RoundOutcome::AnotherRound {
-                        cached_messages,
-                        session,
-                    }
-                }
-            }),
-            Err(error) => Ok(match error {
-                FinalizeError::Local(error) => return Err(error),
-                FinalizeError::Unattributable(correctness_proof) => RoundOutcome::Finished(SessionReport::new(
-                    SessionOutcome::StalledWithProof(correctness_proof),
+                let session = Session::new_for_next_round(
+                    rng,
+                    self.session_id,
+                    self.signer,
+                    self.serializer,
+                    self.deserializer,
+                    round,
                     transcript,
-                )),
-            }),
+                )?;
+                Ok(RoundOutcome::AnotherRound {
+                    cached_messages,
+                    session,
+                })
+            }
         }
     }
 
@@ -869,7 +861,6 @@ mod tests {
         impl Protocol for DummyProtocol {
             type Result = ();
             type ProtocolError = ();
-            type CorrectnessProof = ();
         }
 
         type SP = TestSessionParams<BinaryFormat>;

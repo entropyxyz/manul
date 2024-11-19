@@ -95,7 +95,7 @@ mod tests {
             .unwrap();
 
         for (_id, result) in results {
-            assert_eq!(result, 3); // 0 + 1 + 2
+            assert_eq!(result, 6); // (0 + 1 + 2) * 2
         }
     }
 }
