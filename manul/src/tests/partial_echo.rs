@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::*,
-    session::signature::Keypair,
+    signature::Keypair,
 };
 
 #[derive(Debug)]

@@ -25,6 +25,3 @@ pub use transcript::{SessionOutcome, SessionReport};
 pub use wire_format::WireFormat;
 
 pub(crate) use echo::EchoRoundError;
-
-pub use digest;
-pub use signature;

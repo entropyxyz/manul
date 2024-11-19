@@ -25,3 +25,7 @@ pub mod dev;
 
 #[cfg(test)]
 mod tests;
+
+// Re-exports for easier version matching
+pub use digest;
+pub use signature;

@@ -405,7 +405,7 @@ mod tests {
 
     use manul::{
         dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
-        session::signature::Keypair,
+        signature::Keypair,
     };
     use rand_core::OsRng;
     use test_log::test;
