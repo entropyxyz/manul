@@ -410,11 +410,10 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::{
-        session::{signature::Keypair, SessionOutcome},
-        testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
+        dev::{run_sync_with_tracing, BinaryFormat, TestSessionParams, TestSigner},
+        session::signature::Keypair,
     };
     use rand_core::OsRng;
-    use tracing_subscriber::EnvFilter;
 
     use super::SimpleProtocolEntryPoint;
 
@@ -430,19 +429,13 @@ mod tests {
             .map(|signer| (signer, SimpleProtocolEntryPoint::new(all_ids.clone())))
             .collect::<Vec<_>>();
 
-        let my_subscriber = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .finish();
-        let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
-        });
+        let results = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+            .unwrap()
+            .results()
+            .unwrap();
 
-        for (_id, report) in reports {
-            if let SessionOutcome::Result(result) = report.outcome {
-                assert_eq!(result, 3); // 0 + 1 + 2
-            } else {
-                panic!("Session did not finish successfully");
-            }
+        for (_id, result) in results {
+            assert_eq!(result, 3); // 0 + 1 + 2
         }
     }
 }

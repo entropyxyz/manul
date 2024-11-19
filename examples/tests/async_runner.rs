@@ -3,12 +3,12 @@ extern crate alloc;
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
+    dev::{BinaryFormat, TestSessionParams, TestSigner},
     protocol::Protocol,
     session::{
         signature::Keypair, CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters,
         SessionReport,
     },
-    testing::{BinaryFormat, TestSessionParams, TestSigner},
 };
 use manul_example::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
 use rand::Rng;
@@ -18,7 +18,6 @@ use tokio::{
     time::{sleep, Duration},
 };
 use tracing::{debug, trace};
-use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
@@ -260,12 +259,6 @@ async fn async_run() {
             SimpleSession::new(&mut OsRng, session_id.clone(), signer, entry_point).unwrap()
         })
         .collect::<Vec<_>>();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish()
-        .try_init()
-        .unwrap();
 
     // Run the protocol
     run_nodes(sessions).await;

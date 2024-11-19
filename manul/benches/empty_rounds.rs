@@ -5,13 +5,13 @@ use core::fmt::Debug;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
+    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
         LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
         Serializer,
     },
-    session::{signature::Keypair, SessionOutcome},
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
+    session::signature::Keypair,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -195,8 +195,8 @@ fn bench_empty_rounds(c: &mut Criterion) {
             assert!(
                 run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_no_echo.clone())
                     .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+                    .results()
+                    .is_ok()
             )
         })
     });
@@ -225,8 +225,8 @@ fn bench_empty_rounds(c: &mut Criterion) {
             assert!(
                 run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_echo.clone())
                     .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+                    .results()
+                    .is_ok()
             )
         })
     });

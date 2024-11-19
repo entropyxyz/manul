@@ -20,8 +20,8 @@ pub mod protocol;
 pub mod session;
 pub(crate) mod utils;
 
-#[cfg(any(test, feature = "testing"))]
-pub mod testing;
+#[cfg(any(test, feature = "dev"))]
+pub mod dev;
 
 #[cfg(test)]
 mod tests;

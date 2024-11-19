@@ -9,12 +9,11 @@ use core::fmt::Debug;
 
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
-use tracing_subscriber::EnvFilter;
 
 use crate::{
+    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::*,
-    session::{signature::Keypair, SessionOutcome},
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
+    session::signature::Keypair,
 };
 
 #[derive(Debug)]
@@ -214,14 +213,8 @@ fn partial_echo() {
 
     let entry_points = vec![node0, node1, node2, node3, node4];
 
-    let my_subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish();
-    let reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
-    });
-
-    for (_id, report) in reports {
-        assert!(matches!(report.outcome, SessionOutcome::Result(_)));
-    }
+    let _results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        .unwrap()
+        .results()
+        .unwrap();
 }

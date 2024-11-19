@@ -3,15 +3,14 @@ use core::fmt::Debug;
 
 use manul::{
     combinators::misbehave::{Misbehaving, MisbehavingEntryPoint},
+    dev::{run_sync_with_tracing, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
         RoundId, Serializer,
     },
     session::signature::Keypair,
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
 };
 use rand_core::{CryptoRngCore, OsRng};
-use tracing_subscriber::EnvFilter;
 
 use crate::simple::{Round1, Round1Message, Round2, Round2Message, SimpleProtocolEntryPoint};
 
@@ -94,12 +93,9 @@ fn serialized_garbage() {
         })
         .collect::<Vec<_>>();
 
-    let my_subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish();
-    let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
-    });
+    let mut reports = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        .unwrap()
+        .reports;
 
     let v0 = signers[0].verifying_key();
     let v1 = signers[1].verifying_key();
@@ -136,12 +132,9 @@ fn attributable_failure() {
         })
         .collect::<Vec<_>>();
 
-    let my_subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish();
-    let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
-    });
+    let mut reports = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        .unwrap()
+        .reports;
 
     let v0 = signers[0].verifying_key();
     let v1 = signers[1].verifying_key();
@@ -178,12 +171,9 @@ fn attributable_failure_round2() {
         })
         .collect::<Vec<_>>();
 
-    let my_subscriber = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish();
-    let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
-    });
+    let mut reports = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        .unwrap()
+        .reports;
 
     let v0 = signers[0].verifying_key();
     let v1 = signers[1].verifying_key();

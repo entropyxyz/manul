@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `EntryPoint` and `FinalizeOutcome::AnotherRound` now use a new `BoxedRound` wrapper type. ([#60])
 - `PartyId` and `ProtocolError` are now bound on `Serialize`/`Deserialize`. ([#60])
 - Entry points are now stateful; combinator API reworked accordingly. ([#68])
+- `run_sync()` now returns an `ExecutionResult` object. ([#71])
+- `testing` module and feature renamed to `dev` to avoid confusion with tests. ([#71])
 
 
 ### Added
@@ -41,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `chain` combinator for chaining two protocols. ([#60])
 - `EntryPoint::ENTRY_ROUND` constant. ([#60])
 - `Round::echo_round_participation()`. ([#67])
+- `SessionReport::result()`. ([#71])
+- `run_sync_with_tracing()`. ([#71])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
@@ -58,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#60]: https://github.com/entropyxyz/manul/pull/60
 [#67]: https://github.com/entropyxyz/manul/pull/67
 [#68]: https://github.com/entropyxyz/manul/pull/68
+[#71]: https://github.com/entropyxyz/manul/pull/71
 
 
 ## [0.0.1] - 2024-10-12

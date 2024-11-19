@@ -63,7 +63,7 @@ impl SessionId {
     ///
     /// **Warning:** this should generally be used for testing; creating a random session ID in a centralized way
     /// usually defeats the purpose of having a distributed protocol.
-    #[cfg(any(test, feature = "testing"))]
+    #[cfg(any(test, feature = "dev"))]
     pub fn random<SP: SessionParameters>(rng: &mut impl CryptoRngCore) -> Self {
         let mut buffer = digest::Output::<SP::Digest>::default();
         rng.fill_bytes(&mut buffer);
@@ -850,8 +850,8 @@ mod tests {
 
     use super::{Message, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessage};
     use crate::{
+        dev::{BinaryFormat, TestSessionParams, TestVerifier},
         protocol::Protocol,
-        testing::{BinaryFormat, TestSessionParams, TestVerifier},
     };
 
     #[test]

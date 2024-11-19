@@ -1,15 +1,16 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 
 use rand::Rng;
 use rand_core::CryptoRngCore;
 use signature::Keypair;
 use tracing::debug;
+use tracing_subscriber::EnvFilter;
 
 use crate::{
     protocol::{EntryPoint, Protocol},
     session::{
-        CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
-        SessionReport,
+        CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionOutcome,
+        SessionParameters, SessionReport,
     },
 };
 
@@ -92,7 +93,7 @@ where
 pub fn run_sync<EP, SP>(
     rng: &mut impl CryptoRngCore,
     entry_points: Vec<(SP::Signer, EP)>,
-) -> Result<BTreeMap<SP::Verifier, SessionReport<EP::Protocol, SP>>, LocalError>
+) -> Result<ExecutionResult<EP::Protocol, SP>, LocalError>
 where
     EP: EntryPoint<SP::Verifier>,
     SP: SessionParameters,
@@ -155,14 +156,65 @@ where
         }
     }
 
-    let mut outcomes = BTreeMap::new();
+    let mut reports = BTreeMap::new();
     for (verifier, state) in states {
-        let outcome = match state {
+        let report = match state {
             State::InProgress { session, accum } => session.terminate(accum)?,
             State::Finished(report) => report,
         };
-        outcomes.insert(verifier, outcome);
+        reports.insert(verifier, report);
     }
 
-    Ok(outcomes)
+    Ok(ExecutionResult { reports })
+}
+
+/// Same as [`run_sync()`], but enables a [`tracing`] subscriber that prints the tracing events to stdout,
+/// taking options from the environment variable `RUST_LOG` (see [`mod@tracing_subscriber::fmt`] for details).
+#[allow(clippy::type_complexity)]
+pub fn run_sync_with_tracing<EP, SP>(
+    rng: &mut impl CryptoRngCore,
+    entry_points: Vec<(SP::Signer, EP)>,
+) -> Result<ExecutionResult<EP::Protocol, SP>, LocalError>
+where
+    EP: EntryPoint<SP::Verifier>,
+    SP: SessionParameters,
+{
+    // A subscriber that prints events to stdout
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || run_sync::<EP, SP>(rng, entry_points))
+}
+
+/// The result of a protocol execution on a set of nodes.
+#[derive(Debug)]
+pub struct ExecutionResult<P: Protocol, SP: SessionParameters> {
+    pub reports: BTreeMap<SP::Verifier, SessionReport<P, SP>>,
+}
+impl<P, SP> ExecutionResult<P, SP>
+where
+    P: Protocol,
+    SP: SessionParameters,
+{
+    pub fn results(self) -> Result<BTreeMap<SP::Verifier, P::Result>, String> {
+        let mut report_strings = Vec::new();
+        let mut results = BTreeMap::new();
+
+        for (id, report) in self.reports.into_iter() {
+            match report.outcome {
+                SessionOutcome::Result(result) => {
+                    results.insert(id, result);
+                }
+                _ => {
+                    report_strings.push(format!("Id: {:?}\n{}", id, report.brief()));
+                }
+            }
+        }
+
+        if report_strings.is_empty() {
+            Ok(results)
+        } else {
+            Err(report_strings.join("\n"))
+        }
+    }
 }
