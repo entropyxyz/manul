@@ -3,7 +3,7 @@ use core::fmt::Debug;
 
 use manul::{
     combinators::misbehave::{Misbehaving, MisbehavingEntryPoint},
-    dev::{run_sync_with_tracing, BinaryFormat, TestSessionParams, TestSigner},
+    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
         RoundId, Serializer,
@@ -11,6 +11,7 @@ use manul::{
     session::signature::Keypair,
 };
 use rand_core::{CryptoRngCore, OsRng};
+use test_log::test;
 
 use crate::simple::{Round1, Round1Message, Round2, Round2Message, SimpleProtocolEntryPoint};
 
@@ -93,7 +94,7 @@ fn serialized_garbage() {
         })
         .collect::<Vec<_>>();
 
-    let mut reports = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
         .unwrap()
         .reports;
 
@@ -132,7 +133,7 @@ fn attributable_failure() {
         })
         .collect::<Vec<_>>();
 
-    let mut reports = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
         .unwrap()
         .reports;
 
@@ -171,7 +172,7 @@ fn attributable_failure_round2() {
         })
         .collect::<Vec<_>>();
 
-    let mut reports = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
         .unwrap()
         .reports;
 

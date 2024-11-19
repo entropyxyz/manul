@@ -27,7 +27,6 @@ rand = { version = "0.8", default-features = false, optional = true }
 serde-persistent-deserializer = { version = "0.3", optional = true }
 postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
 serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dev-dependencies]
 impls = "1"
@@ -41,10 +40,9 @@ serde-persistent-deserializer = "0.3"
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer", "tracing-subscriber"]
+dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer"]
 
 [package.metadata.docs.rs]
 all-features = true
