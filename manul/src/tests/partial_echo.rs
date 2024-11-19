@@ -13,7 +13,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::{
     protocol::*,
-    session::{signature::Keypair, SessionOutcome},
+    session::signature::Keypair,
     testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
 };
 
@@ -222,6 +222,6 @@ fn partial_echo() {
     });
 
     for (_id, report) in reports {
-        assert!(matches!(report.outcome, SessionOutcome::Result(_)));
+        assert!(report.result().is_some());
     }
 }

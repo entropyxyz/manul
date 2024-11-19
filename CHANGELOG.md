@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A `chain` combinator for chaining two protocols. ([#60])
 - `EntryPoint::ENTRY_ROUND` constant. ([#60])
 - `Round::echo_round_participation()`. ([#67])
+- `SessionReport::result()`. ([#71])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32
@@ -58,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#60]: https://github.com/entropyxyz/manul/pull/60
 [#67]: https://github.com/entropyxyz/manul/pull/67
 [#68]: https://github.com/entropyxyz/manul/pull/68
+[#71]: https://github.com/entropyxyz/manul/pull/71
 
 
 ## [0.0.1] - 2024-10-12

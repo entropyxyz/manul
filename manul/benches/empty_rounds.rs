@@ -10,7 +10,7 @@ use manul::{
         LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
         Serializer,
     },
-    session::{signature::Keypair, SessionOutcome},
+    session::signature::Keypair,
     testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -195,8 +195,8 @@ fn bench_empty_rounds(c: &mut Criterion) {
             assert!(
                 run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_no_echo.clone())
                     .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+                    .into_values()
+                    .all(|report| report.result().is_some())
             )
         })
     });
@@ -225,8 +225,8 @@ fn bench_empty_rounds(c: &mut Criterion) {
             assert!(
                 run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_echo.clone())
                     .unwrap()
-                    .values()
-                    .all(|report| matches!(report.outcome, SessionOutcome::Result(_)))
+                    .into_values()
+                    .all(|report| report.result().is_some())
             )
         })
     });

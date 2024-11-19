@@ -70,7 +70,7 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::{
-        session::{signature::Keypair, SessionOutcome},
+        session::signature::Keypair,
         testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     };
     use rand_core::OsRng;
@@ -98,11 +98,7 @@ mod tests {
         });
 
         for (_id, report) in reports {
-            if let SessionOutcome::Result(result) = report.outcome {
-                assert_eq!(result, 3); // 0 + 1 + 2
-            } else {
-                panic!("Session did not finish successfully");
-            }
+            assert_eq!(report.result().unwrap(), 3); // 0 + 1 + 2
         }
     }
 }

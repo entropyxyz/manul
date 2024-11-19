@@ -209,4 +209,12 @@ where
             missing_messages: transcript.missing_messages,
         }
     }
+
+    /// Returns the protocol result if the session outcome contains it, otherwise `None`.
+    pub fn result(self) -> Option<P::Result> {
+        match self.outcome {
+            SessionOutcome::Result(result) => Some(result),
+            _ => None,
+        }
+    }
 }
