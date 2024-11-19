@@ -5,13 +5,13 @@ use core::fmt::Debug;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
+    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeError, FinalizeOutcome,
         LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
         Serializer,
     },
     session::signature::Keypair,
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};

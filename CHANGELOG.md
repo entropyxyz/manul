@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PartyId` and `ProtocolError` are now bound on `Serialize`/`Deserialize`. ([#60])
 - Entry points are now stateful; combinator API reworked accordingly. ([#68])
 - `run_sync()` now returns an `ExecutionResult` object. ([#71])
+- `testing` module and feature renamed to `dev` to avoid confusion with tests. ([#71])
 
 
 ### Added

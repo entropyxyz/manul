@@ -26,6 +26,7 @@ rand = { version = "0.8", default-features = false, optional = true }
 serde-persistent-deserializer = { version = "0.3", optional = true }
 postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
 serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [dev-dependencies]
 impls = "1"
@@ -39,7 +40,7 @@ serde_json = { version = "1", default-features = false, features = ["alloc"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-testing = ["rand", "postcard", "serde_json", "serde-persistent-deserializer"]
+dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer", "tracing-subscriber"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -48,4 +49,4 @@ rustdoc-args = ["--cfg", "docsrs"]
 [[bench]]
 name = "empty_rounds"
 harness = false
-required-features = ["testing"]
+required-features = ["dev"]

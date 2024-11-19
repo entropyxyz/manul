@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use tracing_subscriber::EnvFilter;
 
 use crate::{
+    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::*,
     session::signature::Keypair,
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
 };
 
 #[derive(Debug)]

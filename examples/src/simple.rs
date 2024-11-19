@@ -410,8 +410,8 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::{
+        dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
         session::signature::Keypair,
-        testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     };
     use rand_core::OsRng;
     use tracing_subscriber::EnvFilter;

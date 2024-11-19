@@ -3,12 +3,12 @@ use core::fmt::Debug;
 
 use manul::{
     combinators::misbehave::{Misbehaving, MisbehavingEntryPoint},
+    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
         RoundId, Serializer,
     },
     session::signature::Keypair,
-    testing::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
 };
 use rand_core::{CryptoRngCore, OsRng};
 use tracing_subscriber::EnvFilter;

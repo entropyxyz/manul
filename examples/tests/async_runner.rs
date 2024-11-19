@@ -3,12 +3,12 @@ extern crate alloc;
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
+    dev::{BinaryFormat, TestSessionParams, TestSigner},
     protocol::Protocol,
     session::{
         signature::Keypair, CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters,
         SessionReport,
     },
-    testing::{BinaryFormat, TestSessionParams, TestSigner},
 };
 use manul_example::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
 use rand::Rng;
