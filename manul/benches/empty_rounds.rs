@@ -195,8 +195,8 @@ fn bench_empty_rounds(c: &mut Criterion) {
             assert!(
                 run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_no_echo.clone())
                     .unwrap()
-                    .into_values()
-                    .all(|report| report.result().is_some())
+                    .results()
+                    .is_ok()
             )
         })
     });
@@ -225,8 +225,8 @@ fn bench_empty_rounds(c: &mut Criterion) {
             assert!(
                 run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_echo.clone())
                     .unwrap()
-                    .into_values()
-                    .all(|report| report.result().is_some())
+                    .results()
+                    .is_ok()
             )
         })
     });

@@ -98,7 +98,9 @@ fn serialized_garbage() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+            .unwrap()
+            .reports
     });
 
     let v0 = signers[0].verifying_key();
@@ -140,7 +142,9 @@ fn attributable_failure() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+            .unwrap()
+            .reports
     });
 
     let v0 = signers[0].verifying_key();
@@ -182,7 +186,9 @@ fn attributable_failure_round2() {
         .with_env_filter(EnvFilter::from_default_env())
         .finish();
     let mut reports = tracing::subscriber::with_default(my_subscriber, || {
-        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
+        run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+            .unwrap()
+            .reports
     });
 
     let v0 = signers[0].verifying_key();

@@ -1,6 +1,8 @@
 use alloc::{
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
     format,
+    string::String,
+    vec::Vec,
 };
 use core::fmt::Debug;
 
@@ -183,6 +185,21 @@ pub enum SessionOutcome<P: Protocol> {
     Terminated,
 }
 
+impl<P> SessionOutcome<P>
+where
+    P: Protocol,
+{
+    /// Returns a brief description of the outcome.
+    pub fn brief(&self) -> String {
+        match self {
+            Self::Result(result) => format!("Success ({result:?})"),
+            Self::NotEnoughMessages => "Not enough messages to finalize, terminated".into(),
+            Self::Terminated => "Terminated by the user".into(),
+            Self::StalledWithProof(_) => "Unattributable failure during finalization".into(),
+        }
+    }
+}
+
 /// The report of a session execution.
 #[derive(Debug)]
 pub struct SessionReport<P: Protocol, SP: SessionParameters> {
@@ -216,5 +233,32 @@ where
             SessionOutcome::Result(result) => Some(result),
             _ => None,
         }
+    }
+
+    /// Returns a brief description of report.
+    pub fn brief(&self) -> String {
+        let provable_errors = self
+            .provable_errors
+            .iter()
+            .map(|(id, evidence)| format!("  {:?}: {}", id, evidence.description()))
+            .collect::<Vec<_>>();
+        let unprovable_errors = self
+            .unprovable_errors
+            .iter()
+            .map(|(id, error)| format!("  {:?}: {}", id, error))
+            .collect::<Vec<_>>();
+        let missing_messages = self
+            .missing_messages
+            .iter()
+            .map(|(id, parties)| format!("  {:?}: {:?}", id, parties))
+            .collect::<Vec<_>>();
+
+        format!(
+            "Result: {}\nProvable errors:\n{}\nUnprovable errors:\n{}\nMissing_messages:\n{}",
+            self.outcome.brief(),
+            provable_errors.join("\n"),
+            unprovable_errors.join("\n"),
+            missing_messages.join("\n")
+        )
     }
 }

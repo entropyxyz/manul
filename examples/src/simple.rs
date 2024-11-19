@@ -433,12 +433,15 @@ mod tests {
         let my_subscriber = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .finish();
-        let reports = tracing::subscriber::with_default(my_subscriber, || {
-            run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points).unwrap()
+        let results = tracing::subscriber::with_default(my_subscriber, || {
+            run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+                .unwrap()
+                .results()
+                .unwrap()
         });
 
-        for (_id, report) in reports {
-            assert_eq!(report.result().unwrap(), 3); // 0 + 1 + 2
+        for (_id, result) in results {
+            assert_eq!(result, 3); // 0 + 1 + 2
         }
     }
 }
