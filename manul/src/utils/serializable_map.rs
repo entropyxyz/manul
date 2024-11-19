@@ -18,7 +18,7 @@ use serde::{
 /// This implementation serializes maps as sequences of key/value pairs,
 /// and checks for duplicate keys on deserialization.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SerializableMap<K, V>(BTreeMap<K, V>);
+pub struct SerializableMap<K, V>(BTreeMap<K, V>);
 
 impl<K, V> From<BTreeMap<K, V>> for SerializableMap<K, V> {
     fn from(source: BTreeMap<K, V>) -> Self {
