@@ -15,7 +15,7 @@
 - Generic over signer/verifier/signature types, so you can use whatever your blockchain uses.
 - Support parallelization where possible, to offload expensive cryptographic operations into spawned tasks (but since it's Sans-I/O, it's up to you to make use of that functionality).
 - Provide tools for unit and integration testing of the protocols.
-- Support generating malicious behavior proofs and correctness proofs with bundled signed messages.
+- Support generating malicious behavior proofs with bundled signed messages.
 - Support caching messages intended for the next round and then applying them when it starts (since some nodes can finalize a round before others and send out a new batch of messages).
 
 
@@ -26,8 +26,7 @@ We try to find the balance between supporting the majority of protocols and keep
 - A protocol consists of several rounds.
 - A round generates messages to send out without any additional external input, then waits for messages from other parties. When it receives enough messages, it can be finalized.
 - On finalization, a round can return the result, halt with an error, or continue to another round.
-- A round can generate several direct messages (each going to a specific party).
-- Additionally, a round can generate one echo-broadcasted message, for which it will be ensured that each party received the same message.
+- Each round declares a set of parties it sends messages to. Then it can optionally send a direct message to each party in the set, set a regular broadcast to all parties in the set, or send an echo-broadcast to all parties in the set (that is, a broadcast where it is ensured that all parties received the same thing). Any number of these options can be picked.
 
 
 [crate-image]: https://img.shields.io/crates/v/manul.svg
