@@ -55,7 +55,11 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use super::markers::{Combinator, CombinatorEntryPoint};
-use crate::protocol::*;
+use crate::protocol::{
+    Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
+    ProtocolValidationError, ReceiveError, RoundId, Serializer,
+};
 
 /// A marker for the `chain` combinator.
 #[derive(Debug, Clone, Copy)]
