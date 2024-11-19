@@ -10,7 +10,7 @@ use manul::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
         NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
-    session::signature::Keypair,
+    signature::Keypair,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};

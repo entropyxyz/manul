@@ -5,7 +5,11 @@ use alloc::{
 };
 use core::fmt::Debug;
 
-use manul::protocol::*;
+use manul::protocol::{
+    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
+    MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart,
+    ProtocolValidationError, ReceiveError, Round, RoundId, Serializer,
+};
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -405,7 +409,7 @@ mod tests {
 
     use manul::{
         dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
-        session::signature::Keypair,
+        signature::Keypair,
     };
     use rand_core::OsRng;
     use test_log::test;

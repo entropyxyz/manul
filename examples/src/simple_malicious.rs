@@ -8,7 +8,7 @@ use manul::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
         RoundId, Serializer,
     },
-    session::signature::Keypair,
+    signature::Keypair,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use test_log::test;

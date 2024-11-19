@@ -12,8 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
-    protocol::*,
-    session::signature::Keypair,
+    protocol::{
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+        FinalizeOutcome, LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart,
+        ProtocolValidationError, ReceiveError, Round, RoundId, Serializer,
+    },
+    signature::Keypair,
 };
 
 #[derive(Debug)]
