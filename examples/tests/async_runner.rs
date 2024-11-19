@@ -18,7 +18,6 @@ use tokio::{
     time::{sleep, Duration},
 };
 use tracing::{debug, trace};
-use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
@@ -260,12 +259,6 @@ async fn async_run() {
             SimpleSession::new(&mut OsRng, session_id.clone(), signer, entry_point).unwrap()
         })
         .collect::<Vec<_>>();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish()
-        .try_init()
-        .unwrap();
 
     // Run the protocol
     run_nodes(sessions).await;

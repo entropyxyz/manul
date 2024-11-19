@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `EntryPoint::ENTRY_ROUND` constant. ([#60])
 - `Round::echo_round_participation()`. ([#67])
 - `SessionReport::result()`. ([#71])
+- `run_sync_with_tracing()`. ([#71])
 
 
 [#32]: https://github.com/entropyxyz/manul/pull/32

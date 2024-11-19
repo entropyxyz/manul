@@ -4,6 +4,7 @@ use rand::Rng;
 use rand_core::CryptoRngCore;
 use signature::Keypair;
 use tracing::debug;
+use tracing_subscriber::EnvFilter;
 
 use crate::{
     protocol::{EntryPoint, Protocol},
@@ -165,6 +166,24 @@ where
     }
 
     Ok(ExecutionResult { reports })
+}
+
+/// Same as [`run_sync()`], but enables a [`tracing`] subscriber that prints the tracing events to stdout,
+/// taking options from the environment variable `RUST_LOG` (see [`mod@tracing_subscriber::fmt`] for details).
+#[allow(clippy::type_complexity)]
+pub fn run_sync_with_tracing<EP, SP>(
+    rng: &mut impl CryptoRngCore,
+    entry_points: Vec<(SP::Signer, EP)>,
+) -> Result<ExecutionResult<EP::Protocol, SP>, LocalError>
+where
+    EP: EntryPoint<SP::Verifier>,
+    SP: SessionParameters,
+{
+    // A subscriber that prints events to stdout
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .finish();
+    tracing::subscriber::with_default(subscriber, || run_sync::<EP, SP>(rng, entry_points))
 }
 
 /// The result of a protocol execution on a set of nodes.
