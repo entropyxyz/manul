@@ -2,7 +2,7 @@ use alloc::{collections::BTreeMap, format};
 use core::{
     fmt::{self, Debug},
     marker::PhantomData,
-    ops::Deref,
+    ops::{Deref, DerefMut},
 };
 
 use serde::{
@@ -31,6 +31,12 @@ impl<K, V> Deref for SerializableMap<K, V> {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl<K, V> DerefMut for SerializableMap<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
