@@ -88,7 +88,6 @@ where
 
 /// Execute sessions for multiple nodes concurrently,
 /// given a vector of the signer and the entry point as a tuple for each node.
-#[allow(clippy::type_complexity)]
 pub fn run_sync<EP, SP>(
     rng: &mut impl CryptoRngCore,
     entry_points: Vec<(SP::Signer, EP)>,
