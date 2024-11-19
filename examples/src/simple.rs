@@ -404,10 +404,11 @@ mod tests {
     use alloc::collections::BTreeSet;
 
     use manul::{
-        dev::{run_sync_with_tracing, BinaryFormat, TestSessionParams, TestSigner},
+        dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
         session::signature::Keypair,
     };
     use rand_core::OsRng;
+    use test_log::test;
 
     use super::SimpleProtocolEntryPoint;
 
@@ -423,7 +424,7 @@ mod tests {
             .map(|signer| (signer, SimpleProtocolEntryPoint::new(all_ids.clone())))
             .collect::<Vec<_>>();
 
-        let results = run_sync_with_tracing::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        let results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
             .unwrap()
             .results()
             .unwrap();
