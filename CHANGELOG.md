@@ -18,8 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ProtocolError::verify_messages_constitute_error()` now takes messages and mapping of messages by value. ([#76])
 
 
+### Added
+
+- `impl From<NormalBroadcastError> for ProtocolValidationError` (to match what already exists for other messages). ([#77])
+
+
 [#75]: https://github.com/entropyxyz/manul/pull/75
 [#76]: https://github.com/entropyxyz/manul/pull/76
+[#77]: https://github.com/entropyxyz/manul/pull/77
 
 
 ## [0.1.0] - 2024-11-19

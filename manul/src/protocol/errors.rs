@@ -204,6 +204,12 @@ impl From<EchoBroadcastError> for ProtocolValidationError {
     }
 }
 
+impl From<NormalBroadcastError> for ProtocolValidationError {
+    fn from(error: NormalBroadcastError) -> Self {
+        Self::InvalidEvidence(format!("Failed to deserialize normal broadcast: {error:?}"))
+    }
+}
+
 impl From<LocalError> for ProtocolValidationError {
     fn from(error: LocalError) -> Self {
         Self::Local(error)
