@@ -111,7 +111,6 @@ where
 
 impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
 where
-    Id: Clone,
     C: ChainedProtocol<Id>,
 {
     fn description(&self) -> String {
@@ -171,33 +170,29 @@ where
         deserializer: &Deserializer,
         guilty_party: &Id,
         shared_randomness: &[u8],
-        echo_broadcast: &EchoBroadcast,
-        normal_broadcast: &NormalBroadcast,
-        direct_message: &DirectMessage,
-        echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
+        direct_message: DirectMessage,
+        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         // TODO: the cloning can be avoided if instead we provide a reference to some "transcript API",
         // and can replace it here with a proxy that will remove nesting from round ID's.
         let echo_broadcasts = echo_broadcasts
-            .clone()
             .into_iter()
             .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let normal_broadcasts = normal_broadcasts
-            .clone()
             .into_iter()
             .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let direct_messages = direct_messages
-            .clone()
             .into_iter()
             .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let combined_echos = combined_echos
-            .clone()
             .into_iter()
             .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
@@ -210,10 +205,10 @@ where
                 echo_broadcast,
                 normal_broadcast,
                 direct_message,
-                &echo_broadcasts,
-                &normal_broadcasts,
-                &direct_messages,
-                &combined_echos,
+                echo_broadcasts,
+                normal_broadcasts,
+                direct_messages,
+                combined_echos,
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
                 deserializer,
@@ -222,10 +217,10 @@ where
                 echo_broadcast,
                 normal_broadcast,
                 direct_message,
-                &echo_broadcasts,
-                &normal_broadcasts,
-                &direct_messages,
-                &combined_echos,
+                echo_broadcasts,
+                normal_broadcasts,
+                direct_messages,
+                combined_echos,
             ),
         }
     }
@@ -233,7 +228,7 @@ where
 
 impl<Id, C> Protocol<Id> for C
 where
-    Id: 'static + Clone,
+    Id: 'static,
     C: ChainedProtocol<Id> + ChainedMarker,
 {
     type Result = <C::Protocol2 as Protocol<Id>>::Result;

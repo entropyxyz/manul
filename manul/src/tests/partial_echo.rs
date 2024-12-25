@@ -41,13 +41,13 @@ impl<Id: PartyId> ProtocolError<Id> for PartialEchoProtocolError<Id> {
         _deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        _direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
+        _echo_broadcast: EchoBroadcast,
+        _normal_broadcast: NormalBroadcast,
+        _direct_message: DirectMessage,
+        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         unimplemented!()
     }

@@ -55,13 +55,13 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
         deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
+        _echo_broadcast: EchoBroadcast,
+        _normal_broadcast: NormalBroadcast,
+        direct_message: DirectMessage,
+        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {

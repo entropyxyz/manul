@@ -235,13 +235,13 @@ pub trait ProtocolError<Id>: Debug + Clone + Send + Serialize + for<'de> Deseria
         deserializer: &Deserializer,
         guilty_party: &Id,
         shared_randomness: &[u8],
-        echo_broadcast: &EchoBroadcast,
-        normal_broadcast: &NormalBroadcast,
-        direct_message: &DirectMessage,
-        echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
+        direct_message: DirectMessage,
+        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
 }
 
@@ -257,13 +257,13 @@ impl<Id> ProtocolError<Id> for () {
         _deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        _direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
+        _echo_broadcast: EchoBroadcast,
+        _normal_broadcast: NormalBroadcast,
+        _direct_message: DirectMessage,
+        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
     }

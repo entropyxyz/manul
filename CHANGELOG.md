@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ProtocolError::verify_messages_constitute_error()` takes a new `guilty_party` argument. ([#76])
 - `Combinator`/`CombinatorEntryPoint` removed in favor of a single `ChainedMarker` trait. ([#76])
 - The `combined_echos` argument to `ProtocolError::verify_messages_constitute_error()` now has a mapping of id to echo instead of just a vector of echos. ([#76])
+- `ProtocolError::verify_messages_constitute_error()` now takes messages and mapping of messages by value. ([#76])
 
 
 [#75]: https://github.com/entropyxyz/manul/pull/75

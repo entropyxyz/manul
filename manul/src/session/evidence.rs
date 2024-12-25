@@ -526,13 +526,13 @@ where
             deserializer,
             verifier,
             session_id.as_ref(),
-            &verified_echo_broadcast,
-            &verified_normal_broadcast,
-            &verified_direct_message,
-            &verified_echo_broadcasts,
-            &verified_normal_broadcasts,
-            &verified_direct_messages,
-            &combined_echos,
+            verified_echo_broadcast,
+            verified_normal_broadcast,
+            verified_direct_message,
+            verified_echo_broadcasts,
+            verified_normal_broadcasts,
+            verified_direct_messages,
+            combined_echos,
         )?)
     }
 }
