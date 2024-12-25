@@ -26,7 +26,7 @@ We try to find the balance between supporting the majority of protocols and keep
 - A protocol consists of several rounds.
 - A round generates messages to send out without any additional external input, then waits for messages from other parties. When it receives enough messages, it can be finalized.
 - On finalization, a round can return the result, halt with an error, or continue to another round.
-- Each round declares a set of parties it sends messages to. Then it can optionally send a direct message to each party in the set, set a regular broadcast to all parties in the set, or send an echo-broadcast to all parties in the set (that is, a broadcast where it is ensured that all parties received the same thing). Any number of these options can be picked.
+- Each round declares a set of parties it sends messages to. Then it can optionally send a direct message to each party in the set, send a regular broadcast to all parties in the set, or send an echo-broadcast to all parties in the set (that is, a broadcast where it is ensured that all parties received the same thing). Any number of these options can be picked.
 
 
 [crate-image]: https://img.shields.io/crates/v/manul.svg

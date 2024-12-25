@@ -5,7 +5,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::fmt::Debug;
+use core::{fmt::Debug, marker::PhantomData};
 
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -21,17 +21,17 @@ use crate::{
 };
 
 #[derive(Debug)]
-struct PartialEchoProtocol;
+struct PartialEchoProtocol<Id>(PhantomData<Id>);
 
-impl Protocol for PartialEchoProtocol {
+impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type Result = ();
-    type ProtocolError = PartialEchoProtocolError;
+    type ProtocolError = PartialEchoProtocolError<Id>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct PartialEchoProtocolError;
+struct PartialEchoProtocolError<Id>(PhantomData<Id>);
 
-impl ProtocolError for PartialEchoProtocolError {
+impl<Id: PartyId> ProtocolError<Id> for PartialEchoProtocolError<Id> {
     fn description(&self) -> String {
         format!("{:?}", self)
     }
@@ -39,13 +39,15 @@ impl ProtocolError for PartialEchoProtocolError {
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        _direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        _guilty_party: &Id,
+        _shared_randomness: &[u8],
+        _echo_broadcast: EchoBroadcast,
+        _normal_broadcast: NormalBroadcast,
+        _direct_message: DirectMessage,
+        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         unimplemented!()
     }
@@ -70,7 +72,7 @@ struct Round1Echo<Id> {
 }
 
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inputs<Id> {
-    type Protocol = PartialEchoProtocol;
+    type Protocol = PartialEchoProtocol<Id>;
     fn make_round(
         self,
         _rng: &mut impl CryptoRngCore,
@@ -82,7 +84,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
 }
 
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<Id> {
-    type Protocol = PartialEchoProtocol;
+    type Protocol = PartialEchoProtocol<Id>;
 
     fn id(&self) -> RoundId {
         RoundId::new(1)

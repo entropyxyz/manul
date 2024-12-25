@@ -10,7 +10,7 @@ use super::{evidence::Evidence, message::SignedMessagePart, session::SessionPara
 use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId};
 
 #[derive(Debug)]
-pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
+pub(crate) struct Transcript<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     echo_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>>,
     normal_broadcasts: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>>,
     direct_messages: BTreeMap<RoundId, BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>>,
@@ -21,7 +21,7 @@ pub(crate) struct Transcript<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> Transcript<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     pub fn new() -> Self {
@@ -170,7 +170,7 @@ where
 
 /// Possible outcomes of running a session.
 #[derive(Debug)]
-pub enum SessionOutcome<P: Protocol> {
+pub enum SessionOutcome<Id, P: Protocol<Id>> {
     /// The protocol successfully produced a result.
     Result(P::Result),
     /// The execution stalled because not enough messages were received to finalize the round.
@@ -179,9 +179,9 @@ pub enum SessionOutcome<P: Protocol> {
     Terminated,
 }
 
-impl<P> SessionOutcome<P>
+impl<Id, P> SessionOutcome<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     /// Returns a brief description of the outcome.
     pub fn brief(&self) -> String {
@@ -195,9 +195,9 @@ where
 
 /// The report of a session execution.
 #[derive(Debug)]
-pub struct SessionReport<P: Protocol, SP: SessionParameters> {
+pub struct SessionReport<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     /// The session outcome.
-    pub outcome: SessionOutcome<P>,
+    pub outcome: SessionOutcome<SP::Verifier, P>,
     /// The provable errors collected during the execution, as the evidences that can be published to prove them.
     pub provable_errors: BTreeMap<SP::Verifier, Evidence<P, SP>>,
     /// The unprovable errors collected during the execution.
@@ -208,10 +208,10 @@ pub struct SessionReport<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> SessionReport<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
-    pub(crate) fn new(outcome: SessionOutcome<P>, transcript: Transcript<P, SP>) -> Self {
+    pub(crate) fn new(outcome: SessionOutcome<SP::Verifier, P>, transcript: Transcript<P, SP>) -> Self {
         Self {
             outcome,
             provable_errors: transcript.provable_errors,

@@ -23,7 +23,7 @@ pub enum SimpleProtocolError {
     Round2InvalidPosition,
 }
 
-impl ProtocolError for SimpleProtocolError {
+impl<Id> ProtocolError<Id> for SimpleProtocolError {
     fn description(&self) -> String {
         format!("{:?}", self)
     }
@@ -53,13 +53,15 @@ impl ProtocolError for SimpleProtocolError {
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        _guilty_party: &Id,
+        _shared_randomness: &[u8],
+        _echo_broadcast: EchoBroadcast,
+        _normal_broadcast: NormalBroadcast,
+        direct_message: DirectMessage,
+        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
@@ -76,7 +78,7 @@ impl ProtocolError for SimpleProtocolError {
                 // Deserialize the echos
                 let _r1_echos = r1_echos_serialized
                     .iter()
-                    .map(|echo| echo.deserialize::<Round1Echo>(deserializer))
+                    .map(|(_id, echo)| echo.deserialize::<Round1Echo>(deserializer))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 // Message contents would be checked here
@@ -86,7 +88,7 @@ impl ProtocolError for SimpleProtocolError {
     }
 }
 
-impl Protocol for SimpleProtocol {
+impl<Id> Protocol<Id> for SimpleProtocol {
     type Result = u8;
     type ProtocolError = SimpleProtocolError;
 

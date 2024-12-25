@@ -2,10 +2,7 @@ use alloc::collections::BTreeSet;
 use core::fmt::Debug;
 
 use manul::{
-    combinators::{
-        chain::{Chain, ChainedJoin, ChainedProtocol, ChainedSplit},
-        CombinatorEntryPoint,
-    },
+    combinators::chain::{ChainedJoin, ChainedMarker, ChainedProtocol, ChainedSplit},
     protocol::{PartyId, Protocol},
 };
 
@@ -16,7 +13,9 @@ use super::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
 #[derive(Debug)]
 pub struct DoubleSimpleProtocol;
 
-impl ChainedProtocol for DoubleSimpleProtocol {
+impl ChainedMarker for DoubleSimpleProtocol {}
+
+impl<Id> ChainedProtocol<Id> for DoubleSimpleProtocol {
     type Protocol1 = SimpleProtocol;
     type Protocol2 = SimpleProtocol;
 }
@@ -25,14 +24,12 @@ pub struct DoubleSimpleEntryPoint<Id> {
     all_ids: BTreeSet<Id>,
 }
 
+impl<Id> ChainedMarker for DoubleSimpleEntryPoint<Id> {}
+
 impl<Id: PartyId> DoubleSimpleEntryPoint<Id> {
     pub fn new(all_ids: BTreeSet<Id>) -> Self {
         Self { all_ids }
     }
-}
-
-impl<Id> CombinatorEntryPoint for DoubleSimpleEntryPoint<Id> {
-    type Combinator = Chain;
 }
 
 impl<Id> ChainedSplit<Id> for DoubleSimpleEntryPoint<Id>
@@ -60,7 +57,7 @@ where
 {
     type Protocol = DoubleSimpleProtocol;
     type EntryPoint = SimpleProtocolEntryPoint<Id>;
-    fn make_entry_point2(self, _result: <SimpleProtocol as Protocol>::Result) -> Self::EntryPoint {
+    fn make_entry_point2(self, _result: <SimpleProtocol as Protocol<Id>>::Result) -> Self::EntryPoint {
         SimpleProtocolEntryPoint::new(self.all_ids)
     }
 }

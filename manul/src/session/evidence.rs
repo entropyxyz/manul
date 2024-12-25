@@ -2,7 +2,6 @@ use alloc::{
     collections::BTreeMap,
     format,
     string::{String, ToString},
-    vec::Vec,
 };
 use core::fmt::Debug;
 
@@ -76,7 +75,7 @@ impl From<ProtocolValidationError> for EvidenceError {
 /// A self-contained evidence of malicious behavior by a node.
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Evidence<P: Protocol, SP: SessionParameters> {
+pub struct Evidence<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     guilty_party: SP::Verifier,
     description: String,
     evidence: EvidenceEnum<P, SP>,
@@ -84,7 +83,7 @@ pub struct Evidence<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> Evidence<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     pub(crate) fn new_protocol_error(
@@ -193,10 +192,7 @@ where
         Self {
             guilty_party: verifier.clone(),
             description: error.to_string(),
-            evidence: EvidenceEnum::InvalidDirectMessage(InvalidDirectMessageEvidence {
-                direct_message,
-                phantom: core::marker::PhantomData,
-            }),
+            evidence: EvidenceEnum::InvalidDirectMessage(InvalidDirectMessageEvidence(direct_message)),
         }
     }
 
@@ -208,10 +204,7 @@ where
         Self {
             guilty_party: verifier.clone(),
             description: error.to_string(),
-            evidence: EvidenceEnum::InvalidEchoBroadcast(InvalidEchoBroadcastEvidence {
-                echo_broadcast,
-                phantom: core::marker::PhantomData,
-            }),
+            evidence: EvidenceEnum::InvalidEchoBroadcast(InvalidEchoBroadcastEvidence(echo_broadcast)),
         }
     }
 
@@ -223,10 +216,7 @@ where
         Self {
             guilty_party: verifier.clone(),
             description: error.to_string(),
-            evidence: EvidenceEnum::InvalidNormalBroadcast(InvalidNormalBroadcastEvidence {
-                normal_broadcast,
-                phantom: core::marker::PhantomData,
-            }),
+            evidence: EvidenceEnum::InvalidNormalBroadcast(InvalidNormalBroadcastEvidence(normal_broadcast)),
         }
     }
 
@@ -248,9 +238,11 @@ where
         let deserializer = Deserializer::new::<SP::WireFormat>();
         match &self.evidence {
             EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
-            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
-            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
-            EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::InvalidNormalBroadcast(evidence) => {
+                evidence.verify::<P, SP>(&self.guilty_party, &deserializer)
+            }
             EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(&self.guilty_party, &deserializer),
             EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(&self.guilty_party),
         }
@@ -259,11 +251,11 @@ where
 
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
-enum EvidenceEnum<P: Protocol, SP: SessionParameters> {
-    Protocol(ProtocolEvidence<P>),
-    InvalidDirectMessage(InvalidDirectMessageEvidence<P>),
-    InvalidEchoBroadcast(InvalidEchoBroadcastEvidence<P>),
-    InvalidNormalBroadcast(InvalidNormalBroadcastEvidence<P>),
+enum EvidenceEnum<P: Protocol<SP::Verifier>, SP: SessionParameters> {
+    Protocol(ProtocolEvidence<SP::Verifier, P>),
+    InvalidDirectMessage(InvalidDirectMessageEvidence),
+    InvalidEchoBroadcast(InvalidEchoBroadcastEvidence),
+    InvalidNormalBroadcast(InvalidNormalBroadcastEvidence),
     InvalidEchoPack(InvalidEchoPackEvidence<SP>),
     MismatchedBroadcasts(MismatchedBroadcastsEvidence),
 }
@@ -348,85 +340,67 @@ impl MismatchedBroadcastsEvidence {
     }
 }
 
-#[derive_where::derive_where(Debug)]
-#[derive(Clone, Serialize, Deserialize)]
-pub struct InvalidDirectMessageEvidence<P: Protocol> {
-    direct_message: SignedMessagePart<DirectMessage>,
-    phantom: core::marker::PhantomData<P>,
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvalidDirectMessageEvidence(SignedMessagePart<DirectMessage>);
 
-impl<P> InvalidDirectMessageEvidence<P>
-where
-    P: Protocol,
-{
-    fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+impl InvalidDirectMessageEvidence {
+    fn verify<P, SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
     where
+        P: Protocol<SP::Verifier>,
         SP: SessionParameters,
     {
-        let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?;
+        let verified_direct_message = self.0.clone().verify::<SP>(verifier)?;
         let payload = verified_direct_message.payload();
 
-        if self.direct_message.metadata().round_id().is_echo() {
+        if self.0.metadata().round_id().is_echo() {
             Ok(EchoRound::<P, SP>::verify_direct_message_is_invalid(payload)?)
         } else {
             Ok(P::verify_direct_message_is_invalid(
                 deserializer,
-                self.direct_message.metadata().round_id(),
+                self.0.metadata().round_id(),
                 payload,
             )?)
         }
     }
 }
 
-#[derive_where::derive_where(Debug)]
-#[derive(Clone, Serialize, Deserialize)]
-pub struct InvalidEchoBroadcastEvidence<P: Protocol> {
-    echo_broadcast: SignedMessagePart<EchoBroadcast>,
-    phantom: core::marker::PhantomData<P>,
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvalidEchoBroadcastEvidence(SignedMessagePart<EchoBroadcast>);
 
-impl<P> InvalidEchoBroadcastEvidence<P>
-where
-    P: Protocol,
-{
-    fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+impl InvalidEchoBroadcastEvidence {
+    fn verify<P, SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
     where
+        P: Protocol<SP::Verifier>,
         SP: SessionParameters,
     {
-        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?;
+        let verified_echo_broadcast = self.0.clone().verify::<SP>(verifier)?;
         let payload = verified_echo_broadcast.payload();
 
-        if self.echo_broadcast.metadata().round_id().is_echo() {
+        if self.0.metadata().round_id().is_echo() {
             Ok(EchoRound::<P, SP>::verify_echo_broadcast_is_invalid(payload)?)
         } else {
             Ok(P::verify_echo_broadcast_is_invalid(
                 deserializer,
-                self.echo_broadcast.metadata().round_id(),
+                self.0.metadata().round_id(),
                 payload,
             )?)
         }
     }
 }
 
-#[derive_where::derive_where(Debug)]
-#[derive(Clone, Serialize, Deserialize)]
-pub struct InvalidNormalBroadcastEvidence<P: Protocol> {
-    normal_broadcast: SignedMessagePart<NormalBroadcast>,
-    phantom: core::marker::PhantomData<P>,
-}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvalidNormalBroadcastEvidence(SignedMessagePart<NormalBroadcast>);
 
-impl<P> InvalidNormalBroadcastEvidence<P>
-where
-    P: Protocol,
-{
-    fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+impl InvalidNormalBroadcastEvidence {
+    fn verify<P, SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
     where
+        P: Protocol<SP::Verifier>,
         SP: SessionParameters,
     {
-        let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?;
+        let verified_normal_broadcast = self.0.clone().verify::<SP>(verifier)?;
         let payload = verified_normal_broadcast.payload();
 
-        if self.normal_broadcast.metadata().round_id().is_echo() {
+        if self.0.metadata().round_id().is_echo() {
             Ok(EchoRound::<P, SP>::verify_normal_broadcast_is_invalid(
                 deserializer,
                 payload,
@@ -434,7 +408,7 @@ where
         } else {
             Ok(P::verify_normal_broadcast_is_invalid(
                 deserializer,
-                self.normal_broadcast.metadata().round_id(),
+                self.0.metadata().round_id(),
                 payload,
             )?)
         }
@@ -443,7 +417,7 @@ where
 
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
-struct ProtocolEvidence<P: Protocol> {
+struct ProtocolEvidence<Id, P: Protocol<Id>> {
     error: P::ProtocolError,
     direct_message: SignedMessagePart<DirectMessage>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
@@ -454,17 +428,18 @@ struct ProtocolEvidence<P: Protocol> {
     combined_echos: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
 }
 
-impl<P> ProtocolEvidence<P>
+impl<Id, P> ProtocolEvidence<Id, P>
 where
-    P: Protocol,
+    Id: Clone + Ord,
+    P: Protocol<Id>,
 {
     fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
     where
-        SP: SessionParameters,
+        SP: SessionParameters<Verifier = Id>,
     {
         let session_id = self.direct_message.metadata().session_id();
 
-        let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?.payload().clone();
+        let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?.into_payload();
 
         let mut verified_direct_messages = BTreeMap::new();
         for (round_id, direct_message) in self.direct_messages.iter() {
@@ -475,10 +450,10 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_direct_messages.insert(round_id.clone(), verified_direct_message.payload().clone());
+            verified_direct_messages.insert(round_id.clone(), verified_direct_message.into_payload());
         }
 
-        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.payload().clone();
+        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.into_payload();
         if self.echo_broadcast.metadata().session_id() != session_id
             || self.echo_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
         {
@@ -487,7 +462,7 @@ where
             ));
         }
 
-        let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?.payload().clone();
+        let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?.into_payload();
         if self.normal_broadcast.metadata().session_id() != session_id
             || self.normal_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
         {
@@ -505,7 +480,7 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_echo_broadcasts.insert(round_id.clone(), verified_echo_broadcast.payload().clone());
+            verified_echo_broadcasts.insert(round_id.clone(), verified_echo_broadcast.into_payload());
         }
 
         let mut verified_normal_broadcasts = BTreeMap::new();
@@ -517,7 +492,7 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_normal_broadcasts.insert(round_id.clone(), verified_normal_broadcast.payload().clone());
+            verified_normal_broadcasts.insert(round_id.clone(), verified_normal_broadcast.into_payload());
         }
 
         let mut combined_echos = BTreeMap::new();
@@ -533,7 +508,7 @@ where
                 .payload()
                 .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
-            let mut verified_echo_set = Vec::new();
+            let mut verified_echo_set = BTreeMap::new();
             for (other_verifier, echo_broadcast) in echo_set.echo_broadcasts.iter() {
                 let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(other_verifier)?;
                 let metadata = verified_echo_broadcast.metadata();
@@ -542,20 +517,22 @@ where
                         "Invalid attached message metadata".into(),
                     ));
                 }
-                verified_echo_set.push(verified_echo_broadcast.payload().clone());
+                verified_echo_set.insert(other_verifier.clone(), verified_echo_broadcast.into_payload());
             }
             combined_echos.insert(round_id.clone(), verified_echo_set);
         }
 
         Ok(self.error.verify_messages_constitute_error(
             deserializer,
-            &verified_echo_broadcast,
-            &verified_normal_broadcast,
-            &verified_direct_message,
-            &verified_echo_broadcasts,
-            &verified_normal_broadcasts,
-            &verified_direct_messages,
-            &combined_echos,
+            verifier,
+            session_id.as_ref(),
+            verified_echo_broadcast,
+            verified_normal_broadcast,
+            verified_direct_message,
+            verified_echo_broadcasts,
+            verified_normal_broadcasts,
+            verified_direct_messages,
+            combined_echos,
         )?)
     }
 }

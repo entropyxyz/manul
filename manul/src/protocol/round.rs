@@ -3,7 +3,6 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
-    vec::Vec,
 };
 use core::{
     any::Any,
@@ -23,7 +22,7 @@ use super::{
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
-pub enum FinalizeOutcome<Id: PartyId, P: Protocol> {
+pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
     /// Transition to a new round.
     AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
@@ -127,12 +126,12 @@ impl RoundId {
 }
 
 /// A distributed protocol.
-pub trait Protocol: 'static {
+pub trait Protocol<Id>: 'static {
     /// The successful result of an execution of this protocol.
     type Result: Debug;
 
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
-    type ProtocolError: ProtocolError;
+    type ProtocolError: ProtocolError<Id>;
 
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
@@ -181,7 +180,7 @@ pub trait Protocol: 'static {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
+pub trait ProtocolError<Id>: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
     /// A description of the error that will be included in the generated evidence.
     ///
     /// Make it short and informative.
@@ -234,19 +233,21 @@ pub trait ProtocolError: Debug + Clone + Send + Serialize + for<'de> Deserialize
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
-        echo_broadcast: &EchoBroadcast,
-        normal_broadcast: &NormalBroadcast,
-        direct_message: &DirectMessage,
-        echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        guilty_party: &Id,
+        shared_randomness: &[u8],
+        echo_broadcast: EchoBroadcast,
+        normal_broadcast: NormalBroadcast,
+        direct_message: DirectMessage,
+        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
 }
 
 // A convenience implementation for protocols that don't define any errors.
 // Have to do it for `()`, since `!` is unstable.
-impl ProtocolError for () {
+impl<Id> ProtocolError<Id> for () {
     fn description(&self) -> String {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
     }
@@ -254,13 +255,15 @@ impl ProtocolError for () {
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,
-        _echo_broadcast: &EchoBroadcast,
-        _normal_broadcast: &NormalBroadcast,
-        _direct_message: &DirectMessage,
-        _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        _guilty_party: &Id,
+        _shared_randomness: &[u8],
+        _echo_broadcast: EchoBroadcast,
+        _normal_broadcast: NormalBroadcast,
+        _direct_message: DirectMessage,
+        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
+        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
+        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
     }
@@ -325,7 +328,7 @@ impl Artifact {
 /// all the others are only reachable throud [`Round::finalize`] by the execution layer.
 pub trait EntryPoint<Id: PartyId> {
     /// The protocol implemented by the round this entry points returns.
-    type Protocol: Protocol;
+    type Protocol: Protocol<Id>;
 
     /// Returns the ID of the round returned by [`Self::make_round`].
     fn entry_round() -> RoundId {
@@ -379,7 +382,7 @@ The way a round will be used by an external caller:
 */
 pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// The protocol this round is a part of.
-    type Protocol: Protocol;
+    type Protocol: Protocol<Id>;
 
     /// The round ID.
     ///
