@@ -169,6 +169,7 @@ where
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
+        shared_randomness: &[u8],
         echo_broadcast: &EchoBroadcast,
         normal_broadcast: &NormalBroadcast,
         direct_message: &DirectMessage,
@@ -203,6 +204,7 @@ where
         match self {
             Self::Protocol1(err) => err.verify_messages_constitute_error(
                 deserializer,
+                shared_randomness,
                 echo_broadcast,
                 normal_broadcast,
                 direct_message,
@@ -213,6 +215,7 @@ where
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
                 deserializer,
+                shared_randomness,
                 echo_broadcast,
                 normal_broadcast,
                 direct_message,

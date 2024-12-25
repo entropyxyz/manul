@@ -53,6 +53,7 @@ impl ProtocolError for SimpleProtocolError {
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
+        _shared_randomness: &[u8],
         _echo_broadcast: &EchoBroadcast,
         _normal_broadcast: &NormalBroadcast,
         direct_message: &DirectMessage,

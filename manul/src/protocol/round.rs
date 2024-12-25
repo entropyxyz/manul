@@ -234,6 +234,7 @@ pub trait ProtocolError: Debug + Clone + Send + Serialize + for<'de> Deserialize
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
+        shared_randomness: &[u8],
         echo_broadcast: &EchoBroadcast,
         normal_broadcast: &NormalBroadcast,
         direct_message: &DirectMessage,
@@ -254,6 +255,7 @@ impl ProtocolError for () {
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,
+        _shared_randomness: &[u8],
         _echo_broadcast: &EchoBroadcast,
         _normal_broadcast: &NormalBroadcast,
         _direct_message: &DirectMessage,

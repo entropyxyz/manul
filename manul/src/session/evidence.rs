@@ -549,6 +549,7 @@ where
 
         Ok(self.error.verify_messages_constitute_error(
             deserializer,
+            session_id.as_ref(),
             &verified_echo_broadcast,
             &verified_normal_broadcast,
             &verified_direct_message,

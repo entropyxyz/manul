@@ -39,6 +39,7 @@ impl ProtocolError for PartialEchoProtocolError {
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,
+        _shared_randomness: &[u8],
         _echo_broadcast: &EchoBroadcast,
         _normal_broadcast: &NormalBroadcast,
         _direct_message: &DirectMessage,
