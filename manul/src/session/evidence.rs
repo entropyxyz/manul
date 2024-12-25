@@ -439,7 +439,7 @@ where
     {
         let session_id = self.direct_message.metadata().session_id();
 
-        let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?.payload().clone();
+        let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?.into_payload();
 
         let mut verified_direct_messages = BTreeMap::new();
         for (round_id, direct_message) in self.direct_messages.iter() {
@@ -450,10 +450,10 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_direct_messages.insert(round_id.clone(), verified_direct_message.payload().clone());
+            verified_direct_messages.insert(round_id.clone(), verified_direct_message.into_payload());
         }
 
-        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.payload().clone();
+        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.into_payload();
         if self.echo_broadcast.metadata().session_id() != session_id
             || self.echo_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
         {
@@ -462,7 +462,7 @@ where
             ));
         }
 
-        let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?.payload().clone();
+        let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?.into_payload();
         if self.normal_broadcast.metadata().session_id() != session_id
             || self.normal_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
         {
@@ -480,7 +480,7 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_echo_broadcasts.insert(round_id.clone(), verified_echo_broadcast.payload().clone());
+            verified_echo_broadcasts.insert(round_id.clone(), verified_echo_broadcast.into_payload());
         }
 
         let mut verified_normal_broadcasts = BTreeMap::new();
@@ -492,7 +492,7 @@ where
                     "Invalid attached message metadata".into(),
                 ));
             }
-            verified_normal_broadcasts.insert(round_id.clone(), verified_normal_broadcast.payload().clone());
+            verified_normal_broadcasts.insert(round_id.clone(), verified_normal_broadcast.into_payload());
         }
 
         let mut combined_echos = BTreeMap::new();
@@ -517,7 +517,7 @@ where
                         "Invalid attached message metadata".into(),
                     ));
                 }
-                verified_echo_set.insert(other_verifier.clone(), verified_echo_broadcast.payload().clone());
+                verified_echo_set.insert(other_verifier.clone(), verified_echo_broadcast.into_payload());
             }
             combined_echos.insert(round_id.clone(), verified_echo_set);
         }

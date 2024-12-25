@@ -167,6 +167,10 @@ impl<M> VerifiedMessagePart<M> {
         &self.message_with_metadata.message
     }
 
+    pub(crate) fn into_payload(self) -> M {
+        self.message_with_metadata.message
+    }
+
     pub fn into_unverified(self) -> SignedMessagePart<M> {
         SignedMessagePart {
             signature: self.signature,
