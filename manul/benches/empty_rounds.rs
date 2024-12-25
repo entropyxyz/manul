@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug)]
 pub struct EmptyProtocol;
 
-impl Protocol for EmptyProtocol {
+impl<Id> Protocol<Id> for EmptyProtocol {
     type Result = ();
     type ProtocolError = ();
 }

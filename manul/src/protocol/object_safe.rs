@@ -40,7 +40,7 @@ impl RngCore for BoxedRng<'_> {
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
 pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
-    type Protocol: Protocol;
+    type Protocol: Protocol<Id>;
 
     fn id(&self) -> RoundId;
 
@@ -217,12 +217,12 @@ where
 /// A wrapped new round that may be returned by [`Round::finalize`]
 /// or [`EntryPoint::make_round`](`crate::protocol::EntryPoint::make_round`).
 #[derive_where::derive_where(Debug)]
-pub struct BoxedRound<Id: PartyId, P: Protocol> {
+pub struct BoxedRound<Id: PartyId, P: Protocol<Id>> {
     wrapped: bool,
     round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
 }
 
-impl<Id: PartyId, P: Protocol> BoxedRound<Id, P> {
+impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
     /// Wraps an object implementing the dynamic round trait ([`Round`](`crate::protocol::Round`)).
     pub fn new_dynamic<R: Round<Id, Protocol = P>>(round: R) -> Self {
         Self {

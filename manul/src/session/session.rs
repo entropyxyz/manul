@@ -107,7 +107,7 @@ pub(crate) struct EchoRoundInfo<Verifier> {
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
 #[derive(Debug)]
-pub struct Session<P: Protocol, SP: SessionParameters> {
+pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
     verifier: SP::Verifier,
@@ -124,7 +124,7 @@ pub struct Session<P: Protocol, SP: SessionParameters> {
 
 /// Possible non-erroneous results of finalizing a round.
 #[derive(Debug)]
-pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
+pub enum RoundOutcome<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     /// The execution is finished.
     Finished(SessionReport<P, SP>),
     /// Transitioned to another round.
@@ -138,7 +138,7 @@ pub enum RoundOutcome<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> Session<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     /// Initializes a new session.
@@ -572,7 +572,7 @@ pub enum CanFinalize {
 
 /// A mutable accumulator for collecting the results and errors from processing messages for a single round.
 #[derive_where::derive_where(Debug)]
-pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
+pub struct RoundAccumulator<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
     expecting_messages_from: BTreeSet<SP::Verifier>,
     processing: BTreeSet<SP::Verifier>,
@@ -588,7 +588,7 @@ pub struct RoundAccumulator<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> RoundAccumulator<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     fn new(expecting_messages_from: &BTreeSet<SP::Verifier>) -> Self {
@@ -787,7 +787,7 @@ pub struct ProcessedArtifact<SP: SessionParameters> {
 }
 
 #[derive(Debug)]
-pub struct ProcessedMessage<P: Protocol, SP: SessionParameters> {
+pub struct ProcessedMessage<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     message: VerifiedMessage<SP::Verifier>,
     processed: Result<Payload, ReceiveError<SP::Verifier, P>>,
 }
@@ -840,7 +840,7 @@ fn filter_messages<Verifier>(
 mod tests {
     use impls::impls;
 
-    use super::{Message, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessage};
+    use super::{Message, ProcessedArtifact, ProcessedMessage, Session, SessionParameters, VerifiedMessage};
     use crate::{
         dev::{BinaryFormat, TestSessionParams, TestVerifier},
         protocol::Protocol,
@@ -856,14 +856,14 @@ mod tests {
         // Send/Sync. But we want to make sure that if the generic parameters are
         // Send/Sync, our types are too.
 
+        type SP = TestSessionParams<BinaryFormat>;
+
         struct DummyProtocol;
 
-        impl Protocol for DummyProtocol {
+        impl Protocol<<SP as SessionParameters>::Verifier> for DummyProtocol {
             type Result = ();
             type ProtocolError = ();
         }
-
-        type SP = TestSessionParams<BinaryFormat>;
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task
         // to run the loop there.

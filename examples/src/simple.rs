@@ -23,7 +23,7 @@ pub enum SimpleProtocolError {
     Round2InvalidPosition,
 }
 
-impl ProtocolError for SimpleProtocolError {
+impl<Id> ProtocolError<Id> for SimpleProtocolError {
     fn description(&self) -> String {
         format!("{:?}", self)
     }
@@ -53,6 +53,7 @@ impl ProtocolError for SimpleProtocolError {
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
+        _guilty_party: &Id,
         _shared_randomness: &[u8],
         _echo_broadcast: &EchoBroadcast,
         _normal_broadcast: &NormalBroadcast,
@@ -87,7 +88,7 @@ impl ProtocolError for SimpleProtocolError {
     }
 }
 
-impl Protocol for SimpleProtocol {
+impl<Id> Protocol<Id> for SimpleProtocol {
     type Result = u8;
     type ProtocolError = SimpleProtocolError;
 

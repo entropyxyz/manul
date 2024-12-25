@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-enum State<P: Protocol, SP: SessionParameters> {
+enum State<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     InProgress {
         session: Session<P, SP>,
         accum: RoundAccumulator<P, SP>,
@@ -34,7 +34,7 @@ fn propagate<P, SP>(
     accum: RoundAccumulator<P, SP>,
 ) -> Result<(State<P, SP>, Vec<RoundMessage<SP>>), LocalError>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     let mut messages = Vec::new();
@@ -168,12 +168,12 @@ where
 
 /// The result of a protocol execution on a set of nodes.
 #[derive(Debug)]
-pub struct ExecutionResult<P: Protocol, SP: SessionParameters> {
+pub struct ExecutionResult<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     pub reports: BTreeMap<SP::Verifier, SessionReport<P, SP>>,
 }
 impl<P, SP> ExecutionResult<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     pub fn results(self) -> Result<BTreeMap<SP::Verifier, P::Result>, String> {

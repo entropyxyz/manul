@@ -31,15 +31,19 @@ Usage:
 
 1. Implement [`ChainedProtocol`] for a type of your choice. Usually it will be a ZST.
    You will have to specify the two protocol types you want to chain.
-   This type will then automatically implement [`Protocol`](`crate::protocol::Protocol`).
 
-2. Define an entry point type for the new joined protocol.
+2. Implement the marker trait [`ChainedMarker`] for this type. This will activate the blanket implementation
+   of [`Protocol`](`crate::protocol::Protocol`) for it.
+   The marker trait is needed to disambiguate different generic blanket implementations.
+
+3. Define an entry point type for the new joined protocol.
    Most likely it will contain a union between the required data for the entry point
    of the first and the second protocol.
 
-3. Implement [`ChainedSplit`] and [`ChainedJoin`] for the new entry point.
+4. Implement [`ChainedSplit`] and [`ChainedJoin`] for the new entry point.
 
-4. Mark the new entry point with the [`CombinatorEntryPoint`] trait using [`Chain`] for `Type`.
+5. Implement the marker trait [`ChainedMarker`] for this type.
+   Same as with the protocol, this is needed to disambiguate different generic blanket implementations.
 */
 
 use alloc::{
@@ -54,65 +58,61 @@ use core::fmt::Debug;
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
-use super::markers::{Combinator, CombinatorEntryPoint};
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
     FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
     ProtocolValidationError, ReceiveError, RoundId, Serializer,
 };
 
-/// A marker for the `chain` combinator.
-#[derive(Debug, Clone, Copy)]
-pub struct Chain;
-
-impl Combinator for Chain {}
+/// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
+pub trait ChainedMarker {}
 
 /// A trait defining two protocols executed sequentially.
-pub trait ChainedProtocol: 'static + Debug {
+pub trait ChainedProtocol<Id>: 'static + Debug {
     /// The protcol that is executed first.
-    type Protocol1: Protocol;
+    type Protocol1: Protocol<Id>;
 
     /// The protcol that is executed second.
-    type Protocol2: Protocol;
+    type Protocol2: Protocol<Id>;
 }
 
 /// The protocol error type for the chained protocol.
 #[derive_where::derive_where(Debug, Clone)]
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "
-    <C::Protocol1 as Protocol>::ProtocolError: Serialize,
-    <C::Protocol2 as Protocol>::ProtocolError: Serialize,
+    <C::Protocol1 as Protocol<Id>>::ProtocolError: Serialize,
+    <C::Protocol2 as Protocol<Id>>::ProtocolError: Serialize,
 "))]
 #[serde(bound(deserialize = "
-    <C::Protocol1 as Protocol>::ProtocolError: for<'x> Deserialize<'x>,
-    <C::Protocol2 as Protocol>::ProtocolError: for<'x> Deserialize<'x>,
+    <C::Protocol1 as Protocol<Id>>::ProtocolError: for<'x> Deserialize<'x>,
+    <C::Protocol2 as Protocol<Id>>::ProtocolError: for<'x> Deserialize<'x>,
 "))]
-pub enum ChainedProtocolError<C>
+pub enum ChainedProtocolError<Id, C>
 where
-    C: ChainedProtocol,
+    C: ChainedProtocol<Id>,
 {
     /// A protocol error from the first protocol.
-    Protocol1(<C::Protocol1 as Protocol>::ProtocolError),
+    Protocol1(<C::Protocol1 as Protocol<Id>>::ProtocolError),
     /// A protocol error from the second protocol.
-    Protocol2(<C::Protocol2 as Protocol>::ProtocolError),
+    Protocol2(<C::Protocol2 as Protocol<Id>>::ProtocolError),
 }
 
-impl<C> ChainedProtocolError<C>
+impl<Id, C> ChainedProtocolError<Id, C>
 where
-    C: ChainedProtocol,
+    C: ChainedProtocol<Id>,
 {
-    fn from_protocol1(err: <C::Protocol1 as Protocol>::ProtocolError) -> Self {
+    fn from_protocol1(err: <C::Protocol1 as Protocol<Id>>::ProtocolError) -> Self {
         Self::Protocol1(err)
     }
 
-    fn from_protocol2(err: <C::Protocol2 as Protocol>::ProtocolError) -> Self {
+    fn from_protocol2(err: <C::Protocol2 as Protocol<Id>>::ProtocolError) -> Self {
         Self::Protocol2(err)
     }
 }
 
-impl<C> ProtocolError for ChainedProtocolError<C>
+impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
 where
-    C: ChainedProtocol,
+    C: ChainedProtocol<Id>,
 {
     fn description(&self) -> String {
         match self {
@@ -169,6 +169,7 @@ where
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
+        guilty_party: &Id,
         shared_randomness: &[u8],
         echo_broadcast: &EchoBroadcast,
         normal_broadcast: &NormalBroadcast,
@@ -204,6 +205,7 @@ where
         match self {
             Self::Protocol1(err) => err.verify_messages_constitute_error(
                 deserializer,
+                guilty_party,
                 shared_randomness,
                 echo_broadcast,
                 normal_broadcast,
@@ -215,6 +217,7 @@ where
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
                 deserializer,
+                guilty_party,
                 shared_randomness,
                 echo_broadcast,
                 normal_broadcast,
@@ -228,12 +231,13 @@ where
     }
 }
 
-impl<C> Protocol for C
+impl<Id, C> Protocol<Id> for C
 where
-    C: ChainedProtocol,
+    Id: 'static,
+    C: ChainedProtocol<Id> + ChainedMarker,
 {
-    type Result = <C::Protocol2 as Protocol>::Result;
-    type ProtocolError = ChainedProtocolError<C>;
+    type Result = <C::Protocol2 as Protocol<Id>>::Result;
+    type ProtocolError = ChainedProtocolError<Id, C>;
 }
 
 /// A trait defining how the entry point for the whole chained protocol
@@ -241,10 +245,10 @@ where
 /// that, along with the first protocol's result, will be used to create the entry point for the second protocol.
 pub trait ChainedSplit<Id: PartyId> {
     /// The chained protocol this trait belongs to.
-    type Protocol: ChainedProtocol;
+    type Protocol: ChainedProtocol<Id> + ChainedMarker;
 
     /// The first protocol's entry point.
-    type EntryPoint: EntryPoint<Id, Protocol = <Self::Protocol as ChainedProtocol>::Protocol1>;
+    type EntryPoint: EntryPoint<Id, Protocol = <Self::Protocol as ChainedProtocol<Id>>::Protocol1>;
 
     /// Creates the first protocol's entry point and the data for creating the second entry point.
     fn make_entry_point1(self) -> (Self::EntryPoint, impl ChainedJoin<Id, Protocol = Self::Protocol>);
@@ -254,22 +258,22 @@ pub trait ChainedSplit<Id: PartyId> {
 /// will be joined with the result of the first protocol to create an entry point for the second protocol.
 pub trait ChainedJoin<Id: PartyId>: 'static + Debug + Send + Sync {
     /// The chained protocol this trait belongs to.
-    type Protocol: ChainedProtocol;
+    type Protocol: ChainedProtocol<Id> + ChainedMarker;
 
     /// The second protocol's entry point.
-    type EntryPoint: EntryPoint<Id, Protocol = <Self::Protocol as ChainedProtocol>::Protocol2>;
+    type EntryPoint: EntryPoint<Id, Protocol = <Self::Protocol as ChainedProtocol<Id>>::Protocol2>;
 
     /// Creates the second protocol's entry point using the first protocol's result.
     fn make_entry_point2(
         self,
-        result: <<Self::Protocol as ChainedProtocol>::Protocol1 as Protocol>::Result,
+        result: <<Self::Protocol as ChainedProtocol<Id>>::Protocol1 as Protocol<Id>>::Result,
     ) -> Self::EntryPoint;
 }
 
 impl<Id, T> EntryPoint<Id> for T
 where
     Id: PartyId,
-    T: ChainedSplit<Id> + CombinatorEntryPoint<Combinator = Chain>,
+    T: ChainedSplit<Id> + ChainedMarker,
 {
     type Protocol = T::Protocol;
 
@@ -314,11 +318,11 @@ where
 {
     Protocol1 {
         id: Id,
-        round: BoxedRound<Id, <T::Protocol as ChainedProtocol>::Protocol1>,
+        round: BoxedRound<Id, <T::Protocol as ChainedProtocol<Id>>::Protocol1>,
         shared_randomness: Box<[u8]>,
         transition: T,
     },
-    Protocol2(BoxedRound<Id, <T::Protocol as ChainedProtocol>::Protocol2>),
+    Protocol2(BoxedRound<Id, <T::Protocol as ChainedProtocol<Id>>::Protocol2>),
 }
 
 impl<Id, T> ObjectSafeRound<Id> for ChainedRound<Id, T>

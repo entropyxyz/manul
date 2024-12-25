@@ -35,7 +35,7 @@ async fn run_session<P, SP>(
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     let rng = &mut OsRng;
@@ -194,7 +194,7 @@ async fn message_dispatcher<SP>(
 
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: Protocol + Send,
+    P: Protocol<SP::Verifier> + Send,
     SP: SessionParameters,
     P::Result: Send,
     SP::Signer: Send,
