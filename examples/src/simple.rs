@@ -61,7 +61,7 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
@@ -78,7 +78,7 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
                 // Deserialize the echos
                 let _r1_echos = r1_echos_serialized
                     .iter()
-                    .map(|echo| echo.deserialize::<Round1Echo>(deserializer))
+                    .map(|(_id, echo)| echo.deserialize::<Round1Echo>(deserializer))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 // Message contents would be checked here

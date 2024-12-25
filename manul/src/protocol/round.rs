@@ -3,7 +3,6 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
-    vec::Vec,
 };
 use core::{
     any::Any,
@@ -242,7 +241,7 @@ pub trait ProtocolError<Id>: Debug + Clone + Send + Serialize + for<'de> Deseria
         echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
 }
 
@@ -264,7 +263,7 @@ impl<Id> ProtocolError<Id> for () {
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        _combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
     }

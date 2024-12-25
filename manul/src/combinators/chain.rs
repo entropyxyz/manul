@@ -51,7 +51,6 @@ use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
-    vec::Vec,
 };
 use core::fmt::Debug;
 
@@ -112,6 +111,7 @@ where
 
 impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
 where
+    Id: Clone,
     C: ChainedProtocol<Id>,
 {
     fn description(&self) -> String {
@@ -177,7 +177,7 @@ where
         echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         // TODO: the cloning can be avoided if instead we provide a reference to some "transcript API",
         // and can replace it here with a proxy that will remove nesting from round ID's.
@@ -233,7 +233,7 @@ where
 
 impl<Id, C> Protocol<Id> for C
 where
-    Id: 'static,
+    Id: 'static + Clone,
     C: ChainedProtocol<Id> + ChainedMarker,
 {
     type Result = <C::Protocol2 as Protocol<Id>>::Result;

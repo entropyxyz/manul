@@ -2,7 +2,6 @@ use alloc::{
     collections::BTreeMap,
     format,
     string::{String, ToString},
-    vec::Vec,
 };
 use core::fmt::Debug;
 
@@ -431,6 +430,7 @@ struct ProtocolEvidence<Id, P: Protocol<Id>> {
 
 impl<Id, P> ProtocolEvidence<Id, P>
 where
+    Id: Clone + Ord,
     P: Protocol<Id>,
 {
     fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
@@ -508,7 +508,7 @@ where
                 .payload()
                 .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
-            let mut verified_echo_set = Vec::new();
+            let mut verified_echo_set = BTreeMap::new();
             for (other_verifier, echo_broadcast) in echo_set.echo_broadcasts.iter() {
                 let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(other_verifier)?;
                 let metadata = verified_echo_broadcast.metadata();
@@ -517,7 +517,7 @@ where
                         "Invalid attached message metadata".into(),
                     ));
                 }
-                verified_echo_set.push(verified_echo_broadcast.payload().clone());
+                verified_echo_set.insert(other_verifier.clone(), verified_echo_broadcast.payload().clone());
             }
             combined_echos.insert(round_id.clone(), verified_echo_set);
         }

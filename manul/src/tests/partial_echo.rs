@@ -47,7 +47,7 @@ impl<Id: PartyId> ProtocolError<Id> for PartialEchoProtocolError<Id> {
         _echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
         _normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
         _direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        _combined_echos: &BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         unimplemented!()
     }
