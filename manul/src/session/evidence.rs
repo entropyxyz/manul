@@ -50,7 +50,7 @@ impl From<MessageVerificationError> for EvidenceError {
 
 impl From<NormalBroadcastError> for EvidenceError {
     fn from(error: NormalBroadcastError) -> Self {
-        Self::InvalidEvidence(format!("Failed to deserialize normal brroadcast: {:?}", error))
+        Self::InvalidEvidence(format!("Failed to deserialize normal broadcast: {:?}", error))
     }
 }
 
