@@ -164,7 +164,7 @@ pub trait Protocol<Id>: 'static {
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
     ///
-    /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
+    /// Normally one would use [`NormalBroadcast::verify_is_not`] when implementing this.
     fn verify_normal_broadcast_is_invalid(
         #[allow(unused_variables)] deserializer: &Deserializer,
         round_id: RoundId,
