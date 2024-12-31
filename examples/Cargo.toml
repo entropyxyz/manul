@@ -15,6 +15,7 @@ serde = "1"
 sha3 = "0.10"
 rand_core = "0.6"
 tracing = "0.1"
+displaydoc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }

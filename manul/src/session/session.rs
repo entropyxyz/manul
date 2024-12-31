@@ -843,7 +843,7 @@ mod tests {
     use super::{Message, ProcessedArtifact, ProcessedMessage, Session, SessionParameters, VerifiedMessage};
     use crate::{
         dev::{BinaryFormat, TestSessionParams, TestVerifier},
-        protocol::Protocol,
+        protocol::{NoProtocolErrors, Protocol},
     };
 
     #[test]
@@ -862,7 +862,7 @@ mod tests {
 
         impl Protocol<<SP as SessionParameters>::Verifier> for DummyProtocol {
             type Result = ();
-            type ProtocolError = ();
+            type ProtocolError = NoProtocolErrors;
         }
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task

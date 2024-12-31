@@ -16,12 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Combinator`/`CombinatorEntryPoint` removed in favor of a single `ChainedMarker` trait. ([#76])
 - The `combined_echos` argument to `ProtocolError::verify_messages_constitute_error()` now has a mapping of id to echo instead of just a vector of echos. ([#76])
 - `ProtocolError::verify_messages_constitute_error()` now takes messages and mapping of messages by value. ([#76])
+- Removed `ProtocolError::description()`, using `Display` impl instead. ([#79])
 
 
 ### Added
 
 - `impl From<NormalBroadcastError> for ProtocolValidationError` (to match what already exists for other messages). ([#77])
 - Exposed `dev::ExecutionResult`. ([#79])
+- `NoProtocolErrors` stub type to indicate that the protocol does not generate any provable errors. ([#79])
 
 
 [#75]: https://github.com/entropyxyz/manul/pull/75

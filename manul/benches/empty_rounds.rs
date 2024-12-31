@@ -8,7 +8,8 @@ use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-        NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round,
+        RoundId, Serializer,
     },
     signature::Keypair,
 };
@@ -20,7 +21,7 @@ pub struct EmptyProtocol;
 
 impl<Id> Protocol<Id> for EmptyProtocol {
     type Result = ();
-    type ProtocolError = ();
+    type ProtocolError = NoProtocolErrors;
 }
 
 #[derive(Debug)]

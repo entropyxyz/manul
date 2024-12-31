@@ -49,10 +49,8 @@ Usage:
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
-    format,
-    string::String,
 };
-use core::fmt::Debug;
+use core::fmt::{self, Debug};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -96,6 +94,18 @@ where
     Protocol2(<C::Protocol2 as Protocol<Id>>::ProtocolError),
 }
 
+impl<Id, C> fmt::Display for ChainedProtocolError<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Protocol1(err) => write!(f, "Protocol 1: {err}"),
+            Self::Protocol2(err) => write!(f, "Protocol 2: {err}"),
+        }
+    }
+}
+
 impl<Id, C> ChainedProtocolError<Id, C>
 where
     C: ChainedProtocol<Id>,
@@ -113,13 +123,6 @@ impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
 where
     C: ChainedProtocol<Id>,
 {
-    fn description(&self) -> String {
-        match self {
-            Self::Protocol1(err) => format!("Protocol1: {}", err.description()),
-            Self::Protocol2(err) => format!("Protocol2: {}", err.description()),
-        }
-    }
-
     fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         let (protocol_num, round_ids) = match self {
             Self::Protocol1(err) => (1, err.required_direct_messages()),

@@ -1,8 +1,4 @@
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    format,
-    string::String,
-};
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
@@ -17,17 +13,16 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct SimpleProtocol;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(displaydoc::Display, Debug, Clone, Serialize, Deserialize)]
+/// An example error.
 pub enum SimpleProtocolError {
+    /// Invalid position in Round 1.
     Round1InvalidPosition,
+    /// Invalid position in Round 2.
     Round2InvalidPosition,
 }
 
 impl<Id> ProtocolError<Id> for SimpleProtocolError {
-    fn description(&self) -> String {
-        format!("{:?}", self)
-    }
-
     fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         match self {
             Self::Round1InvalidPosition => BTreeSet::new(),

@@ -134,7 +134,7 @@ where
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
-        let description = format!("Protocol error: {}", error.description());
+        let description = format!("Protocol error: {error}");
 
         Ok(Self {
             guilty_party: verifier.clone(),

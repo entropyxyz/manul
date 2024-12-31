@@ -577,6 +577,7 @@ name = "manul-example"
 version = "0.0.0"
 dependencies = [
  "digest",
+ "displaydoc",
  "manul",
  "postcard",
  "rand",

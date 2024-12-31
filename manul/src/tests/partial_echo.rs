@@ -1,7 +1,5 @@
 use alloc::{
     collections::{BTreeMap, BTreeSet},
-    format,
-    string::String,
     vec,
     vec::Vec,
 };
@@ -14,8 +12,8 @@ use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-        FinalizeOutcome, LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart,
-        ProtocolValidationError, ReceiveError, Round, RoundId, Serializer,
+        FinalizeOutcome, LocalError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol,
+        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     signature::Keypair,
 };
@@ -25,32 +23,7 @@ struct PartialEchoProtocol<Id>(PhantomData<Id>);
 
 impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type Result = ();
-    type ProtocolError = PartialEchoProtocolError<Id>;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PartialEchoProtocolError<Id>(PhantomData<Id>);
-
-impl<Id: PartyId> ProtocolError<Id> for PartialEchoProtocolError<Id> {
-    fn description(&self) -> String {
-        format!("{:?}", self)
-    }
-
-    fn verify_messages_constitute_error(
-        &self,
-        _deserializer: &Deserializer,
-        _guilty_party: &Id,
-        _shared_randomness: &[u8],
-        _echo_broadcast: EchoBroadcast,
-        _normal_broadcast: NormalBroadcast,
-        _direct_message: DirectMessage,
-        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: BTreeMap<RoundId, DirectMessage>,
-        _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
-    ) -> Result<(), ProtocolValidationError> {
-        unimplemented!()
-    }
+    type ProtocolError = NoProtocolErrors;
 }
 
 #[derive(Debug, Clone)]

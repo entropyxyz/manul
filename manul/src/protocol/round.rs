@@ -2,7 +2,6 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
-    string::String,
 };
 use core::{
     any::Any,
@@ -180,12 +179,7 @@ pub trait Protocol<Id>: 'static {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError<Id>: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
-    /// A description of the error that will be included in the generated evidence.
-    ///
-    /// Make it short and informative.
-    fn description(&self) -> String;
-
+pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
     /// The rounds direct messages from which are required to prove malicious behavior for this error.
     ///
     /// **Note:** Should not include the round where the error happened.
@@ -245,13 +239,11 @@ pub trait ProtocolError<Id>: Debug + Clone + Send + Serialize + for<'de> Deseria
     ) -> Result<(), ProtocolValidationError>;
 }
 
-// A convenience implementation for protocols that don't define any errors.
-// Have to do it for `()`, since `!` is unstable.
-impl<Id> ProtocolError<Id> for () {
-    fn description(&self) -> String {
-        panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
-    }
+#[derive(displaydoc::Display, Debug, Clone, Copy, Serialize, Deserialize)]
+/// A stub type indicating that this protocol does not generate any provable errors.
+pub struct NoProtocolErrors;
 
+impl<Id> ProtocolError<Id> for NoProtocolErrors {
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,
