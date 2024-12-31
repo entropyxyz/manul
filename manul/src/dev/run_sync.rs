@@ -169,13 +169,19 @@ where
 /// The result of a protocol execution on a set of nodes.
 #[derive(Debug)]
 pub struct ExecutionResult<P: Protocol<SP::Verifier>, SP: SessionParameters> {
+    /// Session reports from each node.
     pub reports: BTreeMap<SP::Verifier, SessionReport<P, SP>>,
 }
+
 impl<P, SP> ExecutionResult<P, SP>
 where
     P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
+    /// Attempts to extract the results from each session report.
+    ///
+    /// If any session did finish with a result, returns a string
+    /// with a formatted description of outcomes for each session.
     pub fn results(self) -> Result<BTreeMap<SP::Verifier, P::Result>, String> {
         let mut report_strings = Vec::new();
         let mut results = BTreeMap::new();
@@ -186,7 +192,7 @@ where
                     results.insert(id, result);
                 }
                 _ => {
-                    report_strings.push(format!("Id: {:?}\n{}", id, report.brief()));
+                    report_strings.push(format!("* Id: {:?}\n{}", id, report.brief()));
                 }
             }
         }
@@ -194,7 +200,7 @@ where
         if report_strings.is_empty() {
             Ok(results)
         } else {
-            Err(report_strings.join("\n"))
+            Err(report_strings.join("\n\n"))
         }
     }
 }
