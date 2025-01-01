@@ -23,6 +23,8 @@ pub enum SimpleProtocolError {
 }
 
 impl<Id> ProtocolError<Id> for SimpleProtocolError {
+    type AssociatedData = ();
+
     fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         match self {
             Self::Round1InvalidPosition => BTreeSet::new(),
@@ -50,6 +52,7 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
         deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
+        _associated_data: &Self::AssociatedData,
         _echo_broadcast: EchoBroadcast,
         _normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,

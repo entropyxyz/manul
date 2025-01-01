@@ -180,6 +180,10 @@ pub trait Protocol<Id>: 'static {
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
 pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
+    /// Additional data that cannot be derived from the node's messages alone
+    /// and therefore has to be supplied externally during evidence verification.
+    type AssociatedData: Debug;
+
     /// The rounds direct messages from which are required to prove malicious behavior for this error.
     ///
     /// **Note:** Should not include the round where the error happened.
@@ -229,6 +233,7 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'d
         deserializer: &Deserializer,
         guilty_party: &Id,
         shared_randomness: &[u8],
+        associated_data: &Self::AssociatedData,
         echo_broadcast: EchoBroadcast,
         normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
@@ -244,11 +249,14 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'d
 pub struct NoProtocolErrors;
 
 impl<Id> ProtocolError<Id> for NoProtocolErrors {
+    type AssociatedData = ();
+
     fn verify_messages_constitute_error(
         &self,
         _deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
+        _associated_data: &Self::AssociatedData,
         _echo_broadcast: EchoBroadcast,
         _normal_broadcast: NormalBroadcast,
         _direct_message: DirectMessage,

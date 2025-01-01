@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `combined_echos` argument to `ProtocolError::verify_messages_constitute_error()` now has a mapping of id to echo instead of just a vector of echos. ([#76])
 - `ProtocolError::verify_messages_constitute_error()` now takes messages and mapping of messages by value. ([#76])
 - Removed `ProtocolError::description()`, using `Display` impl instead. ([#79])
+- Added `ProtocolError::AssociatedData` type, and a corresponding argument to `ProtocolError::verify_messages_constitute_error()` and `Evidence::verify()`. ([#79])
 
 
 ### Added

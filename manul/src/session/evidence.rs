@@ -234,10 +234,15 @@ where
     /// to prove the malicious behavior of [`Self::guilty_party`].
     ///
     /// Returns `Ok(())` if it is the case.
-    pub fn verify(&self) -> Result<(), EvidenceError> {
+    pub fn verify(
+        &self,
+        associated_data: &<P::ProtocolError as ProtocolError<SP::Verifier>>::AssociatedData,
+    ) -> Result<(), EvidenceError> {
         let deserializer = Deserializer::new::<SP::WireFormat>();
         match &self.evidence {
-            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(&self.guilty_party, &deserializer),
+            EvidenceEnum::Protocol(evidence) => {
+                evidence.verify::<SP>(&self.guilty_party, &deserializer, associated_data)
+            }
             EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &deserializer),
             EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &deserializer),
             EvidenceEnum::InvalidNormalBroadcast(evidence) => {
@@ -433,7 +438,12 @@ where
     Id: Clone + Ord,
     P: Protocol<Id>,
 {
-    fn verify<SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+    fn verify<SP>(
+        &self,
+        verifier: &SP::Verifier,
+        deserializer: &Deserializer,
+        associated_data: &<P::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), EvidenceError>
     where
         SP: SessionParameters<Verifier = Id>,
     {
@@ -526,6 +536,7 @@ where
             deserializer,
             verifier,
             session_id.as_ref(),
+            associated_data,
             verified_echo_broadcast,
             verified_normal_broadcast,
             verified_direct_message,

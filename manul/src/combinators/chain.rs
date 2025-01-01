@@ -44,6 +44,9 @@ Usage:
 
 5. Implement the marker trait [`ChainedMarker`] for this type.
    Same as with the protocol, this is needed to disambiguate different generic blanket implementations.
+
+6. [`ChainedAssociatedData`] is the structure used to supply associated data
+   when verifying evidence from the chained protocol.
 */
 
 use alloc::{
@@ -119,10 +122,24 @@ where
     }
 }
 
+/// Associated data for verification of malicious behavior evidence in the chained protocol.
+#[derive_where::derive_where(Debug)]
+pub struct ChainedAssociatedData<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
+    /// Associated data for the errors in the first protocol.
+    pub protocol1: <<C::Protocol1 as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    /// Associated data for the errors in the second protocol.
+    pub protocol2: <<C::Protocol2 as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+}
+
 impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
 where
     C: ChainedProtocol<Id>,
 {
+    type AssociatedData = ChainedAssociatedData<Id, C>;
+
     fn required_direct_messages(&self) -> BTreeSet<RoundId> {
         let (protocol_num, round_ids) = match self {
             Self::Protocol1(err) => (1, err.required_direct_messages()),
@@ -173,6 +190,7 @@ where
         deserializer: &Deserializer,
         guilty_party: &Id,
         shared_randomness: &[u8],
+        associated_data: &Self::AssociatedData,
         echo_broadcast: EchoBroadcast,
         normal_broadcast: NormalBroadcast,
         direct_message: DirectMessage,
@@ -203,6 +221,7 @@ where
                 deserializer,
                 guilty_party,
                 shared_randomness,
+                &associated_data.protocol1,
                 echo_broadcast,
                 normal_broadcast,
                 direct_message,
@@ -215,6 +234,7 @@ where
                 deserializer,
                 guilty_party,
                 shared_randomness,
+                &associated_data.protocol2,
                 echo_broadcast,
                 normal_broadcast,
                 direct_message,
