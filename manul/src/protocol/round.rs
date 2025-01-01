@@ -72,7 +72,25 @@ impl RoundId {
         }
     }
 
-    /// Removes the top group prefix from this round ID.
+    /// Removes the top group prefix from this round ID
+    /// and returns this prefix along with the resulting round ID.
+    ///
+    /// Returns the `Err` variant if the round ID is not nested.
+    pub(crate) fn split_group(&self) -> Result<(u8, Self), LocalError> {
+        if self.round_nums.len() == 1 {
+            Err(LocalError::new("This round ID is not in a group"))
+        } else {
+            let mut round_nums = self.round_nums.clone();
+            let group = round_nums.pop().expect("vector size greater than 1");
+            let round_id = Self {
+                round_nums,
+                is_echo: self.is_echo,
+            };
+            Ok((group, round_id))
+        }
+    }
+
+    /// Removes the top group prefix from this round ID and returns the resulting Round ID.
     ///
     /// Returns the `Err` variant if the round ID is not nested.
     pub(crate) fn ungroup(&self) -> Result<Self, LocalError> {
@@ -135,44 +153,35 @@ pub trait Protocol<Id>: 'static {
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
     ///
-    /// Normally one would use [`DirectMessage::verify_is_not`] when implementing this.
+    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
+    /// when implementing this.
     fn verify_direct_message_is_invalid(
-        #[allow(unused_variables)] deserializer: &Deserializer,
+        deserializer: &Deserializer,
         round_id: &RoundId,
-        #[allow(unused_variables)] message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::InvalidEvidence(format!(
-            "Invalid round number: {round_id:?}"
-        )))
-    }
+        message: &DirectMessage,
+    ) -> Result<(), MessageValidationError>;
 
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
     ///
-    /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
+    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
+    /// when implementing this.
     fn verify_echo_broadcast_is_invalid(
-        #[allow(unused_variables)] deserializer: &Deserializer,
+        deserializer: &Deserializer,
         round_id: &RoundId,
-        #[allow(unused_variables)] message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::InvalidEvidence(format!(
-            "Invalid round number: {round_id:?}"
-        )))
-    }
+        message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError>;
 
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
     ///
-    /// Normally one would use [`NormalBroadcast::verify_is_not`] when implementing this.
+    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
+    /// when implementing this.
     fn verify_normal_broadcast_is_invalid(
-        #[allow(unused_variables)] deserializer: &Deserializer,
+        deserializer: &Deserializer,
         round_id: &RoundId,
-        #[allow(unused_variables)] message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::InvalidEvidence(format!(
-            "Invalid round number: {round_id:?}"
-        )))
-    }
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError>;
 }
 
 /// Declares which parts of the message from a round have to be stored to serve as the evidence of malicious behavior.

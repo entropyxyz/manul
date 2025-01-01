@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedRound, Deserializer, EchoBroadcast, EchoRoundParticipation, EntryPoint, FinalizeOutcome,
-        LocalError, NoProtocolErrors, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
-        Round, RoundId, Serializer,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+        FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
+        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     signature::Keypair,
 };
@@ -24,6 +24,30 @@ struct PartialEchoProtocol<Id>(PhantomData<Id>);
 impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type Result = ();
     type ProtocolError = NoProtocolErrors;
+
+    fn verify_direct_message_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &DirectMessage,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug, Clone)]

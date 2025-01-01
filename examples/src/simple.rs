@@ -101,6 +101,18 @@ impl<Id> Protocol<Id> for SimpleProtocol {
             _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
         }
     }
+
+    fn verify_normal_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        if round_id == &RoundId::new(1) || round_id == &RoundId::new(2) {
+            message.verify_is_some()
+        } else {
+            Err(MessageValidationError::InvalidEvidence("Invalid round number".into()))
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -8,8 +8,8 @@ use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-        NoProtocolErrors, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round,
-        RoundId, Serializer,
+        MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
+        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
     },
     signature::Keypair,
 };
@@ -22,6 +22,30 @@ pub struct EmptyProtocol;
 impl<Id> Protocol<Id> for EmptyProtocol {
     type Result = ();
     type ProtocolError = NoProtocolErrors;
+
+    fn verify_direct_message_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &DirectMessage,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug)]

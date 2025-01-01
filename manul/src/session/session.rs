@@ -841,10 +841,13 @@ fn filter_messages<Verifier>(
 mod tests {
     use impls::impls;
 
-    use super::{Message, ProcessedArtifact, ProcessedMessage, Session, SessionParameters, VerifiedMessage};
+    use super::{
+        Deserializer, Message, ProcessedArtifact, ProcessedMessage, RoundId, Session, SessionParameters,
+        VerifiedMessage,
+    };
     use crate::{
         dev::{BinaryFormat, TestSessionParams, TestVerifier},
-        protocol::{NoProtocolErrors, Protocol},
+        protocol::{DirectMessage, EchoBroadcast, MessageValidationError, NoProtocolErrors, NormalBroadcast, Protocol},
     };
 
     #[test]
@@ -864,6 +867,30 @@ mod tests {
         impl Protocol<<SP as SessionParameters>::Verifier> for DummyProtocol {
             type Result = ();
             type ProtocolError = NoProtocolErrors;
+
+            fn verify_direct_message_is_invalid(
+                _deserializer: &Deserializer,
+                _round_id: &RoundId,
+                _message: &DirectMessage,
+            ) -> Result<(), MessageValidationError> {
+                unimplemented!()
+            }
+
+            fn verify_echo_broadcast_is_invalid(
+                _deserializer: &Deserializer,
+                _round_id: &RoundId,
+                _message: &EchoBroadcast,
+            ) -> Result<(), MessageValidationError> {
+                unimplemented!()
+            }
+
+            fn verify_normal_broadcast_is_invalid(
+                _deserializer: &Deserializer,
+                _round_id: &RoundId,
+                _message: &NormalBroadcast,
+            ) -> Result<(), MessageValidationError> {
+                unimplemented!()
+            }
         }
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task

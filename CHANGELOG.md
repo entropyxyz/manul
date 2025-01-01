@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Message parts in `Round::receive_message()` and `ProtocolError::verify_messages_constitute_error()` are bundled in `ProtocolMessage`. ([#79])
 - `RoundId`s are passed by reference in public methods since they are not `Copy`. ([#79])
 - Using a single `ProtocolError::required_messages()` instead of multiple methods. ([#79])
+- `Protocol::verify_*_is_invalid()` are now mandatory to implement. ([#79])
 
 
 ### Added

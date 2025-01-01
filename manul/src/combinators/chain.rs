@@ -60,8 +60,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
-    ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
+    FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
+    ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -217,6 +217,45 @@ where
 {
     type Result = <C::Protocol2 as Protocol<Id>>::Result;
     type ProtocolError = ChainedProtocolError<Id, C>;
+
+    fn verify_direct_message_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &DirectMessage,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_direct_message_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_direct_message_is_invalid(deserializer, &round_id, message)
+        }
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+        }
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+        }
+    }
 }
 
 /// A trait defining how the entry point for the whole chained protocol
