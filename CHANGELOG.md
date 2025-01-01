@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `ProtocolError::description()`, using `Display` impl instead. ([#79])
 - Added `ProtocolError::AssociatedData` type, and a corresponding argument to `ProtocolError::verify_messages_constitute_error()` and `Evidence::verify()`. ([#79])
 - Message parts in `Round::receive_message()` and `ProtocolError::verify_messages_constitute_error()` are bundled in `ProtocolMessage`. ([#79])
+- `RoundId`s are passed by reference in public methods since they are not `Copy`. ([#79])
+- Using a single `ProtocolError::required_messages()` instead of multiple methods. ([#79])
 
 
 ### Added

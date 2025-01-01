@@ -25,7 +25,7 @@ pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage
 pub use object_safe::BoxedRound;
 pub use round::{
     Artifact, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoProtocolErrors, PartyId, Payload, Protocol,
-    ProtocolError, Round, RoundId,
+    ProtocolError, RequiredMessageParts, RequiredMessages, Round, RoundId,
 };
 pub use serialization::{Deserializer, Serializer};
 

@@ -177,10 +177,10 @@ where
         let verifier = signer.verifying_key();
 
         let echo = round.as_ref().make_echo_broadcast(rng, &serializer, &deserializer)?;
-        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
+        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &round.id(), echo)?;
 
         let normal = round.as_ref().make_normal_broadcast(rng, &serializer, &deserializer)?;
-        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
+        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &round.id(), normal)?;
 
         let message_destinations = round.as_ref().message_destinations().clone();
 
@@ -264,7 +264,7 @@ where
             rng,
             &self.signer,
             &self.session_id,
-            self.round.id(),
+            &self.round.id(),
             destination,
             direct_message,
             self.echo_broadcast.clone(),
@@ -328,7 +328,7 @@ where
                 return Ok(PreprocessOutcome::remote_error(err));
             }
         };
-        let message_round_id = checked_message.metadata().round_id();
+        let message_round_id = checked_message.metadata().round_id().clone();
 
         if checked_message.metadata().session_id() != &self.session_id {
             let err = "The received message has an incorrect session ID";
@@ -494,13 +494,13 @@ where
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
                 self.echo_broadcast,
-                transcript.echo_broadcasts(round_id)?,
+                transcript.echo_broadcasts(&round_id)?,
                 echo_round_info,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
             ));
-            let cached_messages = filter_messages(accum.cached, round.id());
+            let cached_messages = filter_messages(accum.cached, &round.id());
             let session = Session::new_for_next_round(
                 rng,
                 self.session_id,
@@ -531,7 +531,7 @@ where
                 // processing messages from the same node for the current round.
                 // So there might have been some new errors, and we need to check again
                 // if the sender is already banned.
-                let cached_messages = filter_messages(accum.cached, round.id())
+                let cached_messages = filter_messages(accum.cached, &round.id())
                     .into_iter()
                     .filter(|message| !transcript.is_banned(message.from()))
                     .collect::<Vec<_>>();
@@ -768,8 +768,8 @@ where
     }
 
     fn cache_message(&mut self, message: VerifiedMessage<SP::Verifier>) -> Result<(), LocalError> {
-        let from = message.from().clone();
-        let round_id = message.metadata().round_id();
+        let from = message.from();
+        let round_id = message.metadata().round_id().clone();
         let cached = self.cached.entry(from.clone()).or_default();
         if cached.insert(round_id.clone(), message).is_some() {
             return Err(LocalError::new(format!(
@@ -829,11 +829,11 @@ impl<Verifier> PreprocessOutcome<Verifier> {
 
 fn filter_messages<Verifier>(
     messages: BTreeMap<Verifier, BTreeMap<RoundId, VerifiedMessage<Verifier>>>,
-    round_id: RoundId,
+    round_id: &RoundId,
 ) -> Vec<VerifiedMessage<Verifier>> {
     messages
         .into_values()
-        .filter_map(|mut messages| messages.remove(&round_id))
+        .filter_map(|mut messages| messages.remove(round_id))
         .collect()
 }
 

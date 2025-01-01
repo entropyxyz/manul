@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
     FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
-    ProtocolMessage, ProtocolValidationError, ReceiveError, RoundId, Serializer,
+    ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -140,48 +140,31 @@ where
 {
     type AssociatedData = ChainedAssociatedData<Id, C>;
 
-    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_direct_messages()),
-            Self::Protocol2(err) => (2, err.required_direct_messages()),
+    fn required_messages(&self) -> RequiredMessages {
+        let (protocol_num, required_messages) = match self {
+            Self::Protocol1(err) => (1, err.required_messages()),
+            Self::Protocol2(err) => (2, err.required_messages()),
         };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
 
-    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_echo_broadcasts()),
-            Self::Protocol2(err) => (2, err.required_echo_broadcasts()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
+        let previous_rounds = required_messages.previous_rounds.map(|previous_rounds| {
+            previous_rounds
+                .into_iter()
+                .map(|(round_id, required)| (round_id.group_under(protocol_num), required))
+                .collect()
+        });
 
-    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_normal_broadcasts()),
-            Self::Protocol2(err) => (2, err.required_normal_broadcasts()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
+        let combined_echos = required_messages.combined_echos.map(|combined_echos| {
+            combined_echos
+                .into_iter()
+                .map(|round_id| round_id.group_under(protocol_num))
+                .collect()
+        });
 
-    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_combined_echos()),
-            Self::Protocol2(err) => (2, err.required_combined_echos()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
+        RequiredMessages {
+            this_round: required_messages.this_round,
+            previous_rounds,
+            combined_echos,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

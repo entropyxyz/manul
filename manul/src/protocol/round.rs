@@ -138,7 +138,7 @@ pub trait Protocol<Id>: 'static {
     /// Normally one would use [`DirectMessage::verify_is_not`] when implementing this.
     fn verify_direct_message_is_invalid(
         #[allow(unused_variables)] deserializer: &Deserializer,
-        round_id: RoundId,
+        round_id: &RoundId,
         #[allow(unused_variables)] message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::InvalidEvidence(format!(
@@ -152,7 +152,7 @@ pub trait Protocol<Id>: 'static {
     /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
     fn verify_echo_broadcast_is_invalid(
         #[allow(unused_variables)] deserializer: &Deserializer,
-        round_id: RoundId,
+        round_id: &RoundId,
         #[allow(unused_variables)] message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::InvalidEvidence(format!(
@@ -166,12 +166,85 @@ pub trait Protocol<Id>: 'static {
     /// Normally one would use [`NormalBroadcast::verify_is_not`] when implementing this.
     fn verify_normal_broadcast_is_invalid(
         #[allow(unused_variables)] deserializer: &Deserializer,
-        round_id: RoundId,
+        round_id: &RoundId,
         #[allow(unused_variables)] message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
         Err(MessageValidationError::InvalidEvidence(format!(
             "Invalid round number: {round_id:?}"
         )))
+    }
+}
+
+/// Declares which parts of the message from a round have to be stored to serve as the evidence of malicious behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequiredMessageParts {
+    pub(crate) echo_broadcast: bool,
+    pub(crate) normal_broadcast: bool,
+    pub(crate) direct_message: bool,
+}
+
+impl RequiredMessageParts {
+    fn new(echo_broadcast: bool, normal_broadcast: bool, direct_message: bool) -> Self {
+        // We must require at least one part, otherwise this struct doesn't need to be created.
+        debug_assert!(echo_broadcast || normal_broadcast || direct_message);
+        Self {
+            echo_broadcast,
+            normal_broadcast,
+            direct_message,
+        }
+    }
+
+    /// Store all parts of the message (echo broadcast, normal broadcast, direct message).
+    pub fn all() -> Self {
+        Self::new(true, true, true)
+    }
+
+    /// Store echo broadcast only.
+    pub fn echo_broadcast_only() -> Self {
+        Self::new(true, false, false)
+    }
+
+    /// Store normal broadcast only.
+    pub fn normal_broadcast_only() -> Self {
+        Self::new(false, true, false)
+    }
+
+    /// Store direct message only.
+    pub fn direct_message_only() -> Self {
+        Self::new(false, false, true)
+    }
+}
+
+/// Declares which messages from this and previous rounds
+/// have to be stored to serve as the evidence of malicious behavior.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredMessages {
+    pub(crate) this_round: RequiredMessageParts,
+    pub(crate) previous_rounds: Option<BTreeMap<RoundId, RequiredMessageParts>>,
+    pub(crate) combined_echos: Option<BTreeSet<RoundId>>,
+}
+
+impl RequiredMessages {
+    /// The general case constructor.
+    ///
+    /// `this_round` specifies the message parts to be stored from the message that triggered the error.
+    ///
+    /// `previous_rounds` specifies, optionally, if any message parts from the previous rounds need to be included.
+    ///
+    /// `combined_echos` specifies, optionally, if any echoed broadcasts need to be included.
+    /// The combined echos are echo broadcasts sent by a party during the echo round,
+    /// where it bundles all the received broadcasts and sends them back to everyone.
+    /// That is, they will include the echo broadcasts from all other nodes signed by the guilty party.
+    pub fn new(
+        this_round: RequiredMessageParts,
+        previous_rounds: Option<BTreeMap<RoundId, RequiredMessageParts>>,
+        combined_echos: Option<BTreeSet<RoundId>>,
+    ) -> Self {
+        Self {
+            this_round,
+            previous_rounds,
+            combined_echos,
+        }
     }
 }
 
@@ -184,36 +257,9 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'d
     /// and therefore has to be supplied externally during evidence verification.
     type AssociatedData: Debug;
 
-    /// The rounds direct messages from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    /// The rounds echo broadcasts from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    /// The rounds normal broadcasts from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    /// The rounds combined echos from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    ///
-    /// The combined echos are echo broadcasts sent by a party during the echo round,
-    /// where it bundles all the received broadcasts and sends them back to everyone.
-    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
+    /// Specifies the messages of the guilty party that need to be stored as the evidence
+    /// to prove its malicious behavior.
+    fn required_messages(&self) -> RequiredMessages;
 
     /// Returns `Ok(())` if the attached messages indeed prove that a malicious action happened.
     ///
@@ -224,14 +270,13 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'d
     /// during [`Round::receive_message`].
     ///
     /// `previous_messages` are message parts from the previous rounds, as requested by
-    /// [`required_direct_messages`](`Self::required_direct_messages`),
-    /// [`required_echo_broadcasts`](`Self::required_echo_broadcasts`), and
-    /// [`required_normal_broadcasts`](`Self::required_normal_broadcasts`).
+    /// [`required_messages`](Self::required_messages).
+    ///
     /// Note that if some message part was not requested by above methods, it will be set to an empty one
     /// in the [`ProtocolMessage`], even if it was present originally.
     ///
     /// `combined_echos` are bundled echos from other parties from the previous rounds,
-    /// as requested by [`required_combined_echos`](`Self::required_combined_echos`).
+    /// as requested by [`required_messages`](Self::required_messages).
     #[allow(clippy::too_many_arguments)]
     fn verify_messages_constitute_error(
         &self,
@@ -251,6 +296,10 @@ pub struct NoProtocolErrors;
 
 impl<Id> ProtocolError<Id> for NoProtocolErrors {
     type AssociatedData = ();
+
+    fn required_messages(&self) -> RequiredMessages {
+        panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
+    }
 
     fn verify_messages_constitute_error(
         &self,
