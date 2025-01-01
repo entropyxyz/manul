@@ -9,7 +9,7 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
     errors::{LocalError, ReceiveError},
-    message::{DirectMessage, EchoBroadcast, NormalBroadcast},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage},
     round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
     serialization::{Deserializer, Serializer},
 };
@@ -81,9 +81,7 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
     fn finalize(
@@ -187,19 +185,10 @@ where
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         let mut boxed_rng = BoxedRng(rng);
-        self.round.receive_message(
-            &mut boxed_rng,
-            deserializer,
-            from,
-            echo_broadcast,
-            normal_broadcast,
-            direct_message,
-        )
+        self.round.receive_message(&mut boxed_rng, deserializer, from, message)
     }
 
     fn finalize(

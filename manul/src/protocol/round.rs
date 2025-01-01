@@ -14,7 +14,7 @@ use tinyvec::TinyVec;
 
 use super::{
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
-    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     object_safe::BoxedRound,
     serialization::{Deserializer, Serializer},
 };
@@ -220,11 +220,16 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'d
     /// The signatures and metadata of the messages will be checked by the calling code,
     /// the responsibility of this method is just to check the message contents.
     ///
-    /// `echo_broadcast` and `direct_message` are the messages that triggered the error
+    /// `message` contain the message parts that triggered the error
     /// during [`Round::receive_message`].
-    /// `echo_broadcasts` and `direct_messages` are messages from the previous rounds, as requested by
-    /// [`required_direct_messages`](`Self::required_direct_messages`) and
-    /// [`required_echo_broadcasts`](`Self::required_echo_broadcasts`).
+    ///
+    /// `previous_messages` are message parts from the previous rounds, as requested by
+    /// [`required_direct_messages`](`Self::required_direct_messages`),
+    /// [`required_echo_broadcasts`](`Self::required_echo_broadcasts`), and
+    /// [`required_normal_broadcasts`](`Self::required_normal_broadcasts`).
+    /// Note that if some message part was not requested by above methods, it will be set to an empty one
+    /// in the [`ProtocolMessage`], even if it was present originally.
+    ///
     /// `combined_echos` are bundled echos from other parties from the previous rounds,
     /// as requested by [`required_combined_echos`](`Self::required_combined_echos`).
     #[allow(clippy::too_many_arguments)]
@@ -234,12 +239,8 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'d
         guilty_party: &Id,
         shared_randomness: &[u8],
         associated_data: &Self::AssociatedData,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
-        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        message: ProtocolMessage,
+        previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
 }
@@ -257,12 +258,8 @@ impl<Id> ProtocolError<Id> for NoProtocolErrors {
         _guilty_party: &Id,
         _shared_randomness: &[u8],
         _associated_data: &Self::AssociatedData,
-        _echo_broadcast: EchoBroadcast,
-        _normal_broadcast: NormalBroadcast,
-        _direct_message: DirectMessage,
-        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _message: ProtocolMessage,
+        _previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
@@ -481,9 +478,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
         rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
     /// Attempts to finalize the round, producing the next round or the result.

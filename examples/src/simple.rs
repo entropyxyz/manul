@@ -3,8 +3,8 @@ use core::fmt::Debug;
 
 use manul::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-    MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart,
-    ProtocolValidationError, ReceiveError, Round, RoundId, Serializer,
+    MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
+    ProtocolMessagePart, ProtocolValidationError, ReceiveError, Round, RoundId, Serializer,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -53,22 +53,18 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
         _guilty_party: &Id,
         _shared_randomness: &[u8],
         _associated_data: &Self::AssociatedData,
-        _echo_broadcast: EchoBroadcast,
-        _normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
-        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        message: ProtocolMessage,
+        _previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
-                let _message = direct_message.deserialize::<Round1Message>(deserializer)?;
+                let _message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
                 // Message contents would be checked here
                 Ok(())
             }
             SimpleProtocolError::Round2InvalidPosition => {
-                let _r1_message = direct_message.deserialize::<Round1Message>(deserializer)?;
+                let _r1_message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
                 let r1_echos_serialized = combined_echos
                     .get(&RoundId::new(1))
                     .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
@@ -254,15 +250,13 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let _echo = echo_broadcast.deserialize::<Round1Echo>(deserializer)?;
-        let _normal = normal_broadcast.deserialize::<Round1Broadcast>(deserializer)?;
-        let message = direct_message.deserialize::<Round1Message>(deserializer)?;
+        let _echo = message.echo_broadcast.deserialize::<Round1Echo>(deserializer)?;
+        let _normal = message.normal_broadcast.deserialize::<Round1Broadcast>(deserializer)?;
+        let message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -356,16 +350,14 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        echo_broadcast.assert_is_none()?;
-        normal_broadcast.assert_is_none()?;
+        message.echo_broadcast.assert_is_none()?;
+        message.normal_broadcast.assert_is_none()?;
 
-        let message = direct_message.deserialize::<Round1Message>(deserializer)?;
+        let message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 

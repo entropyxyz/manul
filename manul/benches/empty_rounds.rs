@@ -8,7 +8,7 @@ use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-        NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round,
+        NoProtocolErrors, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round,
         RoundId, Serializer,
     },
     signature::Keypair,
@@ -113,17 +113,19 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         _from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         if self.inputs.echo {
-            let _echo_broadcast = echo_broadcast.deserialize::<Round1EchoBroadcast>(deserializer)?;
+            let _echo_broadcast = message
+                .echo_broadcast
+                .deserialize::<Round1EchoBroadcast>(deserializer)?;
         } else {
-            echo_broadcast.assert_is_none()?;
+            message.echo_broadcast.assert_is_none()?;
         }
-        normal_broadcast.assert_is_none()?;
-        let _direct_message = direct_message.deserialize::<Round1DirectMessage>(deserializer)?;
+        message.normal_broadcast.assert_is_none()?;
+        let _direct_message = message
+            .direct_message
+            .deserialize::<Round1DirectMessage>(deserializer)?;
         Ok(Payload::new(Round1Payload))
     }
 

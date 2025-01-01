@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-        FinalizeOutcome, LocalError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol,
-        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        Artifact, BoxedRound, Deserializer, EchoBroadcast, EchoRoundParticipation, EntryPoint, FinalizeOutcome,
+        LocalError, NoProtocolErrors, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
+        Round, RoundId, Serializer,
     },
     signature::Keypair,
 };
@@ -101,17 +101,15 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        normal_broadcast.assert_is_none()?;
-        direct_message.assert_is_none()?;
+        message.normal_broadcast.assert_is_none()?;
+        message.direct_message.assert_is_none()?;
 
         if self.inputs.expecting_messages_from.is_empty() {
-            echo_broadcast.assert_is_none()?;
+            message.echo_broadcast.assert_is_none()?;
         } else {
-            let echo = echo_broadcast.deserialize::<Round1Echo<Id>>(deserializer)?;
+            let echo = message.echo_broadcast.deserialize::<Round1Echo<Id>>(deserializer)?;
             assert_eq!(&echo.sender, from);
             assert!(self.inputs.expecting_messages_from.contains(from));
         }

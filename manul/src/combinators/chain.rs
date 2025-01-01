@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
     FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
-    ProtocolValidationError, ReceiveError, RoundId, Serializer,
+    ProtocolMessage, ProtocolValidationError, ReceiveError, RoundId, Serializer,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -191,29 +191,17 @@ where
         guilty_party: &Id,
         shared_randomness: &[u8],
         associated_data: &Self::AssociatedData,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
-        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        message: ProtocolMessage,
+        previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
-        let echo_broadcasts = echo_broadcasts
+        let previous_messages = previous_messages
             .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let normal_broadcasts = normal_broadcasts
-            .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let direct_messages = direct_messages
-            .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
+            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let combined_echos = combined_echos
             .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
+            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
         match self {
@@ -222,12 +210,8 @@ where
                 guilty_party,
                 shared_randomness,
                 &associated_data.protocol1,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-                echo_broadcasts,
-                normal_broadcasts,
-                direct_messages,
+                message,
+                previous_messages,
                 combined_echos,
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
@@ -235,12 +219,8 @@ where
                 guilty_party,
                 shared_randomness,
                 &associated_data.protocol2,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-                echo_broadcasts,
-                normal_broadcasts,
-                direct_messages,
+                message,
+                previous_messages,
                 combined_echos,
             ),
         }
@@ -459,30 +439,16 @@ where
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(
-                rng,
-                deserializer,
-                from,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-            ) {
-                Ok(payload) => Ok(payload),
-                Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
-            },
-            ChainState::Protocol2(round) => match round.as_ref().receive_message(
-                rng,
-                deserializer,
-                from,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-            ) {
+            ChainState::Protocol1 { round, .. } => {
+                match round.as_ref().receive_message(rng, deserializer, from, message) {
+                    Ok(payload) => Ok(payload),
+                    Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
+                }
+            }
+            ChainState::Protocol2(round) => match round.as_ref().receive_message(rng, deserializer, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol2)),
             },

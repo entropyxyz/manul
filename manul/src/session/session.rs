@@ -24,8 +24,8 @@ use super::{
 };
 use crate::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
-    RoundId, Serializer,
+    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
+    ReceiveErrorType, RoundId, Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -406,14 +406,15 @@ where
         rng: &mut impl CryptoRngCore,
         message: VerifiedMessage<SP::Verifier>,
     ) -> ProcessedMessage<P, SP> {
-        let processed = self.round.as_ref().receive_message(
-            rng,
-            &self.deserializer,
-            message.from(),
-            message.echo_broadcast().clone(),
-            message.normal_broadcast().clone(),
-            message.direct_message().clone(),
-        );
+        let protocol_message = ProtocolMessage {
+            echo_broadcast: message.echo_broadcast().clone(),
+            normal_broadcast: message.normal_broadcast().clone(),
+            direct_message: message.direct_message().clone(),
+        };
+        let processed = self
+            .round
+            .as_ref()
+            .receive_message(rng, &self.deserializer, message.from(), protocol_message);
         // We could filter out and return a possible `LocalError` at this stage,
         // but it's no harm in delaying it until `ProcessedMessage` is added to the accumulator.
         ProcessedMessage { message, processed }

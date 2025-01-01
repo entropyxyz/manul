@@ -1,5 +1,5 @@
 use alloc::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     format,
     string::{String, ToString},
 };
@@ -17,8 +17,8 @@ use super::{
 use crate::{
     protocol::{
         Deserializer, DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
-        NormalBroadcast, NormalBroadcastError, Protocol, ProtocolError, ProtocolMessagePart, ProtocolValidationError,
-        RoundId,
+        NormalBroadcast, NormalBroadcastError, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart,
+        ProtocolValidationError, RoundId,
     },
     utils::SerializableMap,
 };
@@ -532,17 +532,49 @@ where
             combined_echos.insert(round_id.clone(), verified_echo_set);
         }
 
+        // Merge message parts
+
+        let message = ProtocolMessage {
+            echo_broadcast: verified_echo_broadcast,
+            normal_broadcast: verified_normal_broadcast,
+            direct_message: verified_direct_message,
+        };
+
+        let all_rounds = verified_echo_broadcasts
+            .keys()
+            .cloned()
+            .chain(verified_normal_broadcasts.keys().cloned())
+            .chain(verified_direct_messages.keys().cloned())
+            .collect::<BTreeSet<_>>();
+
+        let mut previous_messages = BTreeMap::new();
+        for round_id in all_rounds {
+            let echo_broadcast = verified_echo_broadcasts
+                .remove(&round_id)
+                .unwrap_or(EchoBroadcast::none());
+            let normal_broadcast = verified_normal_broadcasts
+                .remove(&round_id)
+                .unwrap_or(NormalBroadcast::none());
+            let direct_message = verified_direct_messages
+                .remove(&round_id)
+                .unwrap_or(DirectMessage::none());
+            previous_messages.insert(
+                round_id,
+                ProtocolMessage {
+                    echo_broadcast,
+                    normal_broadcast,
+                    direct_message,
+                },
+            );
+        }
+
         Ok(self.error.verify_messages_constitute_error(
             deserializer,
             verifier,
             session_id.as_ref(),
             associated_data,
-            verified_echo_broadcast,
-            verified_normal_broadcast,
-            verified_direct_message,
-            verified_echo_broadcasts,
-            verified_normal_broadcasts,
-            verified_direct_messages,
+            message,
+            previous_messages,
             combined_echos,
         )?)
     }
