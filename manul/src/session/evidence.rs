@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     echo::{EchoRound, EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
     message::{MessageVerificationError, SignedMessagePart},
-    session::SessionParameters,
+    session::{SessionId, SessionParameters},
     transcript::Transcript,
     LocalError,
 };
@@ -433,6 +433,29 @@ struct ProtocolEvidence<Id, P: Protocol<Id>> {
     combined_echos: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
 }
 
+fn verify_message_parts<SP, T>(
+    verifier: &SP::Verifier,
+    expected_session_id: &SessionId,
+    message_parts: &SerializableMap<RoundId, SignedMessagePart<T>>,
+) -> Result<BTreeMap<RoundId, T>, EvidenceError>
+where
+    SP: SessionParameters,
+    T: Clone + ProtocolMessagePart,
+{
+    let mut verified_parts = BTreeMap::new();
+    for (round_id, message_part) in message_parts.iter() {
+        let verified = message_part.clone().verify::<SP>(verifier)?;
+        let metadata = verified.metadata();
+        if metadata.session_id() != expected_session_id || &metadata.round_id() != round_id {
+            return Err(EvidenceError::InvalidEvidence(
+                "Invalid attached message metadata".into(),
+            ));
+        }
+        verified_parts.insert(round_id.clone(), verified.into_payload());
+    }
+    Ok(verified_parts)
+}
+
 impl<Id, P> ProtocolEvidence<Id, P>
 where
     Id: Clone + Ord,
@@ -448,62 +471,31 @@ where
         SP: SessionParameters<Verifier = Id>,
     {
         let session_id = self.direct_message.metadata().session_id();
+        let round_id = self.direct_message.metadata().round_id();
 
-        let verified_direct_message = self.direct_message.clone().verify::<SP>(verifier)?.into_payload();
+        let direct_message = self.direct_message.clone().verify::<SP>(verifier)?.into_payload();
 
-        let mut verified_direct_messages = BTreeMap::new();
-        for (round_id, direct_message) in self.direct_messages.iter() {
-            let verified_direct_message = direct_message.clone().verify::<SP>(verifier)?;
-            let metadata = verified_direct_message.metadata();
-            if metadata.session_id() != session_id || &metadata.round_id() != round_id {
-                return Err(EvidenceError::InvalidEvidence(
-                    "Invalid attached message metadata".into(),
-                ));
-            }
-            verified_direct_messages.insert(round_id.clone(), verified_direct_message.into_payload());
-        }
-
-        let verified_echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.into_payload();
+        let echo_broadcast = self.echo_broadcast.clone().verify::<SP>(verifier)?.into_payload();
         if self.echo_broadcast.metadata().session_id() != session_id
-            || self.echo_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
+            || self.echo_broadcast.metadata().round_id() != round_id
         {
             return Err(EvidenceError::InvalidEvidence(
                 "Invalid attached message metadata".into(),
             ));
         }
 
-        let verified_normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?.into_payload();
+        let normal_broadcast = self.normal_broadcast.clone().verify::<SP>(verifier)?.into_payload();
         if self.normal_broadcast.metadata().session_id() != session_id
-            || self.normal_broadcast.metadata().round_id() != self.direct_message.metadata().round_id()
+            || self.normal_broadcast.metadata().round_id() != round_id
         {
             return Err(EvidenceError::InvalidEvidence(
                 "Invalid attached message metadata".into(),
             ));
         }
 
-        let mut verified_echo_broadcasts = BTreeMap::new();
-        for (round_id, echo_broadcast) in self.echo_broadcasts.iter() {
-            let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(verifier)?;
-            let metadata = verified_echo_broadcast.metadata();
-            if metadata.session_id() != session_id || &metadata.round_id() != round_id {
-                return Err(EvidenceError::InvalidEvidence(
-                    "Invalid attached message metadata".into(),
-                ));
-            }
-            verified_echo_broadcasts.insert(round_id.clone(), verified_echo_broadcast.into_payload());
-        }
-
-        let mut verified_normal_broadcasts = BTreeMap::new();
-        for (round_id, normal_broadcast) in self.normal_broadcasts.iter() {
-            let verified_normal_broadcast = normal_broadcast.clone().verify::<SP>(verifier)?;
-            let metadata = verified_normal_broadcast.metadata();
-            if metadata.session_id() != session_id || &metadata.round_id() != round_id {
-                return Err(EvidenceError::InvalidEvidence(
-                    "Invalid attached message metadata".into(),
-                ));
-            }
-            verified_normal_broadcasts.insert(round_id.clone(), verified_normal_broadcast.into_payload());
-        }
+        let mut direct_messages = verify_message_parts::<SP, _>(verifier, session_id, &self.direct_messages)?;
+        let mut echo_broadcasts = verify_message_parts::<SP, _>(verifier, session_id, &self.echo_broadcasts)?;
+        let mut normal_broadcasts = verify_message_parts::<SP, _>(verifier, session_id, &self.normal_broadcasts)?;
 
         let mut combined_echos = BTreeMap::new();
         for (round_id, combined_echo) in self.combined_echos.iter() {
@@ -534,38 +526,30 @@ where
 
         // Merge message parts
 
-        let message = ProtocolMessage {
-            echo_broadcast: verified_echo_broadcast,
-            normal_broadcast: verified_normal_broadcast,
-            direct_message: verified_direct_message,
+        let protocol_message = ProtocolMessage {
+            echo_broadcast,
+            normal_broadcast,
+            direct_message,
         };
 
-        let all_rounds = verified_echo_broadcasts
+        let all_rounds = echo_broadcasts
             .keys()
             .cloned()
-            .chain(verified_normal_broadcasts.keys().cloned())
-            .chain(verified_direct_messages.keys().cloned())
+            .chain(normal_broadcasts.keys().cloned())
+            .chain(direct_messages.keys().cloned())
             .collect::<BTreeSet<_>>();
 
         let mut previous_messages = BTreeMap::new();
         for round_id in all_rounds {
-            let echo_broadcast = verified_echo_broadcasts
-                .remove(&round_id)
-                .unwrap_or(EchoBroadcast::none());
-            let normal_broadcast = verified_normal_broadcasts
-                .remove(&round_id)
-                .unwrap_or(NormalBroadcast::none());
-            let direct_message = verified_direct_messages
-                .remove(&round_id)
-                .unwrap_or(DirectMessage::none());
-            previous_messages.insert(
-                round_id,
-                ProtocolMessage {
-                    echo_broadcast,
-                    normal_broadcast,
-                    direct_message,
-                },
-            );
+            let echo_broadcast = echo_broadcasts.remove(&round_id).unwrap_or(EchoBroadcast::none());
+            let normal_broadcast = normal_broadcasts.remove(&round_id).unwrap_or(NormalBroadcast::none());
+            let direct_message = direct_messages.remove(&round_id).unwrap_or(DirectMessage::none());
+            let protocol_message = ProtocolMessage {
+                echo_broadcast,
+                normal_broadcast,
+                direct_message,
+            };
+            previous_messages.insert(round_id, protocol_message);
         }
 
         Ok(self.error.verify_messages_constitute_error(
@@ -573,7 +557,7 @@ where
             verifier,
             session_id.as_ref(),
             associated_data,
-            message,
+            protocol_message,
             previous_messages,
             combined_echos,
         )?)
