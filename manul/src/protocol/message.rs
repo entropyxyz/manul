@@ -174,3 +174,14 @@ impl ProtocolMessageWrapper for NormalBroadcast {
 impl ProtocolMessagePart for NormalBroadcast {
     type Error = NormalBroadcastError;
 }
+
+/// A bundle containing the message parts for one round.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolMessage {
+    /// The echo-broadcased message part.
+    pub echo_broadcast: EchoBroadcast,
+    /// The message part broadcasted without additional verification.
+    pub normal_broadcast: NormalBroadcast,
+    /// The message part sent directly to one node.
+    pub direct_message: DirectMessage,
+}

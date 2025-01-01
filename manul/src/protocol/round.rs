@@ -2,7 +2,6 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
-    string::String,
 };
 use core::{
     any::Any,
@@ -15,7 +14,7 @@ use tinyvec::TinyVec;
 
 use super::{
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
-    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     object_safe::BoxedRound,
     serialization::{Deserializer, Serializer},
 };
@@ -73,7 +72,25 @@ impl RoundId {
         }
     }
 
-    /// Removes the top group prefix from this round ID.
+    /// Removes the top group prefix from this round ID
+    /// and returns this prefix along with the resulting round ID.
+    ///
+    /// Returns the `Err` variant if the round ID is not nested.
+    pub(crate) fn split_group(&self) -> Result<(u8, Self), LocalError> {
+        if self.round_nums.len() == 1 {
+            Err(LocalError::new("This round ID is not in a group"))
+        } else {
+            let mut round_nums = self.round_nums.clone();
+            let group = round_nums.pop().expect("vector size greater than 1");
+            let round_id = Self {
+                round_nums,
+                is_echo: self.is_echo,
+            };
+            Ok((group, round_id))
+        }
+    }
+
+    /// Removes the top group prefix from this round ID and returns the resulting Round ID.
     ///
     /// Returns the `Err` variant if the round ID is not nested.
     pub(crate) fn ungroup(&self) -> Result<Self, LocalError> {
@@ -136,43 +153,107 @@ pub trait Protocol<Id>: 'static {
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
     ///
-    /// Normally one would use [`DirectMessage::verify_is_not`] when implementing this.
+    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
+    /// when implementing this.
     fn verify_direct_message_is_invalid(
-        #[allow(unused_variables)] deserializer: &Deserializer,
-        round_id: RoundId,
-        #[allow(unused_variables)] message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::InvalidEvidence(format!(
-            "Invalid round number: {round_id:?}"
-        )))
-    }
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &DirectMessage,
+    ) -> Result<(), MessageValidationError>;
 
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
     ///
-    /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
+    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
+    /// when implementing this.
     fn verify_echo_broadcast_is_invalid(
-        #[allow(unused_variables)] deserializer: &Deserializer,
-        round_id: RoundId,
-        #[allow(unused_variables)] message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::InvalidEvidence(format!(
-            "Invalid round number: {round_id:?}"
-        )))
-    }
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError>;
 
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
     ///
-    /// Normally one would use [`EchoBroadcast::verify_is_not`] when implementing this.
+    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
+    /// when implementing this.
     fn verify_normal_broadcast_is_invalid(
-        #[allow(unused_variables)] deserializer: &Deserializer,
-        round_id: RoundId,
-        #[allow(unused_variables)] message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        Err(MessageValidationError::InvalidEvidence(format!(
-            "Invalid round number: {round_id:?}"
-        )))
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError>;
+}
+
+/// Declares which parts of the message from a round have to be stored to serve as the evidence of malicious behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RequiredMessageParts {
+    pub(crate) echo_broadcast: bool,
+    pub(crate) normal_broadcast: bool,
+    pub(crate) direct_message: bool,
+}
+
+impl RequiredMessageParts {
+    fn new(echo_broadcast: bool, normal_broadcast: bool, direct_message: bool) -> Self {
+        // We must require at least one part, otherwise this struct doesn't need to be created.
+        debug_assert!(echo_broadcast || normal_broadcast || direct_message);
+        Self {
+            echo_broadcast,
+            normal_broadcast,
+            direct_message,
+        }
+    }
+
+    /// Store all parts of the message (echo broadcast, normal broadcast, direct message).
+    pub fn all() -> Self {
+        Self::new(true, true, true)
+    }
+
+    /// Store echo broadcast only.
+    pub fn echo_broadcast_only() -> Self {
+        Self::new(true, false, false)
+    }
+
+    /// Store normal broadcast only.
+    pub fn normal_broadcast_only() -> Self {
+        Self::new(false, true, false)
+    }
+
+    /// Store direct message only.
+    pub fn direct_message_only() -> Self {
+        Self::new(false, false, true)
+    }
+}
+
+/// Declares which messages from this and previous rounds
+/// have to be stored to serve as the evidence of malicious behavior.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequiredMessages {
+    pub(crate) this_round: RequiredMessageParts,
+    pub(crate) previous_rounds: Option<BTreeMap<RoundId, RequiredMessageParts>>,
+    pub(crate) combined_echos: Option<BTreeSet<RoundId>>,
+}
+
+impl RequiredMessages {
+    /// The general case constructor.
+    ///
+    /// `this_round` specifies the message parts to be stored from the message that triggered the error.
+    ///
+    /// `previous_rounds` specifies, optionally, if any message parts from the previous rounds need to be included.
+    ///
+    /// `combined_echos` specifies, optionally, if any echoed broadcasts need to be included.
+    /// The combined echos are echo broadcasts sent by a party during the echo round,
+    /// where it bundles all the received broadcasts and sends them back to everyone.
+    /// That is, they will include the echo broadcasts from all other nodes signed by the guilty party.
+    pub fn new(
+        this_round: RequiredMessageParts,
+        previous_rounds: Option<BTreeMap<RoundId, RequiredMessageParts>>,
+        combined_echos: Option<BTreeSet<RoundId>>,
+    ) -> Self {
+        Self {
+            this_round,
+            previous_rounds,
+            combined_echos,
+        }
     }
 }
 
@@ -180,75 +261,52 @@ pub trait Protocol<Id>: 'static {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError<Id>: Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
-    /// A description of the error that will be included in the generated evidence.
-    ///
-    /// Make it short and informative.
-    fn description(&self) -> String;
+pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
+    /// Additional data that cannot be derived from the node's messages alone
+    /// and therefore has to be supplied externally during evidence verification.
+    type AssociatedData: Debug;
 
-    /// The rounds direct messages from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    /// The rounds echo broadcasts from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    /// The rounds normal broadcasts from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    /// The rounds combined echos from which are required to prove malicious behavior for this error.
-    ///
-    /// **Note:** Should not include the round where the error happened.
-    ///
-    /// The combined echos are echo broadcasts sent by a party during the echo round,
-    /// where it bundles all the received broadcasts and sends them back to everyone.
-    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
+    /// Specifies the messages of the guilty party that need to be stored as the evidence
+    /// to prove its malicious behavior.
+    fn required_messages(&self) -> RequiredMessages;
 
     /// Returns `Ok(())` if the attached messages indeed prove that a malicious action happened.
     ///
     /// The signatures and metadata of the messages will be checked by the calling code,
     /// the responsibility of this method is just to check the message contents.
     ///
-    /// `echo_broadcast` and `direct_message` are the messages that triggered the error
+    /// `message` contain the message parts that triggered the error
     /// during [`Round::receive_message`].
-    /// `echo_broadcasts` and `direct_messages` are messages from the previous rounds, as requested by
-    /// [`required_direct_messages`](`Self::required_direct_messages`) and
-    /// [`required_echo_broadcasts`](`Self::required_echo_broadcasts`).
+    ///
+    /// `previous_messages` are message parts from the previous rounds, as requested by
+    /// [`required_messages`](Self::required_messages).
+    ///
+    /// Note that if some message part was not requested by above methods, it will be set to an empty one
+    /// in the [`ProtocolMessage`], even if it was present originally.
+    ///
     /// `combined_echos` are bundled echos from other parties from the previous rounds,
-    /// as requested by [`required_combined_echos`](`Self::required_combined_echos`).
+    /// as requested by [`required_messages`](Self::required_messages).
     #[allow(clippy::too_many_arguments)]
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
         guilty_party: &Id,
         shared_randomness: &[u8],
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
-        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        associated_data: &Self::AssociatedData,
+        message: ProtocolMessage,
+        previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError>;
 }
 
-// A convenience implementation for protocols that don't define any errors.
-// Have to do it for `()`, since `!` is unstable.
-impl<Id> ProtocolError<Id> for () {
-    fn description(&self) -> String {
+#[derive(displaydoc::Display, Debug, Clone, Copy, Serialize, Deserialize)]
+/// A stub type indicating that this protocol does not generate any provable errors.
+pub struct NoProtocolErrors;
+
+impl<Id> ProtocolError<Id> for NoProtocolErrors {
+    type AssociatedData = ();
+
+    fn required_messages(&self) -> RequiredMessages {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
     }
 
@@ -257,12 +315,9 @@ impl<Id> ProtocolError<Id> for () {
         _deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
-        _echo_broadcast: EchoBroadcast,
-        _normal_broadcast: NormalBroadcast,
-        _direct_message: DirectMessage,
-        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _associated_data: &Self::AssociatedData,
+        _message: ProtocolMessage,
+        _previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         _combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         panic!("Attempt to use an empty error type in an evidence. This is a bug in the protocol implementation.")
@@ -481,9 +536,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
         rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
     /// Attempts to finalize the round, producing the next round or the result.

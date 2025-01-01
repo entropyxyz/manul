@@ -106,8 +106,8 @@ fn serialized_garbage() {
     let report1 = reports.remove(&v1).unwrap();
     let report2 = reports.remove(&v2).unwrap();
 
-    assert!(report1.provable_errors[&v0].verify().is_ok());
-    assert!(report2.provable_errors[&v0].verify().is_ok());
+    assert!(report1.provable_errors[&v0].verify(&()).is_ok());
+    assert!(report2.provable_errors[&v0].verify(&()).is_ok());
 }
 
 #[test]
@@ -145,8 +145,8 @@ fn attributable_failure() {
     let report1 = reports.remove(&v1).unwrap();
     let report2 = reports.remove(&v2).unwrap();
 
-    assert!(report1.provable_errors[&v0].verify().is_ok());
-    assert!(report2.provable_errors[&v0].verify().is_ok());
+    assert!(report1.provable_errors[&v0].verify(&()).is_ok());
+    assert!(report2.provable_errors[&v0].verify(&()).is_ok());
 }
 
 #[test]
@@ -184,6 +184,6 @@ fn attributable_failure_round2() {
     let report1 = reports.remove(&v1).unwrap();
     let report2 = reports.remove(&v2).unwrap();
 
-    assert!(report1.provable_errors[&v0].verify().is_ok());
-    assert!(report2.provable_errors[&v0].verify().is_ok());
+    assert!(report1.provable_errors[&v0].verify(&()).is_ok());
+    assert!(report2.provable_errors[&v0].verify(&()).is_ok());
 }

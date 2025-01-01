@@ -18,7 +18,8 @@ use super::{
 use crate::{
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeOutcome, MessageValidationError,
-        NormalBroadcast, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Serializer,
     },
     utils::SerializableMap,
 };
@@ -180,16 +181,16 @@ where
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &SP::Verifier,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
-        echo_broadcast.assert_is_none()?;
-        direct_message.assert_is_none()?;
+        message.echo_broadcast.assert_is_none()?;
+        message.direct_message.assert_is_none()?;
 
-        let message = normal_broadcast.deserialize::<EchoRoundMessage<SP>>(deserializer)?;
+        let message = message
+            .normal_broadcast
+            .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
         // Check that the received message contains entries from `expected_echos`.
         // It is an unprovable fault.

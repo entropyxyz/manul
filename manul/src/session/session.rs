@@ -24,8 +24,8 @@ use super::{
 };
 use crate::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessagePart, ReceiveError, ReceiveErrorType,
-    RoundId, Serializer,
+    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
+    ReceiveErrorType, RoundId, Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -177,10 +177,10 @@ where
         let verifier = signer.verifying_key();
 
         let echo = round.as_ref().make_echo_broadcast(rng, &serializer, &deserializer)?;
-        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), echo)?;
+        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &round.id(), echo)?;
 
         let normal = round.as_ref().make_normal_broadcast(rng, &serializer, &deserializer)?;
-        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, round.id(), normal)?;
+        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &round.id(), normal)?;
 
         let message_destinations = round.as_ref().message_destinations().clone();
 
@@ -264,7 +264,7 @@ where
             rng,
             &self.signer,
             &self.session_id,
-            self.round.id(),
+            &self.round.id(),
             destination,
             direct_message,
             self.echo_broadcast.clone(),
@@ -328,7 +328,7 @@ where
                 return Ok(PreprocessOutcome::remote_error(err));
             }
         };
-        let message_round_id = checked_message.metadata().round_id();
+        let message_round_id = checked_message.metadata().round_id().clone();
 
         if checked_message.metadata().session_id() != &self.session_id {
             let err = "The received message has an incorrect session ID";
@@ -406,14 +406,15 @@ where
         rng: &mut impl CryptoRngCore,
         message: VerifiedMessage<SP::Verifier>,
     ) -> ProcessedMessage<P, SP> {
-        let processed = self.round.as_ref().receive_message(
-            rng,
-            &self.deserializer,
-            message.from(),
-            message.echo_broadcast().clone(),
-            message.normal_broadcast().clone(),
-            message.direct_message().clone(),
-        );
+        let protocol_message = ProtocolMessage {
+            echo_broadcast: message.echo_broadcast().clone(),
+            normal_broadcast: message.normal_broadcast().clone(),
+            direct_message: message.direct_message().clone(),
+        };
+        let processed = self
+            .round
+            .as_ref()
+            .receive_message(rng, &self.deserializer, message.from(), protocol_message);
         // We could filter out and return a possible `LocalError` at this stage,
         // but it's no harm in delaying it until `ProcessedMessage` is added to the accumulator.
         ProcessedMessage { message, processed }
@@ -493,13 +494,13 @@ where
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
                 self.echo_broadcast,
-                transcript.echo_broadcasts(round_id)?,
+                transcript.echo_broadcasts(&round_id)?,
                 echo_round_info,
                 self.round,
                 accum.payloads,
                 accum.artifacts,
             ));
-            let cached_messages = filter_messages(accum.cached, round.id());
+            let cached_messages = filter_messages(accum.cached, &round.id());
             let session = Session::new_for_next_round(
                 rng,
                 self.session_id,
@@ -530,7 +531,7 @@ where
                 // processing messages from the same node for the current round.
                 // So there might have been some new errors, and we need to check again
                 // if the sender is already banned.
-                let cached_messages = filter_messages(accum.cached, round.id())
+                let cached_messages = filter_messages(accum.cached, &round.id())
                     .into_iter()
                     .filter(|message| !transcript.is_banned(message.from()))
                     .collect::<Vec<_>>();
@@ -767,8 +768,8 @@ where
     }
 
     fn cache_message(&mut self, message: VerifiedMessage<SP::Verifier>) -> Result<(), LocalError> {
-        let from = message.from().clone();
-        let round_id = message.metadata().round_id();
+        let from = message.from();
+        let round_id = message.metadata().round_id().clone();
         let cached = self.cached.entry(from.clone()).or_default();
         if cached.insert(round_id.clone(), message).is_some() {
             return Err(LocalError::new(format!(
@@ -828,11 +829,11 @@ impl<Verifier> PreprocessOutcome<Verifier> {
 
 fn filter_messages<Verifier>(
     messages: BTreeMap<Verifier, BTreeMap<RoundId, VerifiedMessage<Verifier>>>,
-    round_id: RoundId,
+    round_id: &RoundId,
 ) -> Vec<VerifiedMessage<Verifier>> {
     messages
         .into_values()
-        .filter_map(|mut messages| messages.remove(&round_id))
+        .filter_map(|mut messages| messages.remove(round_id))
         .collect()
 }
 
@@ -840,10 +841,13 @@ fn filter_messages<Verifier>(
 mod tests {
     use impls::impls;
 
-    use super::{Message, ProcessedArtifact, ProcessedMessage, Session, SessionParameters, VerifiedMessage};
+    use super::{
+        Deserializer, Message, ProcessedArtifact, ProcessedMessage, RoundId, Session, SessionParameters,
+        VerifiedMessage,
+    };
     use crate::{
         dev::{BinaryFormat, TestSessionParams, TestVerifier},
-        protocol::Protocol,
+        protocol::{DirectMessage, EchoBroadcast, MessageValidationError, NoProtocolErrors, NormalBroadcast, Protocol},
     };
 
     #[test]
@@ -862,7 +866,31 @@ mod tests {
 
         impl Protocol<<SP as SessionParameters>::Verifier> for DummyProtocol {
             type Result = ();
-            type ProtocolError = ();
+            type ProtocolError = NoProtocolErrors;
+
+            fn verify_direct_message_is_invalid(
+                _deserializer: &Deserializer,
+                _round_id: &RoundId,
+                _message: &DirectMessage,
+            ) -> Result<(), MessageValidationError> {
+                unimplemented!()
+            }
+
+            fn verify_echo_broadcast_is_invalid(
+                _deserializer: &Deserializer,
+                _round_id: &RoundId,
+                _message: &EchoBroadcast,
+            ) -> Result<(), MessageValidationError> {
+                unimplemented!()
+            }
+
+            fn verify_normal_broadcast_is_invalid(
+                _deserializer: &Deserializer,
+                _round_id: &RoundId,
+                _message: &NormalBroadcast,
+            ) -> Result<(), MessageValidationError> {
+                unimplemented!()
+            }
         }
 
         // We need `Session` to be `Send` so that we send a `Session` object to a task

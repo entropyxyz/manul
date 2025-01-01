@@ -33,7 +33,8 @@ use rand_core::CryptoRngCore;
 
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ReceiveError, RoundId, Serializer,
+    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ProtocolMessage, ReceiveError,
+    RoundId, Serializer,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -274,18 +275,9 @@ where
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        self.round.as_ref().receive_message(
-            rng,
-            deserializer,
-            from,
-            echo_broadcast,
-            normal_broadcast,
-            direct_message,
-        )
+        self.round.as_ref().receive_message(rng, deserializer, from, message)
     }
 
     fn finalize(

@@ -1,14 +1,11 @@
-use alloc::{
-    collections::{BTreeMap, BTreeSet},
-    format,
-    string::String,
-};
+use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-    MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessagePart,
-    ProtocolValidationError, ReceiveError, Round, RoundId, Serializer,
+    MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
+    ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, Round, RoundId,
+    Serializer,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -17,36 +14,28 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct SimpleProtocol;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(displaydoc::Display, Debug, Clone, Serialize, Deserialize)]
+/// An example error.
 pub enum SimpleProtocolError {
+    /// Invalid position in Round 1.
     Round1InvalidPosition,
+    /// Invalid position in Round 2.
     Round2InvalidPosition,
 }
 
 impl<Id> ProtocolError<Id> for SimpleProtocolError {
-    fn description(&self) -> String {
-        format!("{:?}", self)
-    }
+    type AssociatedData = ();
 
-    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
+    fn required_messages(&self) -> RequiredMessages {
         match self {
-            Self::Round1InvalidPosition => BTreeSet::new(),
-            Self::Round2InvalidPosition => [RoundId::new(1)].into(),
-        }
-    }
-
-    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
-        match self {
-            Self::Round1InvalidPosition => BTreeSet::new(),
-            Self::Round2InvalidPosition => [RoundId::new(1)].into(),
+            Self::Round1InvalidPosition => {
+                RequiredMessages::new(RequiredMessageParts::direct_message_only(), None, None)
+            }
+            Self::Round2InvalidPosition => RequiredMessages::new(
+                RequiredMessageParts::direct_message_only(),
+                Some([(RoundId::new(1), RequiredMessageParts::direct_message_only())].into()),
+                Some([RoundId::new(1)].into()),
+            ),
         }
     }
 
@@ -55,22 +44,19 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
         deserializer: &Deserializer,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
-        _echo_broadcast: EchoBroadcast,
-        _normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
-        _echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        _normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        _direct_messages: BTreeMap<RoundId, DirectMessage>,
+        _associated_data: &Self::AssociatedData,
+        message: ProtocolMessage,
+        _previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
         match self {
             SimpleProtocolError::Round1InvalidPosition => {
-                let _message = direct_message.deserialize::<Round1Message>(deserializer)?;
+                let _message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
                 // Message contents would be checked here
                 Ok(())
             }
             SimpleProtocolError::Round2InvalidPosition => {
-                let _r1_message = direct_message.deserialize::<Round1Message>(deserializer)?;
+                let _r1_message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
                 let r1_echos_serialized = combined_echos
                     .get(&RoundId::new(1))
                     .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
@@ -94,25 +80,37 @@ impl<Id> Protocol<Id> for SimpleProtocol {
 
     fn verify_direct_message_is_invalid(
         deserializer: &Deserializer,
-        round_id: RoundId,
+        round_id: &RoundId,
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         match round_id {
-            r if r == RoundId::new(1) => message.verify_is_not::<Round1Message>(deserializer),
-            r if r == RoundId::new(2) => message.verify_is_not::<Round2Message>(deserializer),
+            r if r == &RoundId::new(1) => message.verify_is_not::<Round1Message>(deserializer),
+            r if r == &RoundId::new(2) => message.verify_is_not::<Round2Message>(deserializer),
             _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
         }
     }
 
     fn verify_echo_broadcast_is_invalid(
         deserializer: &Deserializer,
-        round_id: RoundId,
+        round_id: &RoundId,
         message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         match round_id {
-            r if r == RoundId::new(1) => message.verify_is_some(),
-            r if r == RoundId::new(2) => message.verify_is_not::<Round2Message>(deserializer),
+            r if r == &RoundId::new(1) => message.verify_is_some(),
+            r if r == &RoundId::new(2) => message.verify_is_not::<Round2Message>(deserializer),
             _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
+        }
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        if round_id == &RoundId::new(1) || round_id == &RoundId::new(2) {
+            message.verify_is_some()
+        } else {
+            Err(MessageValidationError::InvalidEvidence("Invalid round number".into()))
         }
     }
 }
@@ -256,15 +254,13 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        let _echo = echo_broadcast.deserialize::<Round1Echo>(deserializer)?;
-        let _normal = normal_broadcast.deserialize::<Round1Broadcast>(deserializer)?;
-        let message = direct_message.deserialize::<Round1Message>(deserializer)?;
+        let _echo = message.echo_broadcast.deserialize::<Round1Echo>(deserializer)?;
+        let _normal = message.normal_broadcast.deserialize::<Round1Broadcast>(deserializer)?;
+        let message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -358,16 +354,14 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        echo_broadcast.assert_is_none()?;
-        normal_broadcast.assert_is_none()?;
+        message.echo_broadcast.assert_is_none()?;
+        message.normal_broadcast.assert_is_none()?;
 
-        let message = direct_message.deserialize::<Round1Message>(deserializer)?;
+        let message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 

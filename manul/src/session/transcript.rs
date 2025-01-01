@@ -116,11 +116,11 @@ where
 
     pub fn get_echo_broadcast(
         &self,
-        round_id: RoundId,
+        round_id: &RoundId,
         from: &SP::Verifier,
     ) -> Result<SignedMessagePart<EchoBroadcast>, LocalError> {
         self.echo_broadcasts
-            .get(&round_id)
+            .get(round_id)
             .ok_or_else(|| LocalError::new(format!("No echo broadcasts registered for {round_id:?}")))?
             .get(from)
             .cloned()
@@ -129,11 +129,11 @@ where
 
     pub fn get_normal_broadcast(
         &self,
-        round_id: RoundId,
+        round_id: &RoundId,
         from: &SP::Verifier,
     ) -> Result<SignedMessagePart<NormalBroadcast>, LocalError> {
         self.normal_broadcasts
-            .get(&round_id)
+            .get(round_id)
             .ok_or_else(|| LocalError::new(format!("No normal broadcasts registered for {round_id:?}")))?
             .get(from)
             .cloned()
@@ -142,11 +142,11 @@ where
 
     pub fn get_direct_message(
         &self,
-        round_id: RoundId,
+        round_id: &RoundId,
         from: &SP::Verifier,
     ) -> Result<SignedMessagePart<DirectMessage>, LocalError> {
         self.direct_messages
-            .get(&round_id)
+            .get(round_id)
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {round_id:?}")))?
             .get(from)
             .cloned()
@@ -159,10 +159,10 @@ where
 
     pub fn echo_broadcasts(
         &self,
-        round_id: RoundId,
+        round_id: &RoundId,
     ) -> Result<BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>, LocalError> {
         self.echo_broadcasts
-            .get(&round_id)
+            .get(round_id)
             .cloned()
             .ok_or_else(|| LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript")))
     }

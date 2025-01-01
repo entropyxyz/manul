@@ -44,23 +44,24 @@ Usage:
 
 5. Implement the marker trait [`ChainedMarker`] for this type.
    Same as with the protocol, this is needed to disambiguate different generic blanket implementations.
+
+6. [`ChainedAssociatedData`] is the structure used to supply associated data
+   when verifying evidence from the chained protocol.
 */
 
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
-    format,
-    string::String,
 };
-use core::fmt::Debug;
+use core::fmt::{self, Debug};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
-    ProtocolValidationError, ReceiveError, RoundId, Serializer,
+    FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
+    ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -96,6 +97,18 @@ where
     Protocol2(<C::Protocol2 as Protocol<Id>>::ProtocolError),
 }
 
+impl<Id, C> fmt::Display for ChainedProtocolError<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Protocol1(err) => write!(f, "Protocol 1: {err}"),
+            Self::Protocol2(err) => write!(f, "Protocol 2: {err}"),
+        }
+    }
+}
+
 impl<Id, C> ChainedProtocolError<Id, C>
 where
     C: ChainedProtocol<Id>,
@@ -109,59 +122,49 @@ where
     }
 }
 
+/// Associated data for verification of malicious behavior evidence in the chained protocol.
+#[derive_where::derive_where(Debug)]
+pub struct ChainedAssociatedData<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
+    /// Associated data for the errors in the first protocol.
+    pub protocol1: <<C::Protocol1 as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    /// Associated data for the errors in the second protocol.
+    pub protocol2: <<C::Protocol2 as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+}
+
 impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
 where
     C: ChainedProtocol<Id>,
 {
-    fn description(&self) -> String {
-        match self {
-            Self::Protocol1(err) => format!("Protocol1: {}", err.description()),
-            Self::Protocol2(err) => format!("Protocol2: {}", err.description()),
+    type AssociatedData = ChainedAssociatedData<Id, C>;
+
+    fn required_messages(&self) -> RequiredMessages {
+        let (protocol_num, required_messages) = match self {
+            Self::Protocol1(err) => (1, err.required_messages()),
+            Self::Protocol2(err) => (2, err.required_messages()),
+        };
+
+        let previous_rounds = required_messages.previous_rounds.map(|previous_rounds| {
+            previous_rounds
+                .into_iter()
+                .map(|(round_id, required)| (round_id.group_under(protocol_num), required))
+                .collect()
+        });
+
+        let combined_echos = required_messages.combined_echos.map(|combined_echos| {
+            combined_echos
+                .into_iter()
+                .map(|round_id| round_id.group_under(protocol_num))
+                .collect()
+        });
+
+        RequiredMessages {
+            this_round: required_messages.this_round,
+            previous_rounds,
+            combined_echos,
         }
-    }
-
-    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_direct_messages()),
-            Self::Protocol2(err) => (2, err.required_direct_messages()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
-
-    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_echo_broadcasts()),
-            Self::Protocol2(err) => (2, err.required_echo_broadcasts()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
-
-    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_normal_broadcasts()),
-            Self::Protocol2(err) => (2, err.required_normal_broadcasts()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
-
-    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_combined_echos()),
-            Self::Protocol2(err) => (2, err.required_combined_echos()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -170,31 +173,18 @@ where
         deserializer: &Deserializer,
         guilty_party: &Id,
         shared_randomness: &[u8],
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
-        echo_broadcasts: BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: BTreeMap<RoundId, DirectMessage>,
+        associated_data: &Self::AssociatedData,
+        message: ProtocolMessage,
+        previous_messages: BTreeMap<RoundId, ProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
-        // TODO: the cloning can be avoided if instead we provide a reference to some "transcript API",
-        // and can replace it here with a proxy that will remove nesting from round ID's.
-        let echo_broadcasts = echo_broadcasts
+        let previous_messages = previous_messages
             .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let normal_broadcasts = normal_broadcasts
-            .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let direct_messages = direct_messages
-            .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
+            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let combined_echos = combined_echos
             .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
+            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
         match self {
@@ -202,24 +192,18 @@ where
                 deserializer,
                 guilty_party,
                 shared_randomness,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-                echo_broadcasts,
-                normal_broadcasts,
-                direct_messages,
+                &associated_data.protocol1,
+                message,
+                previous_messages,
                 combined_echos,
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
                 deserializer,
                 guilty_party,
                 shared_randomness,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-                echo_broadcasts,
-                normal_broadcasts,
-                direct_messages,
+                &associated_data.protocol2,
+                message,
+                previous_messages,
                 combined_echos,
             ),
         }
@@ -233,6 +217,45 @@ where
 {
     type Result = <C::Protocol2 as Protocol<Id>>::Result;
     type ProtocolError = ChainedProtocolError<Id, C>;
+
+    fn verify_direct_message_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &DirectMessage,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_direct_message_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_direct_message_is_invalid(deserializer, &round_id, message)
+        }
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+        }
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+        }
+    }
 }
 
 /// A trait defining how the entry point for the whole chained protocol
@@ -438,30 +461,16 @@ where
         rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(
-                rng,
-                deserializer,
-                from,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-            ) {
-                Ok(payload) => Ok(payload),
-                Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
-            },
-            ChainState::Protocol2(round) => match round.as_ref().receive_message(
-                rng,
-                deserializer,
-                from,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-            ) {
+            ChainState::Protocol1 { round, .. } => {
+                match round.as_ref().receive_message(rng, deserializer, from, message) {
+                    Ok(payload) => Ok(payload),
+                    Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
+                }
+            }
+            ChainState::Protocol2(round) => match round.as_ref().receive_message(rng, deserializer, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol2)),
             },
