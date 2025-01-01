@@ -181,8 +181,6 @@ where
         direct_messages: BTreeMap<RoundId, DirectMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
-        // TODO: the cloning can be avoided if instead we provide a reference to some "transcript API",
-        // and can replace it here with a proxy that will remove nesting from round ID's.
         let echo_broadcasts = echo_broadcasts
             .into_iter()
             .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
