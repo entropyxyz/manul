@@ -142,6 +142,18 @@ impl RoundId {
     }
 }
 
+impl From<u8> for RoundId {
+    fn from(source: u8) -> Self {
+        Self::new(source)
+    }
+}
+
+impl PartialEq<u8> for RoundId {
+    fn eq(&self, rhs: &u8) -> bool {
+        self == &RoundId::new(*rhs)
+    }
+}
+
 /// A distributed protocol.
 pub trait Protocol<Id>: 'static {
     /// The successful result of an execution of this protocol.

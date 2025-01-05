@@ -6,7 +6,7 @@ use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
-        RoundId, Serializer,
+        Serializer,
     },
     signature::Keypair,
 };
@@ -37,7 +37,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
         direct_message: DirectMessage,
         artifact: Option<Artifact>,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = if round.id() == RoundId::new(1) {
+        let dm = if round.id() == 1 {
             match behavior {
                 Behavior::SerializedGarbage => DirectMessage::new(serializer, [99u8])?,
                 Behavior::AttributableFailure => {
@@ -50,7 +50,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
                 }
                 _ => direct_message,
             }
-        } else if round.id() == RoundId::new(2) {
+        } else if round.id() == 2 {
             match behavior {
                 Behavior::AttributableFailureRound2 => {
                     let round2 = round.downcast_ref::<Round2<Id>>()?;

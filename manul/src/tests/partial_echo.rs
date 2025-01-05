@@ -84,7 +84,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
     type Protocol = PartialEchoProtocol<Id>;
 
     fn id(&self) -> RoundId {
-        RoundId::new(1)
+        1.into()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {

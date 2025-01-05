@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `impl From<NormalBroadcastError> for ProtocolValidationError` (to match what already exists for other messages). ([#77])
 - Exposed `dev::ExecutionResult`. ([#79])
 - `NoProtocolErrors` stub type to indicate that the protocol does not generate any provable errors. ([#79])
+- Conversion from `u8` to `RoundId` and comparison of `RoundId` with `u8`. ([#84])
 
 
 [#75]: https://github.com/entropyxyz/manul/pull/75
@@ -37,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#77]: https://github.com/entropyxyz/manul/pull/77
 [#79]: https://github.com/entropyxyz/manul/pull/79
 [#83]: https://github.com/entropyxyz/manul/pull/83
+[#84]: https://github.com/entropyxyz/manul/pull/84
 
 
 ## [0.1.0] - 2024-11-19

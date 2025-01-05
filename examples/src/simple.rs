@@ -33,8 +33,8 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
             }
             Self::Round2InvalidPosition => RequiredMessages::new(
                 RequiredMessageParts::direct_message_only(),
-                Some([(RoundId::new(1), RequiredMessageParts::direct_message_only())].into()),
-                Some([RoundId::new(1)].into()),
+                Some([(1.into(), RequiredMessageParts::direct_message_only())].into()),
+                Some([1.into()].into()),
             ),
         }
     }
@@ -58,7 +58,7 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
             SimpleProtocolError::Round2InvalidPosition => {
                 let _r1_message = message.direct_message.deserialize::<Round1Message>(deserializer)?;
                 let r1_echos_serialized = combined_echos
-                    .get(&RoundId::new(1))
+                    .get(&1.into())
                     .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
 
                 // Deserialize the echos
@@ -84,8 +84,8 @@ impl<Id> Protocol<Id> for SimpleProtocol {
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         match round_id {
-            r if r == &RoundId::new(1) => message.verify_is_not::<Round1Message>(deserializer),
-            r if r == &RoundId::new(2) => message.verify_is_not::<Round2Message>(deserializer),
+            r if r == &1 => message.verify_is_not::<Round1Message>(deserializer),
+            r if r == &2 => message.verify_is_not::<Round2Message>(deserializer),
             _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
         }
     }
@@ -96,8 +96,8 @@ impl<Id> Protocol<Id> for SimpleProtocol {
         message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         match round_id {
-            r if r == &RoundId::new(1) => message.verify_is_some(),
-            r if r == &RoundId::new(2) => message.verify_is_not::<Round2Message>(deserializer),
+            r if r == &1 => message.verify_is_some(),
+            r if r == &2 => message.verify_is_not::<Round2Message>(deserializer),
             _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
         }
     }
@@ -107,7 +107,7 @@ impl<Id> Protocol<Id> for SimpleProtocol {
         round_id: &RoundId,
         message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
-        if round_id == &RoundId::new(1) || round_id == &RoundId::new(2) {
+        if round_id == &1 || round_id == &2 {
             message.verify_is_some()
         } else {
             Err(MessageValidationError::InvalidEvidence("Invalid round number".into()))
@@ -193,11 +193,11 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
-        RoundId::new(1)
+        1.into()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        [RoundId::new(2)].into()
+        [2.into()].into()
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
@@ -317,7 +317,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
 
     fn id(&self) -> RoundId {
-        RoundId::new(2)
+        2.into()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
