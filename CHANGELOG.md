@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Protocol::verify_*_is_invalid()` are now mandatory to implement. ([#79])
 - Removed the RNG parameter from `Round::receive_message()` and `Session::process_message()`. ([#83])
 - Renamed `Round::entry_round()` to `entry_round_id()` and made it mandatory to implement. ([#84])
+- Rework `RequiredMessageParts` API. ([#85])
 
 
 ### Added
@@ -40,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#79]: https://github.com/entropyxyz/manul/pull/79
 [#83]: https://github.com/entropyxyz/manul/pull/83
 [#84]: https://github.com/entropyxyz/manul/pull/84
+[#85]: https://github.com/entropyxyz/manul/pull/85
 
 
 ## [0.1.0] - 2024-11-19
