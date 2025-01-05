@@ -401,11 +401,7 @@ where
     /// Processes a verified message.
     ///
     /// This can be called in a spawned task if it is known to take a long time.
-    pub fn process_message(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        message: VerifiedMessage<SP::Verifier>,
-    ) -> ProcessedMessage<P, SP> {
+    pub fn process_message(&self, message: VerifiedMessage<SP::Verifier>) -> ProcessedMessage<P, SP> {
         let protocol_message = ProtocolMessage {
             echo_broadcast: message.echo_broadcast().clone(),
             normal_broadcast: message.normal_broadcast().clone(),
@@ -414,7 +410,7 @@ where
         let processed = self
             .round
             .as_ref()
-            .receive_message(rng, &self.deserializer, message.from(), protocol_message);
+            .receive_message(&self.deserializer, message.from(), protocol_message);
         // We could filter out and return a possible `LocalError` at this stage,
         // but it's no harm in delaying it until `ProcessedMessage` is added to the accumulator.
         ProcessedMessage { message, processed }

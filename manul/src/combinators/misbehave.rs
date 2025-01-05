@@ -272,12 +272,11 @@ where
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        self.round.as_ref().receive_message(rng, deserializer, from, message)
+        self.round.as_ref().receive_message(deserializer, from, message)
     }
 
     fn finalize(

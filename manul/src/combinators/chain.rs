@@ -458,19 +458,16 @@ where
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => {
-                match round.as_ref().receive_message(rng, deserializer, from, message) {
-                    Ok(payload) => Ok(payload),
-                    Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
-                }
-            }
-            ChainState::Protocol2(round) => match round.as_ref().receive_message(rng, deserializer, from, message) {
+            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(deserializer, from, message) {
+                Ok(payload) => Ok(payload),
+                Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
+            },
+            ChainState::Protocol2(round) => match round.as_ref().receive_message(deserializer, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol2)),
             },
