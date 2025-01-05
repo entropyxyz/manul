@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Using a single `ProtocolError::required_messages()` instead of multiple methods. ([#79])
 - `Protocol::verify_*_is_invalid()` are now mandatory to implement. ([#79])
 - Removed the RNG parameter from `Round::receive_message()` and `Session::process_message()`. ([#83])
+- Renamed `Round::entry_round()` to `entry_round_id()` and made it mandatory to implement. ([#84])
 
 
 ### Added

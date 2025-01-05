@@ -138,6 +138,10 @@ where
 {
     type Protocol = <M::EntryPoint as EntryPoint<Id>>::Protocol;
 
+    fn entry_round_id() -> RoundId {
+        M::EntryPoint::entry_round_id()
+    }
+
     fn make_round(
         self,
         rng: &mut impl CryptoRngCore,

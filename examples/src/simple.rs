@@ -161,6 +161,11 @@ impl<Id: PartyId> SimpleProtocolEntryPoint<Id> {
 
 impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
     type Protocol = SimpleProtocol;
+
+    fn entry_round_id() -> RoundId {
+        1.into()
+    }
+
     fn make_round(
         self,
         _rng: &mut impl CryptoRngCore,

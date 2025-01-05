@@ -73,6 +73,11 @@ struct Round1Artifact;
 
 impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
     type Protocol = EmptyProtocol;
+
+    fn entry_round_id() -> RoundId {
+        1.into()
+    }
+
     fn make_round(
         self,
         _rng: &mut impl CryptoRngCore,

@@ -70,6 +70,11 @@ struct Round1Echo<Id> {
 
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inputs<Id> {
     type Protocol = PartialEchoProtocol<Id>;
+
+    fn entry_round_id() -> RoundId {
+        1.into()
+    }
+
     fn make_round(
         self,
         _rng: &mut impl CryptoRngCore,
