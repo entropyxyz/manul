@@ -295,8 +295,8 @@ where
 {
     type Protocol = T::Protocol;
 
-    fn entry_round() -> RoundId {
-        <T as ChainedSplit<Id>>::EntryPoint::entry_round().group_under(1)
+    fn entry_round_id() -> RoundId {
+        <T as ChainedSplit<Id>>::EntryPoint::entry_round_id().group_under(1)
     }
 
     fn make_round(
@@ -368,8 +368,8 @@ where
                     .collect::<BTreeSet<_>>();
 
                 if round.as_ref().may_produce_result() {
-                    tracing::debug!("Adding {}", T::EntryPoint::entry_round().group_under(2));
-                    next_rounds.insert(T::EntryPoint::entry_round().group_under(2));
+                    tracing::debug!("Adding {}", T::EntryPoint::entry_round_id().group_under(2));
+                    next_rounds.insert(T::EntryPoint::entry_round_id().group_under(2));
                 }
 
                 next_rounds

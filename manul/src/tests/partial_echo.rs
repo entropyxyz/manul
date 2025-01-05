@@ -70,6 +70,11 @@ struct Round1Echo<Id> {
 
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inputs<Id> {
     type Protocol = PartialEchoProtocol<Id>;
+
+    fn entry_round_id() -> RoundId {
+        1.into()
+    }
+
     fn make_round(
         self,
         _rng: &mut impl CryptoRngCore,
@@ -84,7 +89,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
     type Protocol = PartialEchoProtocol<Id>;
 
     fn id(&self) -> RoundId {
-        RoundId::new(1)
+        1.into()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {

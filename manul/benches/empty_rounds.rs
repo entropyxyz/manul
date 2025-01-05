@@ -73,6 +73,11 @@ struct Round1Artifact;
 
 impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
     type Protocol = EmptyProtocol;
+
+    fn entry_round_id() -> RoundId {
+        1.into()
+    }
+
     fn make_round(
         self,
         _rng: &mut impl CryptoRngCore,
@@ -90,14 +95,14 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     type Protocol = EmptyProtocol;
 
     fn id(&self) -> RoundId {
-        RoundId::new(self.round_counter)
+        self.round_counter.into()
     }
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
         if self.inputs.rounds_num == self.round_counter {
             BTreeSet::new()
         } else {
-            [RoundId::new(self.round_counter + 1)].into()
+            [(self.round_counter + 1).into()].into()
         }
     }
 

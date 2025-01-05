@@ -142,6 +142,18 @@ impl RoundId {
     }
 }
 
+impl From<u8> for RoundId {
+    fn from(source: u8) -> Self {
+        Self::new(source)
+    }
+}
+
+impl PartialEq<u8> for RoundId {
+    fn eq(&self, rhs: &u8) -> bool {
+        self == &RoundId::new(*rhs)
+    }
+}
+
 /// A distributed protocol.
 pub trait Protocol<Id>: 'static {
     /// The successful result of an execution of this protocol.
@@ -386,9 +398,7 @@ pub trait EntryPoint<Id: PartyId> {
     type Protocol: Protocol<Id>;
 
     /// Returns the ID of the round returned by [`Self::make_round`].
-    fn entry_round() -> RoundId {
-        RoundId::new(1)
-    }
+    fn entry_round_id() -> RoundId;
 
     /// Creates the round.
     ///
