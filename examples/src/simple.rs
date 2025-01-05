@@ -251,7 +251,6 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn receive_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,
@@ -351,7 +350,6 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
 
     fn receive_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,

@@ -78,7 +78,6 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,
@@ -182,13 +181,11 @@ where
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        let mut boxed_rng = BoxedRng(rng);
-        self.round.receive_message(&mut boxed_rng, deserializer, from, message)
+        self.round.receive_message(deserializer, from, message)
     }
 
     fn finalize(

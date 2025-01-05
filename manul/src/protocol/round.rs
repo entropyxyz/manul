@@ -533,7 +533,6 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// it has already been done by the execution layer.
     fn receive_message(
         &self,
-        rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,

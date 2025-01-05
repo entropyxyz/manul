@@ -122,7 +122,6 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
 
     fn receive_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
         message: ProtocolMessage,

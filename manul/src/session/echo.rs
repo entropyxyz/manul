@@ -178,7 +178,6 @@ where
 
     fn receive_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &SP::Verifier,
         message: ProtocolMessage,

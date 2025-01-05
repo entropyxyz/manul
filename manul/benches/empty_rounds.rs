@@ -134,7 +134,6 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn receive_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         _from: &Id,
         message: ProtocolMessage,

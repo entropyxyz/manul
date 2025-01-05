@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RoundId`s are passed by reference in public methods since they are not `Copy`. ([#79])
 - Using a single `ProtocolError::required_messages()` instead of multiple methods. ([#79])
 - `Protocol::verify_*_is_invalid()` are now mandatory to implement. ([#79])
+- Removed the RNG parameter from `Round::receive_message()` and `Session::process_message()`. ([#83])
 
 
 ### Added
@@ -35,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#76]: https://github.com/entropyxyz/manul/pull/76
 [#77]: https://github.com/entropyxyz/manul/pull/77
 [#79]: https://github.com/entropyxyz/manul/pull/79
+[#83]: https://github.com/entropyxyz/manul/pull/83
 
 
 ## [0.1.0] - 2024-11-19
