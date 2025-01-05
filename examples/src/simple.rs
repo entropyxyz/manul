@@ -28,12 +28,10 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
 
     fn required_messages(&self) -> RequiredMessages {
         match self {
-            Self::Round1InvalidPosition => {
-                RequiredMessages::new(RequiredMessageParts::direct_message_only(), None, None)
-            }
+            Self::Round1InvalidPosition => RequiredMessages::new(RequiredMessageParts::direct_message(), None, None),
             Self::Round2InvalidPosition => RequiredMessages::new(
-                RequiredMessageParts::direct_message_only(),
-                Some([(1.into(), RequiredMessageParts::direct_message_only())].into()),
+                RequiredMessageParts::direct_message(),
+                Some([(1.into(), RequiredMessageParts::direct_message())].into()),
                 Some([1.into()].into()),
             ),
         }

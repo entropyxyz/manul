@@ -215,24 +215,34 @@ impl RequiredMessageParts {
         }
     }
 
-    /// Store all parts of the message (echo broadcast, normal broadcast, direct message).
-    pub fn all() -> Self {
-        Self::new(true, true, true)
-    }
-
-    /// Store echo broadcast only.
-    pub fn echo_broadcast_only() -> Self {
+    /// Store echo broadcast
+    pub fn echo_broadcast() -> Self {
         Self::new(true, false, false)
     }
 
-    /// Store normal broadcast only.
-    pub fn normal_broadcast_only() -> Self {
+    /// Store normal broadcast
+    pub fn normal_broadcast() -> Self {
         Self::new(false, true, false)
     }
 
-    /// Store direct message only.
-    pub fn direct_message_only() -> Self {
+    /// Store direct message
+    pub fn direct_message() -> Self {
         Self::new(false, false, true)
+    }
+
+    /// Store echo broadcast in addition to what is already stored.
+    pub fn and_echo_broadcast(&self) -> Self {
+        Self::new(true, self.normal_broadcast, self.direct_message)
+    }
+
+    /// Store normal broadcast in addition to what is already stored.
+    pub fn and_normal_broadcast(&self) -> Self {
+        Self::new(self.echo_broadcast, true, self.direct_message)
+    }
+
+    /// Store direct message in addition to what is already stored.
+    pub fn and_direct_message(&self) -> Self {
+        Self::new(self.echo_broadcast, self.normal_broadcast, true)
     }
 }
 
