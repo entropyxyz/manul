@@ -94,21 +94,21 @@ impl<Id> Protocol<Id> for SimpleProtocol {
         message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         match round_id {
-            r if r == &1 => message.verify_is_some(),
-            r if r == &2 => message.verify_is_not::<Round2Message>(deserializer),
+            r if r == &1 => message.verify_is_not::<Round1Echo>(deserializer),
+            r if r == &2 => message.verify_is_some(),
             _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
         }
     }
 
     fn verify_normal_broadcast_is_invalid(
-        _deserializer: &Deserializer,
+        deserializer: &Deserializer,
         round_id: &RoundId,
         message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
-        if round_id == &1 || round_id == &2 {
-            message.verify_is_some()
-        } else {
-            Err(MessageValidationError::InvalidEvidence("Invalid round number".into()))
+        match round_id {
+            r if r == &1 => message.verify_is_not::<Round1Broadcast>(deserializer),
+            r if r == &2 => message.verify_is_some(),
+            _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
         }
     }
 }
