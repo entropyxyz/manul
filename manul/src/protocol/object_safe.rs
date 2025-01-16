@@ -8,9 +8,9 @@ use core::{fmt::Debug, marker::PhantomData};
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 
 use super::{
-    errors::{FinalizeError, LocalError, ReceiveError},
-    message::{DirectMessage, EchoBroadcast, NormalBroadcast},
-    round::{Artifact, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
+    errors::{LocalError, ReceiveError},
+    message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage},
+    round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
     serialization::{Deserializer, Serializer},
 };
 
@@ -40,13 +40,19 @@ impl RngCore for BoxedRng<'_> {
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
 // Thus we have to add this crate-private object-safe layer on top of `Round`.
 pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
-    type Protocol: Protocol;
+    type Protocol: Protocol<Id>;
 
     fn id(&self) -> RoundId;
 
     fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
 
+    fn may_produce_result(&self) -> bool;
+
     fn message_destinations(&self) -> &BTreeSet<Id>;
+
+    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id>;
 
     fn make_direct_message(
         &self,
@@ -72,12 +78,9 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
 
     fn finalize(
@@ -85,9 +88,7 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>>;
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError>;
 
     /// Returns the type ID of the implementing type.
     fn get_type_id(&self) -> core::any::TypeId {
@@ -131,8 +132,20 @@ where
         self.round.possible_next_rounds()
     }
 
+    fn may_produce_result(&self) -> bool {
+        self.round.may_produce_result()
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         self.round.message_destinations()
+    }
+
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        self.round.expecting_messages_from()
+    }
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
+        self.round.echo_round_participation()
     }
 
     fn make_direct_message(
@@ -168,22 +181,11 @@ where
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        let mut boxed_rng = BoxedRng(rng);
-        self.round.receive_message(
-            &mut boxed_rng,
-            deserializer,
-            from,
-            echo_broadcast,
-            normal_broadcast,
-            direct_message,
-        )
+        self.round.receive_message(deserializer, from, message)
     }
 
     fn finalize(
@@ -191,26 +193,22 @@ where
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         let mut boxed_rng = BoxedRng(rng);
         self.round.finalize(&mut boxed_rng, payloads, artifacts)
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        self.round.expecting_messages_from()
     }
 }
 
 // We do not want to expose `ObjectSafeRound` to the user, so it is hidden in a struct.
 /// A wrapped new round that may be returned by [`Round::finalize`]
-/// or [`EntryPoint::new`](`crate::protocol::EntryPoint::new`).
+/// or [`EntryPoint::make_round`](`crate::protocol::EntryPoint::make_round`).
 #[derive_where::derive_where(Debug)]
-pub struct BoxedRound<Id: PartyId, P: Protocol> {
+pub struct BoxedRound<Id: PartyId, P: Protocol<Id>> {
     wrapped: bool,
     round: Box<dyn ObjectSafeRound<Id, Protocol = P>>,
 }
 
-impl<Id: PartyId, P: Protocol> BoxedRound<Id, P> {
+impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
     /// Wraps an object implementing the dynamic round trait ([`Round`](`crate::protocol::Round`)).
     pub fn new_dynamic<R: Round<Id, Protocol = P>>(round: R) -> Self {
         Self {

@@ -2,4 +2,4 @@
 
 mod serializable_map;
 
-pub(crate) use serializable_map::SerializableMap;
+pub use serializable_map::SerializableMap;

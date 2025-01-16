@@ -56,10 +56,10 @@ pub(crate) struct MessageMetadata {
 }
 
 impl MessageMetadata {
-    pub fn new(session_id: &SessionId, round_id: RoundId) -> Self {
+    pub fn new(session_id: &SessionId, round_id: &RoundId) -> Self {
         Self {
             session_id: session_id.clone(),
-            round_id,
+            round_id: round_id.clone(),
         }
     }
 
@@ -67,8 +67,8 @@ impl MessageMetadata {
         &self.session_id
     }
 
-    pub fn round_id(&self) -> RoundId {
-        self.round_id.clone()
+    pub fn round_id(&self) -> &RoundId {
+        &self.round_id
     }
 }
 
@@ -103,7 +103,7 @@ where
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
         session_id: &SessionId,
-        round_id: RoundId,
+        round_id: &RoundId,
         message: M,
     ) -> Result<Self, LocalError>
     where
@@ -167,6 +167,10 @@ impl<M> VerifiedMessagePart<M> {
         &self.message_with_metadata.message
     }
 
+    pub(crate) fn into_payload(self) -> M {
+        self.message_with_metadata.message
+    }
+
     pub fn into_unverified(self) -> SignedMessagePart<M> {
         SignedMessagePart {
             signature: self.signature,
@@ -193,7 +197,7 @@ where
         rng: &mut impl CryptoRngCore,
         signer: &SP::Signer,
         session_id: &SessionId,
-        round_id: RoundId,
+        round_id: &RoundId,
         destination: &Verifier,
         direct_message: DirectMessage,
         echo_broadcast: SignedMessagePart<EchoBroadcast>,

@@ -12,13 +12,13 @@ use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessagePart},
-    session::SessionParameters,
+    session::{EchoRoundInfo, SessionParameters},
     LocalError,
 };
 use crate::{
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeError, FinalizeOutcome,
-        MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeOutcome, MessageValidationError,
+        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId,
         Serializer,
     },
     utils::SerializableMap,
@@ -74,11 +74,10 @@ pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
 /// participants. The execution layer of the protocol guarantees that all participants have received
 /// the messages.
 #[derive_where::derive_where(Debug)]
-pub struct EchoRound<P: Protocol, SP: SessionParameters> {
+pub struct EchoRound<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     verifier: SP::Verifier,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
-    destinations: BTreeSet<SP::Verifier>,
-    expected_echos: BTreeSet<SP::Verifier>,
+    echo_round_info: EchoRoundInfo<SP::Verifier>,
     main_round: BoxedRound<SP::Verifier, P>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
@@ -86,32 +85,26 @@ pub struct EchoRound<P: Protocol, SP: SessionParameters> {
 
 impl<P, SP> EchoRound<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     pub fn new(
         verifier: SP::Verifier,
         my_echo_broadcast: SignedMessagePart<EchoBroadcast>,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
+        echo_round_info: EchoRoundInfo<SP::Verifier>,
         main_round: BoxedRound<SP::Verifier, P>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
-        let destinations = echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
-
-        // Add our own echo message because we expect it to be sent back from other nodes.
-        let mut expected_echos = destinations.clone();
-        expected_echos.insert(verifier.clone());
-
         let mut echo_broadcasts = echo_broadcasts;
         echo_broadcasts.insert(verifier.clone(), my_echo_broadcast);
 
-        debug!("{:?}: initialized echo round with {:?}", verifier, destinations);
+        debug!("{:?}: initialized echo round with {:?}", verifier, echo_round_info);
         Self {
             verifier,
             echo_broadcasts,
-            destinations,
-            expected_echos,
+            echo_round_info,
             main_round,
             payloads,
             artifacts,
@@ -140,7 +133,7 @@ where
 
 impl<P, SP> Round<SP::Verifier> for EchoRound<P, SP>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     type Protocol = P;
@@ -154,7 +147,7 @@ where
     }
 
     fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.destinations
+        &self.echo_round_info.message_destinations
     }
 
     fn make_normal_broadcast(
@@ -180,35 +173,32 @@ where
     }
 
     fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
-        &self.destinations
+        &self.echo_round_info.expecting_messages_from
     }
 
     fn receive_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
         deserializer: &Deserializer,
         from: &SP::Verifier,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
         debug!("{:?}: received an echo message from {:?}", self.verifier, from);
 
-        echo_broadcast.assert_is_none()?;
-        direct_message.assert_is_none()?;
+        message.echo_broadcast.assert_is_none()?;
+        message.direct_message.assert_is_none()?;
 
-        let message = normal_broadcast.deserialize::<EchoRoundMessage<SP>>(deserializer)?;
+        let message = message
+            .normal_broadcast
+            .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
-        // Check that the received message contains entries from `destinations` sans `from`
+        // Check that the received message contains entries from `expected_echos`.
         // It is an unprovable fault.
 
-        let mut expected_keys = self.expected_echos.clone();
-        if !expected_keys.remove(from) {
-            return Err(ReceiveError::local(format!(
-                "The message sender {from:?} is missing from the expected senders {:?}",
-                self.destinations
-            )));
-        }
+        let mut expected_keys = self.echo_round_info.expected_echos.clone();
+
+        // We don't expect the node to send its echo the second time.
+        expected_keys.remove(from);
+
         let message_keys = message.echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
@@ -295,7 +285,7 @@ where
         rng: &mut impl CryptoRngCore,
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
-    ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, LocalError> {
         self.main_round
             .into_boxed()
             .finalize(rng, self.payloads, self.artifacts)

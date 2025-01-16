@@ -12,6 +12,6 @@ mod run_sync;
 mod session_parameters;
 mod wire_format;
 
-pub use run_sync::run_sync;
+pub use run_sync::{run_sync, ExecutionResult};
 pub use session_parameters::{TestHasher, TestSessionParams, TestSignature, TestSigner, TestVerifier};
 pub use wire_format::{BinaryFormat, HumanReadableFormat};

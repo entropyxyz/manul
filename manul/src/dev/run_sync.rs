@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 
 use rand::Rng;
 use rand_core::CryptoRngCore;
@@ -8,12 +8,12 @@ use tracing::debug;
 use crate::{
     protocol::{EntryPoint, Protocol},
     session::{
-        CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
-        SessionReport,
+        CanFinalize, LocalError, Message, RoundAccumulator, RoundOutcome, Session, SessionId, SessionOutcome,
+        SessionParameters, SessionReport,
     },
 };
 
-enum State<P: Protocol, SP: SessionParameters> {
+enum State<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     InProgress {
         session: Session<P, SP>,
         accum: RoundAccumulator<P, SP>,
@@ -34,7 +34,7 @@ fn propagate<P, SP>(
     accum: RoundAccumulator<P, SP>,
 ) -> Result<(State<P, SP>, Vec<RoundMessage<SP>>), LocalError>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     let mut messages = Vec::new();
@@ -61,7 +61,7 @@ where
                                 message.from(),
                                 session.verifier()
                             );
-                            let processed = session.process_message(rng, message);
+                            let processed = session.process_message(message);
                             session.add_processed_message(&mut accum, processed)?;
                         }
                     }
@@ -86,15 +86,14 @@ where
     Ok((state, messages))
 }
 
-/// Execute sessions for multiple nodes concurrently, given the the inputs
-/// for the first round `R` and the signer for each node.
-#[allow(clippy::type_complexity)]
-pub fn run_sync<R, SP>(
+/// Execute sessions for multiple nodes concurrently,
+/// given a vector of the signer and the entry point as a tuple for each node.
+pub fn run_sync<EP, SP>(
     rng: &mut impl CryptoRngCore,
-    inputs: Vec<(SP::Signer, R::Inputs)>,
-) -> Result<BTreeMap<SP::Verifier, SessionReport<R::Protocol, SP>>, LocalError>
+    entry_points: Vec<(SP::Signer, EP)>,
+) -> Result<ExecutionResult<EP::Protocol, SP>, LocalError>
 where
-    R: EntryPoint<SP::Verifier>,
+    EP: EntryPoint<SP::Verifier>,
     SP: SessionParameters,
 {
     let session_id = SessionId::random::<SP>(rng);
@@ -102,9 +101,9 @@ where
     let mut messages = Vec::new();
     let mut states = BTreeMap::new();
 
-    for (signer, inputs) in inputs {
+    for (signer, entry_point) in entry_points {
         let verifier = signer.verifying_key();
-        let session = Session::<_, SP>::new::<R>(rng, session_id.clone(), signer, inputs)?;
+        let session = Session::<_, SP>::new(rng, session_id.clone(), signer, entry_point)?;
         let mut accum = session.make_accumulator();
 
         let destinations = session.message_destinations();
@@ -138,7 +137,7 @@ where
             let preprocessed = session.preprocess_message(&mut accum, &message.from, message.message)?;
 
             if let Some(verified) = preprocessed.ok() {
-                let processed = session.process_message(rng, verified);
+                let processed = session.process_message(verified);
                 session.add_processed_message(&mut accum, processed)?;
             }
 
@@ -155,14 +154,53 @@ where
         }
     }
 
-    let mut outcomes = BTreeMap::new();
+    let mut reports = BTreeMap::new();
     for (verifier, state) in states {
-        let outcome = match state {
+        let report = match state {
             State::InProgress { session, accum } => session.terminate(accum)?,
             State::Finished(report) => report,
         };
-        outcomes.insert(verifier, outcome);
+        reports.insert(verifier, report);
     }
 
-    Ok(outcomes)
+    Ok(ExecutionResult { reports })
+}
+
+/// The result of a protocol execution on a set of nodes.
+#[derive(Debug)]
+pub struct ExecutionResult<P: Protocol<SP::Verifier>, SP: SessionParameters> {
+    /// Session reports from each node.
+    pub reports: BTreeMap<SP::Verifier, SessionReport<P, SP>>,
+}
+
+impl<P, SP> ExecutionResult<P, SP>
+where
+    P: Protocol<SP::Verifier>,
+    SP: SessionParameters,
+{
+    /// Attempts to extract the results from each session report.
+    ///
+    /// If any session did finish with a result, returns a string
+    /// with a formatted description of outcomes for each session.
+    pub fn results(self) -> Result<BTreeMap<SP::Verifier, P::Result>, String> {
+        let mut report_strings = Vec::new();
+        let mut results = BTreeMap::new();
+
+        for (id, report) in self.reports.into_iter() {
+            match report.outcome {
+                SessionOutcome::Result(result) => {
+                    results.insert(id, result);
+                }
+                _ => {
+                    report_strings.push(format!("* Id: {:?}\n{}", id, report.brief()));
+                }
+            }
+        }
+
+        if report_strings.is_empty() {
+            Ok(results)
+        } else {
+            Err(report_strings.join("\n\n"))
+        }
+    }
 }

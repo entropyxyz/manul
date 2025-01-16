@@ -18,17 +18,16 @@ mod round;
 mod serialization;
 
 pub use errors::{
-    DeserializationError, DirectMessageError, EchoBroadcastError, FinalizeError, LocalError, MessageValidationError,
+    DeserializationError, DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError,
     NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,
 };
-pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart};
+pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart};
 pub use object_safe::BoxedRound;
 pub use round::{
-    Artifact, CorrectnessProof, EntryPoint, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round, RoundId,
+    Artifact, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoProtocolErrors, PartyId, Payload, Protocol,
+    ProtocolError, RequiredMessageParts, RequiredMessages, Round, RoundId,
 };
 pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;
 pub(crate) use object_safe::{BoxedRng, ObjectSafeRound};
-
-pub use digest;

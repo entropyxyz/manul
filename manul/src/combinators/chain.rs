@@ -4,343 +4,351 @@ executes the two inner protocols in sequence, feeding the result of the first pr
 into the inputs of the second protocol.
 
 For the session level users (that is, the ones executing the protocols)
-the new protocol is a single entity with its own [`Protocol`](`crate::protocol::Protocol`) type
-and an [`EntryPoint`](`crate::protocol::EntryPoint`) type.
+the new protocol is a single entity with its own [`Protocol`](`crate::protocol::Protocol`)-implementing type
+and an [`EntryPoint`](`crate::protocol::EntryPoint`)-implementing type.
 
-For example, imagine we have a `ProtocolA` with an entry point `EntryPointA`, inputs `InputsA`,
+For example, imagine we have a `ProtocolA` with an entry point `EntryPointA`,
 two rounds, `RA1` and `RA2`, and the result `ResultA`;
-and similarly a `ProtocolB` with an entry point `EntryPointB`, inputs `InputsB`,
+and similarly a `ProtocolB` with an entry point `EntryPointB`,
 two rounds, `RB1` and `RB2`, and the result `ResultB`.
 
-Then the chained protocol will provide `ProtocolC: Protocol` and `EntryPointC: EntryPoint`,
-the user will define `InputsC` for the new protocol, and the execution will look like:
-- `InputsA` is created from `InputsC` via the user-defined `From` impl;
-- `EntryPointA` is initialized with `InputsA`;
+Then the chained protocol will have a `ProtocolC: Protocol` type and an `EntryPointC: EntryPoint` type,
+and the execution will look like:
+- `EntryPointC` is initialized by the user with whatever constructor it may have;
+- Internally, `EntryPointA` is created from `EntryPointC` using the [`ChainedSplit`] implementation
+  provided by the protocol author;
 - `RA1` is executed;
 - `RA2` is executed, producing `ResultA`;
-- `InputsB` is created from `ResultA` and `InputsC` via the user-defined `From` impl;
+- Internally, `EntryPointB` is created from `ResultA` and the data created in [`ChainedSplit::make_entry_point1`]
+  using the [`ChainedJoin`] implementation provided by the protocol author;
 - `RB1` is executed;
-- `RB2` is executed, producing `ResultB` (which is also the result of `ChainedProtocol`).
+- `RB2` is executed, producing `ResultB` (which is also the result of `ProtocolC`).
 
 If the execution happens in a [`Session`](`crate::session::Session`), and there is an error at any point,
 a regular evidence or correctness proof are created using the corresponding types from the new `ProtocolC`.
 
-The usage is as follows.
+Usage:
 
-1. Define an input type for the new joined protocol.
-   Most likely it will be a union between inputs of the first and the second protocol.
+1. Implement [`ChainedProtocol`] for a type of your choice. Usually it will be a ZST.
+   You will have to specify the two protocol types you want to chain.
 
-2. Implement [`Chained`] for a type of your choice. Usually it will be an empty token type.
-   You will have to specify the entry points of the two protocols,
-   and the [`From`] conversions from the new input type to the inputs of both entry points
-   (see the corresponding associated type bounds).
+2. Implement the marker trait [`ChainedMarker`] for this type. This will activate the blanket implementation
+   of [`Protocol`](`crate::protocol::Protocol`) for it.
+   The marker trait is needed to disambiguate different generic blanket implementations.
 
-3. The entry point for the new protocol will be [`ChainedEntryPoint`] parametrized with
-   the type implementing [`Chained`] from step 2.
+3. Define an entry point type for the new joined protocol.
+   Most likely it will contain a union between the required data for the entry point
+   of the first and the second protocol.
 
-4. The [`Protocol`](`crate::protocol::Protocol`)-implementing type for the new protocol will be
-   [`ChainedProtocol`] parametrized with the type implementing [`Chained`] from the step 2.
+4. Implement [`ChainedSplit`] and [`ChainedJoin`] for the new entry point.
+
+5. Implement the marker trait [`ChainedMarker`] for this type.
+   Same as with the protocol, this is needed to disambiguate different generic blanket implementations.
+
+6. [`ChainedAssociatedData`] is the structure used to supply associated data
+   when verifying evidence from the chained protocol.
 */
 
 use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
-    format,
-    string::String,
-    vec::Vec,
 };
-use core::{fmt::Debug, marker::PhantomData};
+use core::fmt::{self, Debug};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::*;
+use crate::protocol::{
+    Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+    FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
+    ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
+};
+
+/// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
+pub trait ChainedMarker {}
 
 /// A trait defining two protocols executed sequentially.
-pub trait Chained<Id>: 'static
-where
-    Id: PartyId,
-{
-    /// The inputs of the new chained protocol.
-    type Inputs: Send + Sync + Debug;
+pub trait ChainedProtocol<Id>: 'static + Debug {
+    /// The protcol that is executed first.
+    type Protocol1: Protocol<Id>;
 
-    /// The entry point of the first protocol.
-    type EntryPoint1: EntryPoint<Id, Inputs: for<'a> From<&'a Self::Inputs>>;
-
-    /// The entry point of the second protocol.
-    type EntryPoint2: EntryPoint<
-        Id,
-        Inputs: From<(
-            Self::Inputs,
-            <<Self::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::Result,
-        )>,
-    >;
+    /// The protcol that is executed second.
+    type Protocol2: Protocol<Id>;
 }
 
 /// The protocol error type for the chained protocol.
 #[derive_where::derive_where(Debug, Clone)]
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "
-    <<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError: Serialize,
-    <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError: Serialize,
+    <C::Protocol1 as Protocol<Id>>::ProtocolError: Serialize,
+    <C::Protocol2 as Protocol<Id>>::ProtocolError: Serialize,
 "))]
 #[serde(bound(deserialize = "
-    <<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError: for<'x> Deserialize<'x>,
-    <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError: for<'x> Deserialize<'x>,
+    <C::Protocol1 as Protocol<Id>>::ProtocolError: for<'x> Deserialize<'x>,
+    <C::Protocol2 as Protocol<Id>>::ProtocolError: for<'x> Deserialize<'x>,
 "))]
-pub enum ChainedProtocolError<Id: PartyId, C: Chained<Id>> {
+pub enum ChainedProtocolError<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
     /// A protocol error from the first protocol.
-    Protocol1(<<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError),
+    Protocol1(<C::Protocol1 as Protocol<Id>>::ProtocolError),
     /// A protocol error from the second protocol.
-    Protocol2(<<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError),
+    Protocol2(<C::Protocol2 as Protocol<Id>>::ProtocolError),
+}
+
+impl<Id, C> fmt::Display for ChainedProtocolError<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Self::Protocol1(err) => write!(f, "Protocol 1: {err}"),
+            Self::Protocol2(err) => write!(f, "Protocol 2: {err}"),
+        }
+    }
 }
 
 impl<Id, C> ChainedProtocolError<Id, C>
 where
-    Id: PartyId,
-    C: Chained<Id>,
+    C: ChainedProtocol<Id>,
 {
-    fn from_protocol1(err: <<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError) -> Self {
+    fn from_protocol1(err: <C::Protocol1 as Protocol<Id>>::ProtocolError) -> Self {
         Self::Protocol1(err)
     }
 
-    fn from_protocol2(err: <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::ProtocolError) -> Self {
+    fn from_protocol2(err: <C::Protocol2 as Protocol<Id>>::ProtocolError) -> Self {
         Self::Protocol2(err)
     }
 }
 
-impl<Id, C> ProtocolError for ChainedProtocolError<Id, C>
+/// Associated data for verification of malicious behavior evidence in the chained protocol.
+#[derive_where::derive_where(Debug)]
+pub struct ChainedAssociatedData<Id, C>
 where
-    Id: PartyId,
-    C: Chained<Id>,
+    C: ChainedProtocol<Id>,
 {
-    fn description(&self) -> String {
-        match self {
-            Self::Protocol1(err) => format!("Protocol1: {}", err.description()),
-            Self::Protocol2(err) => format!("Protocol2: {}", err.description()),
+    /// Associated data for the errors in the first protocol.
+    pub protocol1: <<C::Protocol1 as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    /// Associated data for the errors in the second protocol.
+    pub protocol2: <<C::Protocol2 as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+}
+
+impl<Id, C> ProtocolError<Id> for ChainedProtocolError<Id, C>
+where
+    C: ChainedProtocol<Id>,
+{
+    type AssociatedData = ChainedAssociatedData<Id, C>;
+
+    fn required_messages(&self) -> RequiredMessages {
+        let (protocol_num, required_messages) = match self {
+            Self::Protocol1(err) => (1, err.required_messages()),
+            Self::Protocol2(err) => (2, err.required_messages()),
+        };
+
+        let previous_rounds = required_messages.previous_rounds.map(|previous_rounds| {
+            previous_rounds
+                .into_iter()
+                .map(|(round_id, required)| (round_id.group_under(protocol_num), required))
+                .collect()
+        });
+
+        let combined_echos = required_messages.combined_echos.map(|combined_echos| {
+            combined_echos
+                .into_iter()
+                .map(|round_id| round_id.group_under(protocol_num))
+                .collect()
+        });
+
+        RequiredMessages {
+            this_round: required_messages.this_round,
+            previous_rounds,
+            combined_echos,
         }
-    }
-
-    fn required_direct_messages(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_direct_messages()),
-            Self::Protocol2(err) => (2, err.required_direct_messages()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
-
-    fn required_echo_broadcasts(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_echo_broadcasts()),
-            Self::Protocol2(err) => (2, err.required_echo_broadcasts()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
-
-    fn required_normal_broadcasts(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_normal_broadcasts()),
-            Self::Protocol2(err) => (2, err.required_normal_broadcasts()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
-    }
-
-    fn required_combined_echos(&self) -> BTreeSet<RoundId> {
-        let (protocol_num, round_ids) = match self {
-            Self::Protocol1(err) => (1, err.required_combined_echos()),
-            Self::Protocol2(err) => (2, err.required_combined_echos()),
-        };
-        round_ids
-            .into_iter()
-            .map(|round_id| round_id.group_under(protocol_num))
-            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
     fn verify_messages_constitute_error(
         &self,
         deserializer: &Deserializer,
-        echo_broadcast: &EchoBroadcast,
-        normal_broadcast: &NormalBroadcast,
-        direct_message: &DirectMessage,
-        echo_broadcasts: &BTreeMap<RoundId, EchoBroadcast>,
-        normal_broadcasts: &BTreeMap<RoundId, NormalBroadcast>,
-        direct_messages: &BTreeMap<RoundId, DirectMessage>,
-        combined_echos: &BTreeMap<RoundId, Vec<EchoBroadcast>>,
+        guilty_party: &Id,
+        shared_randomness: &[u8],
+        associated_data: &Self::AssociatedData,
+        message: ProtocolMessage,
+        previous_messages: BTreeMap<RoundId, ProtocolMessage>,
+        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), ProtocolValidationError> {
-        // TODO: the cloning can be avoided if instead we provide a reference to some "transcript API",
-        // and can replace it here with a proxy that will remove nesting from round ID's.
-        let echo_broadcasts = echo_broadcasts
-            .clone()
+        let previous_messages = previous_messages
             .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let normal_broadcasts = normal_broadcasts
-            .clone()
-            .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
-            .collect::<Result<BTreeMap<_, _>, _>>()?;
-        let direct_messages = direct_messages
-            .clone()
-            .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
+            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let combined_echos = combined_echos
-            .clone()
             .into_iter()
-            .map(|(round_id, v)| round_id.ungroup().map(|round_id| (round_id, v)))
+            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
         match self {
             Self::Protocol1(err) => err.verify_messages_constitute_error(
                 deserializer,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-                &echo_broadcasts,
-                &normal_broadcasts,
-                &direct_messages,
-                &combined_echos,
+                guilty_party,
+                shared_randomness,
+                &associated_data.protocol1,
+                message,
+                previous_messages,
+                combined_echos,
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
                 deserializer,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-                &echo_broadcasts,
-                &normal_broadcasts,
-                &direct_messages,
-                &combined_echos,
+                guilty_party,
+                shared_randomness,
+                &associated_data.protocol2,
+                message,
+                previous_messages,
+                combined_echos,
             ),
         }
     }
 }
 
-/// The correctness proof type for the chained protocol.
-#[derive_where::derive_where(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "
-    <<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof: Serialize,
-    <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof: Serialize,
-"))]
-#[serde(bound(deserialize = "
-    <<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof: for<'x> Deserialize<'x>,
-    <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof: for<'x> Deserialize<'x>,
-"))]
-pub enum ChainedCorrectnessProof<Id, C>
+impl<Id, C> Protocol<Id> for C
 where
-    Id: PartyId,
-    C: Chained<Id>,
+    Id: 'static,
+    C: ChainedProtocol<Id> + ChainedMarker,
 {
-    /// A correctness proof from the first protocol.
-    Protocol1(<<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof),
-    /// A correctness proof from the second protocol.
-    Protocol2(<<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof),
-}
-
-impl<Id, C> ChainedCorrectnessProof<Id, C>
-where
-    Id: PartyId,
-    C: Chained<Id>,
-{
-    fn from_protocol1(proof: <<C::EntryPoint1 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof) -> Self {
-        Self::Protocol1(proof)
-    }
-
-    fn from_protocol2(proof: <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::CorrectnessProof) -> Self {
-        Self::Protocol2(proof)
-    }
-}
-
-impl<Id, C> CorrectnessProof for ChainedCorrectnessProof<Id, C>
-where
-    Id: PartyId,
-    C: Chained<Id>,
-{
-}
-
-/// The protocol resulting from chaining two sub-protocols as described by `C`.
-#[derive(Debug)]
-#[allow(clippy::type_complexity)]
-pub struct ChainedProtocol<Id: PartyId, C: Chained<Id>>(PhantomData<fn((Id, C)) -> (Id, C)>);
-
-impl<Id, C> Protocol for ChainedProtocol<Id, C>
-where
-    Id: PartyId,
-    C: Chained<Id>,
-{
-    type Result = <<C::EntryPoint2 as EntryPoint<Id>>::Protocol as Protocol>::Result;
+    type Result = <C::Protocol2 as Protocol<Id>>::Result;
     type ProtocolError = ChainedProtocolError<Id, C>;
-    type CorrectnessProof = ChainedCorrectnessProof<Id, C>;
-}
 
-/// The entry point of the chained protocol.
-#[derive_where::derive_where(Debug)]
-pub struct ChainedEntryPoint<Id: PartyId, C: Chained<Id>> {
-    state: ChainState<Id, C>,
-}
-
-#[derive_where::derive_where(Debug)]
-enum ChainState<Id, C>
-where
-    Id: PartyId,
-    C: Chained<Id>,
-{
-    Protocol1 {
-        round: BoxedRound<Id, <C::EntryPoint1 as EntryPoint<Id>>::Protocol>,
-        shared_randomness: Box<[u8]>,
-        id: Id,
-        inputs: C::Inputs,
-    },
-    Protocol2(BoxedRound<Id, <C::EntryPoint2 as EntryPoint<Id>>::Protocol>),
-}
-
-impl<Id, C> EntryPoint<Id> for ChainedEntryPoint<Id, C>
-where
-    Id: PartyId,
-    C: Chained<Id>,
-{
-    type Inputs = C::Inputs;
-    type Protocol = ChainedProtocol<Id, C>;
-
-    fn entry_round() -> RoundId {
-        <C::EntryPoint1 as EntryPoint<Id>>::entry_round().group_under(1)
+    fn verify_direct_message_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &DirectMessage,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_direct_message_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_direct_message_is_invalid(deserializer, &round_id, message)
+        }
     }
 
-    fn new(
+    fn verify_echo_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+        }
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        deserializer: &Deserializer,
+        round_id: &RoundId,
+        message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group == 1 {
+            C::Protocol1::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+        } else {
+            C::Protocol2::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+        }
+    }
+}
+
+/// A trait defining how the entry point for the whole chained protocol
+/// will be split into the entry point for the first protocol, and a piece of data
+/// that, along with the first protocol's result, will be used to create the entry point for the second protocol.
+pub trait ChainedSplit<Id: PartyId> {
+    /// The chained protocol this trait belongs to.
+    type Protocol: ChainedProtocol<Id> + ChainedMarker;
+
+    /// The first protocol's entry point.
+    type EntryPoint: EntryPoint<Id, Protocol = <Self::Protocol as ChainedProtocol<Id>>::Protocol1>;
+
+    /// Creates the first protocol's entry point and the data for creating the second entry point.
+    fn make_entry_point1(self) -> (Self::EntryPoint, impl ChainedJoin<Id, Protocol = Self::Protocol>);
+}
+
+/// A trait defining how the data created in [`ChainedSplit::make_entry_point1`]
+/// will be joined with the result of the first protocol to create an entry point for the second protocol.
+pub trait ChainedJoin<Id: PartyId>: 'static + Debug + Send + Sync {
+    /// The chained protocol this trait belongs to.
+    type Protocol: ChainedProtocol<Id> + ChainedMarker;
+
+    /// The second protocol's entry point.
+    type EntryPoint: EntryPoint<Id, Protocol = <Self::Protocol as ChainedProtocol<Id>>::Protocol2>;
+
+    /// Creates the second protocol's entry point using the first protocol's result.
+    fn make_entry_point2(
+        self,
+        result: <<Self::Protocol as ChainedProtocol<Id>>::Protocol1 as Protocol<Id>>::Result,
+    ) -> Self::EntryPoint;
+}
+
+impl<Id, T> EntryPoint<Id> for T
+where
+    Id: PartyId,
+    T: ChainedSplit<Id> + ChainedMarker,
+{
+    type Protocol = T::Protocol;
+
+    fn entry_round_id() -> RoundId {
+        <T as ChainedSplit<Id>>::EntryPoint::entry_round_id().group_under(1)
+    }
+
+    fn make_round(
+        self,
         rng: &mut impl CryptoRngCore,
         shared_randomness: &[u8],
-        id: Id,
-        inputs: Self::Inputs,
+        id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        let round = C::EntryPoint1::new(rng, shared_randomness, id.clone(), (&inputs).into())?;
-        let round = ChainedEntryPoint {
+        let (entry_point, transition) = self.make_entry_point1();
+        let round = entry_point.make_round(rng, shared_randomness, id)?;
+        let chained_round = ChainedRound {
             state: ChainState::Protocol1 {
+                id: id.clone(),
                 shared_randomness: shared_randomness.into(),
-                id,
-                inputs,
+                transition,
                 round,
             },
         };
-        Ok(BoxedRound::new_object_safe(round))
+        Ok(BoxedRound::new_object_safe(chained_round))
     }
 }
 
-impl<Id, C> ObjectSafeRound<Id> for ChainedEntryPoint<Id, C>
+#[derive(Debug)]
+struct ChainedRound<Id, T>
 where
     Id: PartyId,
-    C: Chained<Id>,
+    T: ChainedJoin<Id>,
 {
-    type Protocol = ChainedProtocol<Id, C>;
+    state: ChainState<Id, T>,
+}
+
+#[derive_where::derive_where(Debug)]
+enum ChainState<Id, T>
+where
+    Id: PartyId,
+    T: ChainedJoin<Id>,
+{
+    Protocol1 {
+        id: Id,
+        round: BoxedRound<Id, <T::Protocol as ChainedProtocol<Id>>::Protocol1>,
+        shared_randomness: Box<[u8]>,
+        transition: T,
+    },
+    Protocol2(BoxedRound<Id, <T::Protocol as ChainedProtocol<Id>>::Protocol2>),
+}
+
+impl<Id, T> ObjectSafeRound<Id> for ChainedRound<Id, T>
+where
+    Id: PartyId,
+    T: ChainedJoin<Id>,
+{
+    type Protocol = T::Protocol;
 
     fn id(&self) -> RoundId {
         match &self.state {
@@ -359,11 +367,11 @@ where
                     .map(|round_id| round_id.group_under(1))
                     .collect::<BTreeSet<_>>();
 
-                // If there are no next rounds, this is the result round.
-                // This means that in the chain the next round will be the entry round of the second protocol.
-                if next_rounds.is_empty() {
-                    next_rounds.insert(C::EntryPoint2::entry_round().group_under(2));
+                if round.as_ref().may_produce_result() {
+                    tracing::debug!("Adding {}", T::EntryPoint::entry_round_id().group_under(2));
+                    next_rounds.insert(T::EntryPoint::entry_round_id().group_under(2));
                 }
+
                 next_rounds
             }
             ChainState::Protocol2(round) => round
@@ -375,10 +383,31 @@ where
         }
     }
 
+    fn may_produce_result(&self) -> bool {
+        match &self.state {
+            ChainState::Protocol1 { .. } => false,
+            ChainState::Protocol2(round) => round.as_ref().may_produce_result(),
+        }
+    }
+
     fn message_destinations(&self) -> &BTreeSet<Id> {
         match &self.state {
             ChainState::Protocol1 { round, .. } => round.as_ref().message_destinations(),
             ChainState::Protocol2(round) => round.as_ref().message_destinations(),
+        }
+    }
+
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        match &self.state {
+            ChainState::Protocol1 { round, .. } => round.as_ref().expecting_messages_from(),
+            ChainState::Protocol2(round) => round.as_ref().expecting_messages_from(),
+        }
+    }
+
+    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
+        match &self.state {
+            ChainState::Protocol1 { round, .. } => round.as_ref().echo_round_participation(),
+            ChainState::Protocol2(round) => round.as_ref().echo_round_participation(),
         }
     }
 
@@ -429,33 +458,16 @@ where
 
     fn receive_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
         deserializer: &Deserializer,
         from: &Id,
-        echo_broadcast: EchoBroadcast,
-        normal_broadcast: NormalBroadcast,
-        direct_message: DirectMessage,
+        message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(
-                rng,
-                deserializer,
-                from,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-            ) {
+            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(deserializer, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
             },
-            ChainState::Protocol2(round) => match round.as_ref().receive_message(
-                rng,
-                deserializer,
-                from,
-                echo_broadcast,
-                normal_broadcast,
-                direct_message,
-            ) {
+            ChainState::Protocol2(round) => match round.as_ref().receive_message(deserializer, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol2)),
             },
@@ -467,58 +479,44 @@ where
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
-    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, FinalizeError<Self::Protocol>> {
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         match self.state {
             ChainState::Protocol1 {
-                round,
                 id,
-                inputs,
+                round,
+                transition,
                 shared_randomness,
-            } => match round.into_boxed().finalize(rng, payloads, artifacts) {
-                Ok(FinalizeOutcome::Result(result)) => {
+            } => match round.into_boxed().finalize(rng, payloads, artifacts)? {
+                FinalizeOutcome::Result(result) => {
                     let mut boxed_rng = BoxedRng(rng);
-                    let round = C::EntryPoint2::new(&mut boxed_rng, &shared_randomness, id, (inputs, result).into())?;
+                    let entry_point2 = transition.make_entry_point2(result);
+                    let round = entry_point2.make_round(&mut boxed_rng, &shared_randomness, &id)?;
 
                     Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
-                        ChainedEntryPoint::<Id, C> {
+                        ChainedRound::<Id, T> {
                             state: ChainState::Protocol2(round),
                         },
                     )))
                 }
-                Ok(FinalizeOutcome::AnotherRound(round)) => Ok(FinalizeOutcome::AnotherRound(
-                    BoxedRound::new_object_safe(ChainedEntryPoint::<Id, C> {
+                FinalizeOutcome::AnotherRound(round) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
+                    ChainedRound::<Id, T> {
                         state: ChainState::Protocol1 {
-                            shared_randomness,
                             id,
-                            inputs,
+                            shared_randomness,
                             round,
+                            transition,
                         },
-                    }),
-                )),
-                Err(FinalizeError::Local(err)) => Err(FinalizeError::Local(err)),
-                Err(FinalizeError::Unattributable(proof)) => Err(FinalizeError::Unattributable(
-                    ChainedCorrectnessProof::from_protocol1(proof),
-                )),
+                    },
+                ))),
             },
-            ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts) {
-                Ok(FinalizeOutcome::Result(result)) => Ok(FinalizeOutcome::Result(result)),
-                Ok(FinalizeOutcome::AnotherRound(round)) => Ok(FinalizeOutcome::AnotherRound(
-                    BoxedRound::new_object_safe(ChainedEntryPoint::<Id, C> {
+            ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts)? {
+                FinalizeOutcome::Result(result) => Ok(FinalizeOutcome::Result(result)),
+                FinalizeOutcome::AnotherRound(round) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
+                    ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
-                    }),
-                )),
-                Err(FinalizeError::Local(err)) => Err(FinalizeError::Local(err)),
-                Err(FinalizeError::Unattributable(proof)) => Err(FinalizeError::Unattributable(
-                    ChainedCorrectnessProof::from_protocol2(proof),
-                )),
+                    },
+                ))),
             },
-        }
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().expecting_messages_from(),
-            ChainState::Protocol2(round) => round.as_ref().expecting_messages_from(),
         }
     }
 }

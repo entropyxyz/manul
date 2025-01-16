@@ -1,13 +1,13 @@
 [package]
 name = "manul"
-version = "0.0.2-dev"
+version = "0.2.0-dev"
 edition = "2021"
 rust-version = "1.81"
 authors = ['Entropy Cryptography <engineering@entropy.xyz>']
 license = "AGPL-3.0-or-later"
 description = "Generic library for round-based protocols"
 repository = "https://github.com/entropyxyz/manul"
-readme = "../README.md"
+readme = "README.md"
 categories = ["cryptography", "no-std"]
 
 [dependencies]
@@ -22,6 +22,7 @@ displaydoc = { version = "0.2", default-features = false }
 derive-where = "1"
 tinyvec = { version = "1", default-features = false, features = ["alloc", "serde"] }
 
+# Optional dependencies
 rand = { version = "0.8", default-features = false, optional = true }
 serde-persistent-deserializer = { version = "0.3", optional = true }
 postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
@@ -29,15 +30,19 @@ serde_json = { version = "1", default-features = false, features = ["alloc"], op
 
 [dev-dependencies]
 impls = "1"
-rand = { version = "0.8", default-features = false }
+rand_core = { version = "0.6.4", default-features = false, features = ["getrandom"] }
 serde_asn1_der = "0.8"
 criterion = "0.5"
+
+# These mirror the versions from the optional dependencies above.
+rand = { version = "0.8", default-features = false }
 serde-persistent-deserializer = "0.3"
 postcard = { version = "1", default-features = false, features = ["alloc"] }
 serde_json = { version = "1", default-features = false, features = ["alloc"] }
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [features]
-testing = ["rand", "postcard", "serde_json", "serde-persistent-deserializer"]
+dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -46,4 +51,4 @@ rustdoc-args = ["--cfg", "docsrs"]
 [[bench]]
 name = "empty_rounds"
 harness = false
-required-features = ["testing"]
+required-features = ["dev"]

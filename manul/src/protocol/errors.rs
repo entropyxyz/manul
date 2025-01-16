@@ -30,10 +30,10 @@ impl RemoteError {
 
 /// An error that can be returned from [`Round::receive_message`](`super::Round::receive_message`).
 #[derive(Debug)]
-pub struct ReceiveError<Id, P: Protocol>(pub(crate) ReceiveErrorType<Id, P>);
+pub struct ReceiveError<Id, P: Protocol<Id>>(pub(crate) ReceiveErrorType<Id, P>);
 
 #[derive(Debug)]
-pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
+pub(crate) enum ReceiveErrorType<Id, P: Protocol<Id>> {
     /// A local error, indicating an implemenation bug or a misuse by the upper layer.
     Local(LocalError),
     /// The given direct message cannot be deserialized.
@@ -53,7 +53,7 @@ pub(crate) enum ReceiveErrorType<Id, P: Protocol> {
     Echo(Box<EchoRoundError<Id>>),
 }
 
-impl<Id, P: Protocol> ReceiveError<Id, P> {
+impl<Id, P: Protocol<Id>> ReceiveError<Id, P> {
     /// A local error, indicating an implemenation bug or a misuse by the upper layer.
     pub fn local(message: impl Into<String>) -> Self {
         Self(ReceiveErrorType::Local(LocalError::new(message.into())))
@@ -73,17 +73,17 @@ impl<Id, P: Protocol> ReceiveError<Id, P> {
     pub(crate) fn map<T, F>(self, f: F) -> ReceiveError<Id, T>
     where
         F: Fn(P::ProtocolError) -> T::ProtocolError,
-        T: Protocol,
+        T: Protocol<Id>,
     {
         ReceiveError(self.0.map::<T, F>(f))
     }
 }
 
-impl<Id, P: Protocol> ReceiveErrorType<Id, P> {
+impl<Id, P: Protocol<Id>> ReceiveErrorType<Id, P> {
     pub(crate) fn map<T, F>(self, f: F) -> ReceiveErrorType<Id, T>
     where
         F: Fn(P::ProtocolError) -> T::ProtocolError,
-        T: Protocol,
+        T: Protocol<Id>,
     {
         match self {
             Self::Local(err) => ReceiveErrorType::Local(err),
@@ -99,7 +99,7 @@ impl<Id, P: Protocol> ReceiveErrorType<Id, P> {
 
 impl<Id, P> From<LocalError> for ReceiveError<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     fn from(error: LocalError) -> Self {
         Self(ReceiveErrorType::Local(error))
@@ -108,7 +108,7 @@ where
 
 impl<Id, P> From<RemoteError> for ReceiveError<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     fn from(error: RemoteError) -> Self {
         Self(ReceiveErrorType::Unprovable(error))
@@ -117,7 +117,7 @@ where
 
 impl<Id, P> From<EchoRoundError<Id>> for ReceiveError<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     fn from(error: EchoRoundError<Id>) -> Self {
         Self(ReceiveErrorType::Echo(Box::new(error)))
@@ -126,7 +126,7 @@ where
 
 impl<Id, P> From<DirectMessageError> for ReceiveError<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     fn from(error: DirectMessageError) -> Self {
         Self(ReceiveErrorType::InvalidDirectMessage(error))
@@ -135,7 +135,7 @@ where
 
 impl<Id, P> From<EchoBroadcastError> for ReceiveError<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     fn from(error: EchoBroadcastError) -> Self {
         Self(ReceiveErrorType::InvalidEchoBroadcast(error))
@@ -144,25 +144,10 @@ where
 
 impl<Id, P> From<NormalBroadcastError> for ReceiveError<Id, P>
 where
-    P: Protocol,
+    P: Protocol<Id>,
 {
     fn from(error: NormalBroadcastError) -> Self {
         Self(ReceiveErrorType::InvalidNormalBroadcast(error))
-    }
-}
-
-/// An error that can occur during [`Round::finalize`](`super::Round::finalize`).
-#[derive(Debug)]
-pub enum FinalizeError<P: Protocol> {
-    /// A local error, usually indicating a bug in the implementation.
-    Local(LocalError),
-    /// An unattributable error, with an attached proof that this node performed its duties correctly.
-    Unattributable(P::CorrectnessProof),
-}
-
-impl<P: Protocol> From<LocalError> for FinalizeError<P> {
-    fn from(error: LocalError) -> Self {
-        Self::Local(error)
     }
 }
 
@@ -216,6 +201,12 @@ impl From<DirectMessageError> for ProtocolValidationError {
 impl From<EchoBroadcastError> for ProtocolValidationError {
     fn from(error: EchoBroadcastError) -> Self {
         Self::InvalidEvidence(format!("Failed to deserialize echo broadcast: {error:?}"))
+    }
+}
+
+impl From<NormalBroadcastError> for ProtocolValidationError {
+    fn from(error: NormalBroadcastError) -> Self {
+        Self::InvalidEvidence(format!("Failed to deserialize normal broadcast: {error:?}"))
     }
 }
 

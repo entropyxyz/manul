@@ -3,14 +3,12 @@ extern crate alloc;
 use alloc::collections::{BTreeMap, BTreeSet};
 
 use manul::{
+    dev::{BinaryFormat, TestSessionParams, TestSigner},
     protocol::Protocol,
-    session::{
-        signature::Keypair, CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters,
-        SessionReport,
-    },
-    testing::{BinaryFormat, TestSessionParams, TestSigner},
+    session::{CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters, SessionReport},
+    signature::Keypair,
 };
-use manul_example::simple::{Inputs, Round1, SimpleProtocol};
+use manul_example::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
 use rand::Rng;
 use rand_core::OsRng;
 use tokio::{
@@ -18,7 +16,6 @@ use tokio::{
     time::{sleep, Duration},
 };
 use tracing::{debug, trace};
-use tracing_subscriber::{util::SubscriberInitExt, EnvFilter};
 
 struct MessageOut<SP: SessionParameters> {
     from: SP::Verifier,
@@ -38,7 +35,7 @@ async fn run_session<P, SP>(
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
-    P: Protocol,
+    P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
     let rng = &mut OsRng;
@@ -97,7 +94,7 @@ where
         for preprocessed in cached_messages {
             // In production usage, this would happen in a spawned task and relayed back to the main task.
             debug!("{key:?}: Applying a cached message");
-            let processed = session.process_message(rng, preprocessed);
+            let processed = session.process_message(preprocessed);
 
             // This would happen in a host task.
             session.add_processed_message(&mut accum, processed)?;
@@ -127,7 +124,7 @@ where
                 Some(preprocessed) => {
                     // In production usage, this would happen in a separate task.
                     debug!("{key:?}: Applying a message from {:?}", incoming.from);
-                    let processed = session.process_message(rng, preprocessed);
+                    let processed = session.process_message(preprocessed);
                     // In production usage, this would be a host task.
                     session.add_processed_message(&mut accum, processed)?;
                 }
@@ -197,7 +194,7 @@ async fn message_dispatcher<SP>(
 
 async fn run_nodes<P, SP>(sessions: Vec<Session<P, SP>>) -> Vec<SessionReport<P, SP>>
 where
-    P: Protocol + Send,
+    P: Protocol<SP::Verifier> + Send,
     SP: SessionParameters,
     P::Result: Send,
     SP::Signer: Send,
@@ -256,18 +253,10 @@ async fn async_run() {
     let sessions = signers
         .into_iter()
         .map(|signer| {
-            let inputs = Inputs {
-                all_ids: all_ids.clone(),
-            };
-            SimpleSession::new::<Round1<_>>(&mut OsRng, session_id.clone(), signer, inputs).unwrap()
+            let entry_point = SimpleProtocolEntryPoint::new(all_ids.clone());
+            SimpleSession::new(&mut OsRng, session_id.clone(), signer, entry_point).unwrap()
         })
         .collect::<Vec<_>>();
-
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .finish()
-        .try_init()
-        .unwrap();
 
     // Run the protocol
     run_nodes(sessions).await;
