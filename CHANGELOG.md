@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conversion from `u8` to `RoundId` and comparison of `RoundId` with `u8`. ([#84])
 
 
+### Fixed
+
+- An error message in `ProtocolMessagePart::assert_is_none()`. ([#86])
+
+
 [#75]: https://github.com/entropyxyz/manul/pull/75
 [#76]: https://github.com/entropyxyz/manul/pull/76
 [#77]: https://github.com/entropyxyz/manul/pull/77
@@ -42,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#83]: https://github.com/entropyxyz/manul/pull/83
 [#84]: https://github.com/entropyxyz/manul/pull/84
 [#85]: https://github.com/entropyxyz/manul/pull/85
+[#86]: https://github.com/entropyxyz/manul/pull/86
 
 
 ## [0.1.0] - 2024-11-19
