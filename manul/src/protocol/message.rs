@@ -67,7 +67,7 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
         if self.is_none() {
             Ok(())
         } else {
-            Err("The payload was expected to contain a message, but is `None`"
+            Err("The payload was expected to be `None`, but contains a message"
                 .to_string()
                 .into())
         }
