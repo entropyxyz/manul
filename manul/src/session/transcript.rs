@@ -96,7 +96,11 @@ where
 
         let mut all_missing_messages = self.missing_messages;
         match all_missing_messages.entry(round_id.clone()) {
-            Entry::Vacant(entry) => entry.insert(missing_messages),
+            Entry::Vacant(entry) => {
+                if !missing_messages.is_empty() {
+                    entry.insert(missing_messages);
+                }
+            }
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
                     "A missing messages entry for {round_id:?} already exists"
@@ -230,28 +234,42 @@ where
 
     /// Returns a brief description of report.
     pub fn brief(&self) -> String {
-        let provable_errors = self
-            .provable_errors
-            .iter()
-            .map(|(id, evidence)| format!("  {:?}: {}", id, evidence.description()))
-            .collect::<Vec<_>>();
-        let unprovable_errors = self
-            .unprovable_errors
-            .iter()
-            .map(|(id, error)| format!("  {:?}: {}", id, error))
-            .collect::<Vec<_>>();
-        let missing_messages = self
-            .missing_messages
-            .iter()
-            .map(|(id, parties)| format!("  {:?}: {:?}", id, parties))
-            .collect::<Vec<_>>();
+        let provable_errors_str = if !self.provable_errors.is_empty() {
+            let descriptions = self
+                .provable_errors
+                .iter()
+                .map(|(id, evidence)| format!("  {:?}: {}", id, evidence.description()))
+                .collect::<Vec<_>>();
+            format!("\nProvable errors:\n{}", descriptions.join("\n"))
+        } else {
+            "".into()
+        };
+
+        let unprovable_errors_str = if !self.unprovable_errors.is_empty() {
+            let errors = self
+                .unprovable_errors
+                .iter()
+                .map(|(id, error)| format!("  {:?}: {}", id, error))
+                .collect::<Vec<_>>();
+            format!("\nUnprovable errors:\n{}", errors.join("\n"))
+        } else {
+            "".into()
+        };
+
+        let missing_messages_str = if !self.missing_messages.is_empty() {
+            let faulty_parties = self
+                .missing_messages
+                .iter()
+                .map(|(round_id, parties)| format!("  {}: {:?}", round_id, parties))
+                .collect::<Vec<_>>();
+            format!("\nMissing messages:\n{}", faulty_parties.join("\n"))
+        } else {
+            "".into()
+        };
 
         format!(
-            "Result: {}\nProvable errors:\n{}\nUnprovable errors:\n{}\nMissing_messages:\n{}",
+            "Result: {}{provable_errors_str}{unprovable_errors_str}{missing_messages_str}",
             self.outcome.brief(),
-            provable_errors.join("\n"),
-            unprovable_errors.join("\n"),
-            missing_messages.join("\n")
         )
     }
 }

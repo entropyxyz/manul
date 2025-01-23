@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Exposed `dev::ExecutionResult`. ([#79])
 - `NoProtocolErrors` stub type to indicate that the protocol does not generate any provable errors. ([#79])
 - Conversion from `u8` to `RoundId` and comparison of `RoundId` with `u8`. ([#84])
+- `Misbehaving::override_finalize()` for malicious finalization logic. ([#87])
+
+
+### Fixed
+
+- An error message in `ProtocolMessagePart::assert_is_none()`. ([#86])
 
 
 [#75]: https://github.com/entropyxyz/manul/pull/75
@@ -42,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#83]: https://github.com/entropyxyz/manul/pull/83
 [#84]: https://github.com/entropyxyz/manul/pull/84
 [#85]: https://github.com/entropyxyz/manul/pull/85
+[#86]: https://github.com/entropyxyz/manul/pull/86
+[#87]: https://github.com/entropyxyz/manul/pull/87
 
 
 ## [0.1.0] - 2024-11-19

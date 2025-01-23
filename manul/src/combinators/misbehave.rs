@@ -33,8 +33,8 @@ use rand_core::CryptoRngCore;
 
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, ProtocolMessage, ReceiveError,
-    RoundId, Serializer,
+    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolMessage,
+    ReceiveError, RoundId, Serializer,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -102,6 +102,44 @@ where
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         Ok((direct_message, artifact))
     }
+
+    /// Called before [`Round::finalize`](`crate::protocol::Round::finalize`)
+    /// and may override its result.
+    ///
+    /// Return [`FinalizeOverride::UseDefault`] to use the existing `finalize()`
+    /// (the default behavior is to do that passing through `round`, `payloads`, and `artifacts`).
+    /// Otherwise finalize manually and return [`FinalizeOverride::Override`],
+    /// in which case the existing `finalize()` will not be called.
+    #[allow(unused_variables)]
+    fn override_finalize(
+        rng: &mut impl CryptoRngCore,
+        round: BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
+        behavior: &B,
+        payloads: BTreeMap<Id, Payload>,
+        artifacts: BTreeMap<Id, Artifact>,
+    ) -> Result<FinalizeOverride<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>, LocalError> {
+        Ok(FinalizeOverride::UseDefault {
+            round,
+            payloads,
+            artifacts,
+        })
+    }
+}
+
+/// Possible return values for [`Misbehaving::override_finalize`].
+#[derive(Debug)]
+pub enum FinalizeOverride<Id: PartyId, P: Protocol<Id>> {
+    /// Use the existing [`Round::finalize`](`crate::protocol::Round::finalize`) with the given arguments.
+    UseDefault {
+        /// The round object to pass to `finalize()`.
+        round: BoxedRound<Id, P>,
+        /// The payloads map to pass to `finalize()`.
+        payloads: BTreeMap<Id, Payload>,
+        /// The artifacts map to pass to `finalize()`.
+        artifacts: BTreeMap<Id, Artifact>,
+    },
+    /// Finalize manually; the existing [`Round::finalize`](`crate::protocol::Round::finalize`) will not be called.
+    Override(FinalizeOutcome<Id, P>),
 }
 
 /// The new entry point for the misbehaving rounds.
@@ -165,6 +203,26 @@ where
 {
     round: BoxedRound<Id, <M::EntryPoint as EntryPoint<Id>>::Protocol>,
     behavior: Option<B>,
+}
+
+impl<Id, B, M> MisbehavingRound<Id, B, M>
+where
+    Id: PartyId,
+    B: Behavior,
+    M: Misbehaving<Id, B>,
+{
+    /// Wraps the outcome of the underlying Round into the MisbehavingRound structure.
+    fn map_outcome(
+        outcome: FinalizeOutcome<Id, <Self as ObjectSafeRound<Id>>::Protocol>,
+        behavior: Option<B>,
+    ) -> FinalizeOutcome<Id, <Self as ObjectSafeRound<Id>>::Protocol> {
+        match outcome {
+            FinalizeOutcome::Result(result) => FinalizeOutcome::Result(result),
+            FinalizeOutcome::AnotherRound(round) => {
+                FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(Self { round, behavior }))
+            }
+        }
+    }
 }
 
 impl<Id, B, M> ObjectSafeRound<Id> for MisbehavingRound<Id, B, M>
@@ -289,14 +347,22 @@ where
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
-        match self.round.into_boxed().finalize(rng, payloads, artifacts)? {
-            FinalizeOutcome::Result(result) => Ok(FinalizeOutcome::Result(result)),
-            FinalizeOutcome::AnotherRound(round) => {
-                Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(Self {
+        let (round, payloads, artifacts) = if let Some(behavior) = self.behavior.as_ref() {
+            let mut boxed_rng = BoxedRng(rng);
+            let result = M::override_finalize(&mut boxed_rng, self.round, behavior, payloads, artifacts)?;
+            match result {
+                FinalizeOverride::UseDefault {
                     round,
-                    behavior: self.behavior,
-                })))
+                    payloads,
+                    artifacts,
+                } => (round, payloads, artifacts),
+                FinalizeOverride::Override(outcome) => return Ok(Self::map_outcome(outcome, self.behavior)),
             }
-        }
+        } else {
+            (self.round, payloads, artifacts)
+        };
+
+        let outcome = round.into_boxed().finalize(rng, payloads, artifacts)?;
+        Ok(Self::map_outcome(outcome, self.behavior))
     }
 }
