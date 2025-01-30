@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `NoProtocolErrors` stub type to indicate that the protocol does not generate any provable errors. ([#79])
 - Conversion from `u8` to `RoundId` and comparison of `RoundId` with `u8`. ([#84])
 - `Misbehaving::override_finalize()` for malicious finalization logic. ([#87])
+- `From<SerializableMap<K, V>> for BTreeMap<K, V>` impl. ([#88])
 
 
 ### Fixed
@@ -50,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#85]: https://github.com/entropyxyz/manul/pull/85
 [#86]: https://github.com/entropyxyz/manul/pull/86
 [#87]: https://github.com/entropyxyz/manul/pull/87
+[#88]: https://github.com/entropyxyz/manul/pull/88
 
 
 ## [0.1.0] - 2024-11-19
