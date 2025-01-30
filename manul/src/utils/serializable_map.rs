@@ -26,6 +26,12 @@ impl<K, V> From<BTreeMap<K, V>> for SerializableMap<K, V> {
     }
 }
 
+impl<K, V> From<SerializableMap<K, V>> for BTreeMap<K, V> {
+    fn from(source: SerializableMap<K, V>) -> Self {
+        source.0
+    }
+}
+
 impl<K, V> Deref for SerializableMap<K, V> {
     type Target = BTreeMap<K, V>;
 
