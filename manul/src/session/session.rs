@@ -436,8 +436,10 @@ where
         not_enough_messages: bool,
     ) -> Result<SessionReport<P, SP>, LocalError> {
         let round_id = self.round_id();
+        let verifier = self.verifier();
         let transcript = self.transcript.update(
             &round_id,
+            (verifier, self.echo_broadcast),
             accum.echo_broadcasts,
             accum.normal_broadcasts,
             accum.direct_messages,
@@ -478,6 +480,7 @@ where
 
         let transcript = self.transcript.update(
             &round_id,
+            (verifier.clone(), self.echo_broadcast),
             accum.echo_broadcasts,
             accum.normal_broadcasts,
             accum.direct_messages,
@@ -489,7 +492,6 @@ where
         if let Some(echo_round_info) = self.echo_round_info {
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
-                self.echo_broadcast,
                 transcript.echo_broadcasts(&round_id)?,
                 echo_round_info,
                 self.round,

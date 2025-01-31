@@ -78,19 +78,31 @@ pub struct MessageWithMetadata<M> {
     message: M,
 }
 
+fn payload_hash<SP: SessionParameters>(message: &impl ProtocolMessagePart) -> digest::Output<SP::Digest> {
+    let digest = SP::Digest::new_with_prefix(b"PayloadHash");
+    let digest = match message.maybe_message().as_ref() {
+        None => digest.chain_update([0u8]),
+        Some(payload) => digest.chain_update([1u8]).chain_update(payload),
+    };
+    digest.finalize()
+}
+
+fn message_digest<SP: SessionParameters>(
+    metadata: &MessageMetadata,
+    payload_hash: &[u8],
+) -> Result<SP::Digest, LocalError> {
+    Ok(SP::Digest::new_with_prefix(b"SignedMessagePartDigest")
+        .chain_update(SP::WireFormat::serialize(metadata)?)
+        .chain_update(payload_hash))
+}
+
 impl<M: ProtocolMessagePart> MessageWithMetadata<M> {
     fn digest<SP>(&self) -> Result<SP::Digest, LocalError>
     where
         SP: SessionParameters,
     {
-        let digest =
-            SP::Digest::new_with_prefix(b"SignedMessagePart").chain_update(SP::WireFormat::serialize(&self.metadata)?);
-
-        let digest = match self.message.maybe_message().as_ref() {
-            None => digest.chain_update([0u8]),
-            Some(payload) => digest.chain_update([1u8]).chain_update(payload),
-        };
-
+        let payload_hash = payload_hash::<SP>(&self.message);
+        let digest = message_digest::<SP>(&self.metadata, &payload_hash)?;
         Ok(digest)
     }
 }
@@ -119,6 +131,18 @@ where
             signature: SerializedSignature::new::<SP>(signature)?,
             message_with_metadata,
         })
+    }
+
+    pub(crate) fn to_signed_hash<SP>(&self) -> SignedMessageHash
+    where
+        SP: SessionParameters,
+    {
+        let payload_hash = payload_hash::<SP>(&self.message_with_metadata.message);
+        SignedMessageHash {
+            signature: self.signature.clone(),
+            metadata: self.message_with_metadata.metadata.clone(),
+            payload_hash: payload_hash.as_ref().into(),
+        }
     }
 
     pub(crate) fn metadata(&self) -> &MessageMetadata {
@@ -322,5 +346,62 @@ impl<Verifier> VerifiedMessage<Verifier> {
         let echo_broadcast = self.echo_broadcast.into_unverified();
         let normal_broadcast = self.normal_broadcast.into_unverified();
         (echo_broadcast, normal_broadcast, direct_message)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SignedMessageHash {
+    signature: SerializedSignature,
+    metadata: MessageMetadata,
+    #[serde(with = "SliceLike::<Hex>")]
+    payload_hash: Box<[u8]>,
+}
+
+impl SignedMessageHash {
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageHash, MessageVerificationError>
+    where
+        SP: SessionParameters,
+    {
+        let digest =
+            message_digest::<SP>(&self.metadata, &self.payload_hash).map_err(MessageVerificationError::Local)?;
+        let signature = self
+            .signature
+            .deserialize::<SP>()
+            .map_err(|_| MessageVerificationError::InvalidSignature)?;
+        if verifier.verify_digest(digest, &signature).is_ok() {
+            Ok(VerifiedMessageHash {
+                signature: self.signature,
+                metadata: self.metadata,
+                payload_hash: self.payload_hash,
+            })
+        } else {
+            Err(MessageVerificationError::SignatureMismatch)
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedMessageHash {
+    signature: SerializedSignature,
+    metadata: MessageMetadata,
+    payload_hash: Box<[u8]>,
+}
+
+impl VerifiedMessageHash {
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn is_hash_of<SP, M>(&self, message: &SignedMessagePart<M>) -> bool
+    where
+        SP: SessionParameters,
+        M: ProtocolMessagePart,
+    {
+        let payload_hash = payload_hash::<SP>(&message.message_with_metadata.message);
+        payload_hash.as_ref() == self.payload_hash.as_ref()
     }
 }
