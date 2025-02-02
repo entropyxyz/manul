@@ -39,6 +39,7 @@ where
     pub fn update(
         self,
         round_id: &RoundId,
+        my_echo_broadcast: (SP::Verifier, SignedMessagePart<EchoBroadcast>),
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
         normal_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<NormalBroadcast>>,
         direct_messages: BTreeMap<SP::Verifier, SignedMessagePart<DirectMessage>>,
@@ -48,7 +49,12 @@ where
     ) -> Result<Self, LocalError> {
         let mut all_echo_broadcasts = self.echo_broadcasts;
         match all_echo_broadcasts.entry(round_id.clone()) {
-            Entry::Vacant(entry) => entry.insert(echo_broadcasts),
+            Entry::Vacant(entry) => {
+                let mut echo_broadcasts = echo_broadcasts;
+                let (my_id, echo_broadcast) = my_echo_broadcast;
+                echo_broadcasts.insert(my_id, echo_broadcast);
+                entry.insert(echo_broadcasts)
+            }
             Entry::Occupied(_) => {
                 return Err(LocalError::new(format!(
                     "An echo-broadcasts entry for {round_id:?} already exists"
@@ -169,6 +175,19 @@ where
             .get(round_id)
             .cloned()
             .ok_or_else(|| LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript")))
+    }
+
+    pub fn get_other_echo_broadcasts(
+        &self,
+        round_id: &RoundId,
+        except_for: &SP::Verifier,
+    ) -> Result<BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>, LocalError> {
+        let mut other_echo_broadcasts =
+            self.echo_broadcasts.get(round_id).cloned().ok_or_else(|| {
+                LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript"))
+            })?;
+        other_echo_broadcasts.remove(except_for);
+        Ok(other_echo_broadcasts)
     }
 }
 

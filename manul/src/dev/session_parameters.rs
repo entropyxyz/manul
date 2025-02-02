@@ -72,7 +72,7 @@ impl digest::Update for TestHasher {
         // A very simple algorithm for testing, just xor the data in buffer-sized chunks.
         for byte in data {
             *self.buffer.get_mut(self.cursor).expect("index within bounds") ^= byte;
-            self.cursor = (self.cursor + 1) % 32;
+            self.cursor = (self.cursor + 1) % self.buffer.len();
         }
     }
 }
@@ -84,7 +84,7 @@ impl digest::FixedOutput for TestHasher {
 }
 
 impl digest::OutputSizeUser for TestHasher {
-    type OutputSize = typenum::U8;
+    type OutputSize = typenum::U32;
 }
 
 /// An implementation of [`SessionParameters`] using the testing signer/verifier types.
