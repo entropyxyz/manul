@@ -21,5 +21,5 @@ displaydoc = "0.2"
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
 rand = "0.8"
 digest = "0.10"
-manul = { path = "../manul", features = ["dev"] }
+manul = { path = "../manul", features = ["dev", "tokio"] }
 test-log = { version = "0.2", features = ["trace", "color"] }
