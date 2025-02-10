@@ -8,8 +8,8 @@ use core::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    echo::{EchoRound, EchoRoundError, EchoRoundMessage, MismatchedBroadcastsError},
-    message::{MessageVerificationError, SignedMessagePart},
+    echo::{EchoRound, EchoRoundError, EchoRoundMessage},
+    message::{MessageVerificationError, SignedMessageHash, SignedMessagePart},
     session::{SessionId, SessionParameters},
     transcript::Transcript,
     LocalError,
@@ -18,7 +18,7 @@ use crate::{
     protocol::{
         Deserializer, DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
         NormalBroadcast, NormalBroadcastError, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart,
-        ProtocolValidationError, RoundId,
+        ProtocolMessagePartHashable, ProtocolValidationError, RoundId,
     },
     utils::SerializableMap,
 };
@@ -129,12 +129,17 @@ where
             }
         }
 
-        let mut combined_echos = BTreeMap::new();
+        let mut echo_hashes = BTreeMap::new();
+        let mut other_echo_broadcasts = BTreeMap::new();
         if let Some(required_combined_echos) = required_messages.combined_echos {
             for round_id in required_combined_echos {
-                combined_echos.insert(
+                echo_hashes.insert(
                     round_id.clone(),
                     transcript.get_normal_broadcast(&round_id.echo(), verifier)?,
+                );
+                other_echo_broadcasts.insert(
+                    round_id.clone(),
+                    transcript.get_other_echo_broadcasts(&round_id, verifier)?.into(),
                 );
             }
         }
@@ -152,7 +157,8 @@ where
                 direct_messages: direct_messages.into(),
                 echo_broadcasts: echo_broadcasts.into(),
                 normal_broadcasts: normal_broadcasts.into(),
-                combined_echos: combined_echos.into(),
+                other_echo_broadcasts: other_echo_broadcasts.into(),
+                echo_hashes: echo_hashes.into(),
             }),
         })
     }
@@ -174,14 +180,12 @@ where
             }),
             EchoRoundError::MismatchedBroadcasts {
                 guilty_party,
-                error,
                 we_received,
                 echoed_to_us,
             } => Ok(Self {
                 guilty_party,
                 description,
                 evidence: EvidenceEnum::MismatchedBroadcasts(MismatchedBroadcastsEvidence {
-                    error,
                     we_received,
                     echoed_to_us,
                 }),
@@ -285,7 +289,7 @@ where
         let verified = self.normal_broadcast.clone().verify::<SP>(verifier)?;
         let deserialized = verified.payload().deserialize::<EchoRoundMessage<SP>>(deserializer)?;
         let invalid_echo = deserialized
-            .echo_broadcasts
+            .message_hashes
             .get(&self.invalid_echo_sender)
             .ok_or_else(|| {
                 EvidenceError::InvalidEvidence(format!(
@@ -316,9 +320,8 @@ where
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MismatchedBroadcastsEvidence {
-    error: MismatchedBroadcastsError,
     we_received: SignedMessagePart<EchoBroadcast>,
-    echoed_to_us: SignedMessagePart<EchoBroadcast>,
+    echoed_to_us: SignedMessageHash,
 }
 
 impl MismatchedBroadcastsEvidence {
@@ -329,18 +332,7 @@ impl MismatchedBroadcastsEvidence {
         let we_received = self.we_received.clone().verify::<SP>(verifier)?;
         let echoed_to_us = self.echoed_to_us.clone().verify::<SP>(verifier)?;
 
-        let evidence_is_valid = match self.error {
-            MismatchedBroadcastsError::DifferentPayloads => {
-                we_received.metadata() == echoed_to_us.metadata() && we_received.payload() != echoed_to_us.payload()
-            }
-            MismatchedBroadcastsError::DifferentSignatures => {
-                self.we_received != self.echoed_to_us
-                    && we_received.metadata() == echoed_to_us.metadata()
-                    && we_received.payload() == echoed_to_us.payload()
-            }
-        };
-
-        if evidence_is_valid {
+        if we_received.metadata() == echoed_to_us.metadata() && !echoed_to_us.is_hash_of::<SP, _>(&self.we_received) {
             Ok(())
         } else {
             Err(EvidenceError::InvalidEvidence(
@@ -427,7 +419,7 @@ impl InvalidNormalBroadcastEvidence {
 
 #[derive_where::derive_where(Debug)]
 #[derive(Clone, Serialize, Deserialize)]
-struct ProtocolEvidence<Id, P: Protocol<Id>> {
+struct ProtocolEvidence<Id: Debug + Clone + Ord, P: Protocol<Id>> {
     error: P::ProtocolError,
     direct_message: Option<SignedMessagePart<DirectMessage>>,
     echo_broadcast: Option<SignedMessagePart<EchoBroadcast>>,
@@ -435,7 +427,8 @@ struct ProtocolEvidence<Id, P: Protocol<Id>> {
     direct_messages: SerializableMap<RoundId, SignedMessagePart<DirectMessage>>,
     echo_broadcasts: SerializableMap<RoundId, SignedMessagePart<EchoBroadcast>>,
     normal_broadcasts: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
-    combined_echos: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
+    other_echo_broadcasts: SerializableMap<RoundId, SerializableMap<Id, SignedMessagePart<EchoBroadcast>>>,
+    echo_hashes: SerializableMap<RoundId, SignedMessagePart<NormalBroadcast>>,
 }
 
 fn verify_message_parts<SP, T>(
@@ -445,7 +438,7 @@ fn verify_message_parts<SP, T>(
 ) -> Result<BTreeMap<RoundId, T>, EvidenceError>
 where
     SP: SessionParameters,
-    T: Clone + ProtocolMessagePart,
+    T: Clone + ProtocolMessagePartHashable,
 {
     let mut verified_parts = BTreeMap::new();
     for (round_id, message_part) in message_parts.iter() {
@@ -469,7 +462,7 @@ fn verify_message_part<SP, T>(
 ) -> Result<T, EvidenceError>
 where
     SP: SessionParameters,
-    T: Clone + ProtocolMessagePart,
+    T: Clone + ProtocolMessagePartHashable,
 {
     let verified_part = if let Some(message_part) = message_part {
         let metadata = message_part.metadata();
@@ -488,7 +481,7 @@ where
 
 impl<Id, P> ProtocolEvidence<Id, P>
 where
-    Id: Clone + Ord,
+    Id: Debug + Clone + Ord,
     P: Protocol<Id>,
 {
     fn verify<SP>(
@@ -527,30 +520,53 @@ where
         let mut normal_broadcasts = verify_message_parts::<SP, _>(verifier, session_id, &self.normal_broadcasts)?;
 
         let mut combined_echos = BTreeMap::new();
-        for (round_id, combined_echo) in self.combined_echos.iter() {
-            let verified_combined_echo = combined_echo.clone().verify::<SP>(verifier)?;
-            let metadata = verified_combined_echo.metadata();
+        for (round_id, echo_hashes) in self.echo_hashes.iter() {
+            let metadata = echo_hashes.metadata();
             if metadata.session_id() != session_id || &metadata.round_id().non_echo() != round_id {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));
             }
-            let echo_set = verified_combined_echo
+
+            let verified_echo_hashes = echo_hashes.clone().verify::<SP>(verifier)?;
+            let echo_round_payload = verified_echo_hashes
                 .payload()
                 .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
 
-            let mut verified_echo_set = BTreeMap::new();
-            for (other_verifier, echo_broadcast) in echo_set.echo_broadcasts.iter() {
-                let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(other_verifier)?;
-                let metadata = verified_echo_broadcast.metadata();
+            let signed_echo_broadcasts = self
+                .other_echo_broadcasts
+                .get(round_id)
+                .ok_or_else(|| EvidenceError::InvalidEvidence(format!("Missing {round_id} echo broadcasts")))?;
+
+            let mut echo_messages = BTreeMap::new();
+            for (other_verifier, echo_hash) in echo_round_payload.message_hashes.iter() {
+                let metadata = echo_hash.metadata();
                 if metadata.session_id() != session_id || metadata.round_id() != round_id {
+                    return Err(EvidenceError::InvalidEvidence("Invalid echo hash metadata".into()));
+                }
+
+                let verified_echo_hash = echo_hash.clone().verify::<SP>(other_verifier)?;
+
+                let echo_broadcast = signed_echo_broadcasts.get(other_verifier).ok_or_else(|| {
+                    EvidenceError::InvalidEvidence(format!("Missing {round_id} echo broadcast from {other_verifier:?}"))
+                })?;
+
+                let metadata = echo_broadcast.metadata();
+                if metadata.session_id() != session_id || metadata.round_id() != round_id {
+                    return Err(EvidenceError::InvalidEvidence("Invalid echo broadcast metadata".into()));
+                }
+
+                if !verified_echo_hash.is_hash_of::<SP, _>(echo_broadcast) {
                     return Err(EvidenceError::InvalidEvidence(
-                        "Invalid attached message metadata".into(),
+                        "Mismatch between the echoed hash and the original echo broadcast".into(),
                     ));
                 }
-                verified_echo_set.insert(other_verifier.clone(), verified_echo_broadcast.into_payload());
+
+                let verified_echo_broadcast = echo_broadcast.clone().verify::<SP>(other_verifier)?;
+
+                echo_messages.insert(other_verifier.clone(), verified_echo_broadcast.into_payload());
             }
-            combined_echos.insert(round_id.clone(), verified_echo_set);
+            combined_echos.insert(round_id.clone(), echo_messages);
         }
 
         // Merge message parts

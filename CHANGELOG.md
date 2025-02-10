@@ -42,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - An error message in `ProtocolMessagePart::assert_is_none()`. ([#86])
+- Output size mismatch in `TestHasher`. ([#90])
+- Reduced the size of echo round message by sending hashes instead of full messages. ([#90])
 
 
 [#75]: https://github.com/entropyxyz/manul/pull/75
@@ -54,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#86]: https://github.com/entropyxyz/manul/pull/86
 [#87]: https://github.com/entropyxyz/manul/pull/87
 [#88]: https://github.com/entropyxyz/manul/pull/88
+[#90]: https://github.com/entropyxyz/manul/pull/90
 [#91]: https://github.com/entropyxyz/manul/pull/91
 
 
