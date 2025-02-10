@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Misbehaving::override_finalize()` for malicious finalization logic. ([#87])
 - `From<SerializableMap<K, V>> for BTreeMap<K, V>` impl. ([#88])
 - `session::tokio` submodule containing functions for executing a session in an async `tokio` environment and supporting types. Gated behind the `tokio` feature. ([#91])
+- `dev::tokio` submoduloe containing functions for executing multiple sessions in an async `tokio` environment. Gated behind the `tokio` feature. ([#91])
 
 
 ### Fixed

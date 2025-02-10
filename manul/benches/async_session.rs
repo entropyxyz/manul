@@ -1,0 +1,259 @@
+extern crate alloc;
+extern crate std;
+
+use alloc::collections::{BTreeMap, BTreeSet};
+use core::fmt::Debug;
+
+use criterion::{criterion_group, criterion_main, Criterion};
+use manul::{
+    dev::{tokio::run_async, BinaryFormat, TestSessionParams, TestSigner},
+    protocol::{
+        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
+        MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
+        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+    },
+    signature::Keypair,
+};
+use rand_core::{CryptoRngCore, OsRng};
+use serde::{Deserialize, Serialize};
+
+fn do_work(seed: u8) -> u128 {
+    let mut x = seed as u128;
+    let p = (1u128 << 64) - 59;
+    for _ in 0..1000000 {
+        x *= x;
+        x %= p;
+    }
+    x
+}
+
+#[derive(Debug)]
+pub struct EmptyProtocol;
+
+impl<Id> Protocol<Id> for EmptyProtocol {
+    type Result = ();
+    type ProtocolError = NoProtocolErrors;
+
+    fn verify_direct_message_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &DirectMessage,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &EchoBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        _deserializer: &Deserializer,
+        _round_id: &RoundId,
+        _message: &NormalBroadcast,
+    ) -> Result<(), MessageValidationError> {
+        unimplemented!()
+    }
+}
+
+#[derive(Debug)]
+struct EmptyRound<Id> {
+    round_counter: u8,
+    inputs: Inputs<Id>,
+}
+
+#[derive(Debug, Clone)]
+struct Inputs<Id> {
+    rounds_num: u8,
+    echo: bool,
+    other_ids: BTreeSet<Id>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Round1DirectMessage(u128);
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Round1EchoBroadcast;
+
+struct Round1Payload;
+
+struct Round1Artifact;
+
+impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
+    type Protocol = EmptyProtocol;
+
+    fn entry_round_id() -> RoundId {
+        1.into()
+    }
+
+    fn make_round(
+        self,
+        _rng: &mut impl CryptoRngCore,
+        _shared_randomness: &[u8],
+        _id: &Id,
+    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
+        Ok(BoxedRound::new_dynamic(EmptyRound {
+            round_counter: 1,
+            inputs: self,
+        }))
+    }
+}
+
+impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
+    type Protocol = EmptyProtocol;
+
+    fn id(&self) -> RoundId {
+        self.round_counter.into()
+    }
+
+    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+        if self.inputs.rounds_num == self.round_counter {
+            BTreeSet::new()
+        } else {
+            [(self.round_counter + 1).into()].into()
+        }
+    }
+
+    fn may_produce_result(&self) -> bool {
+        self.inputs.rounds_num == self.round_counter
+    }
+
+    fn message_destinations(&self) -> &BTreeSet<Id> {
+        &self.inputs.other_ids
+    }
+
+    fn make_echo_broadcast(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+    ) -> Result<EchoBroadcast, LocalError> {
+        if self.inputs.echo {
+            EchoBroadcast::new(serializer, Round1EchoBroadcast)
+        } else {
+            Ok(EchoBroadcast::none())
+        }
+    }
+
+    fn make_direct_message(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        serializer: &Serializer,
+        _destination: &Id,
+    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+        let dm = DirectMessage::new(serializer, Round1DirectMessage(do_work(self.round_counter + 2)))?;
+        let artifact = Artifact::new(Round1Artifact);
+        Ok((dm, Some(artifact)))
+    }
+
+    fn receive_message(
+        &self,
+        deserializer: &Deserializer,
+        _from: &Id,
+        message: ProtocolMessage,
+    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
+        //std::thread::sleep(std::time::Duration::from_secs_f64(0.001));
+        if self.inputs.echo {
+            let _echo_broadcast = message
+                .echo_broadcast
+                .deserialize::<Round1EchoBroadcast>(deserializer)?;
+        } else {
+            message.echo_broadcast.assert_is_none()?;
+        }
+        message.normal_broadcast.assert_is_none()?;
+        let direct_message = message
+            .direct_message
+            .deserialize::<Round1DirectMessage>(deserializer)?;
+        assert!(direct_message.0 == do_work(self.round_counter + 2));
+        Ok(Payload::new(Round1Payload))
+    }
+
+    fn finalize(
+        self,
+        _rng: &mut impl CryptoRngCore,
+        payloads: BTreeMap<Id, Payload>,
+        artifacts: BTreeMap<Id, Artifact>,
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
+        for payload in payloads.into_values() {
+            let _payload = payload.try_to_typed::<Round1Payload>()?;
+        }
+        for artifact in artifacts.into_values() {
+            let _artifact = artifact.try_to_typed::<Round1Artifact>()?;
+        }
+
+        if self.round_counter == self.inputs.rounds_num {
+            Ok(FinalizeOutcome::Result(()))
+        } else {
+            let round = BoxedRound::new_dynamic(EmptyRound {
+                round_counter: self.round_counter + 1,
+                inputs: self.inputs,
+            });
+            Ok(FinalizeOutcome::AnotherRound(round))
+        }
+    }
+
+    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
+        &self.inputs.other_ids
+    }
+}
+
+fn bench_async_session(c: &mut Criterion) {
+    // Benchmarks a full run of a protocol with rounds that do nothing but send and receive empty messages.
+    // This serves as an "integration" benchmark for the whole `Session`.
+    // Necessarily includes the overhead of `run_sync()` as well.
+
+    let mut group = c.benchmark_group("Async session execution");
+
+    let nodes = 10;
+    let rounds_num = 1;
+
+    let signers = (0..nodes).map(TestSigner::new).collect::<Vec<_>>();
+    let all_ids = signers
+        .iter()
+        .map(|signer| signer.verifying_key())
+        .collect::<BTreeSet<_>>();
+
+    let entry_points = signers
+        .into_iter()
+        .map(|signer| {
+            let mut other_ids = all_ids.clone();
+            other_ids.remove(&signer.verifying_key());
+            let entry_point = Inputs {
+                rounds_num,
+                other_ids,
+                echo: false,
+            };
+            (signer, entry_point)
+        })
+        .collect::<Vec<_>>();
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    group.sample_size(10);
+    group.bench_function("no offloading, 10 nodes, 5 rounds, no echo", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points.clone(), false).await
+            })
+        })
+    });
+
+    group.sample_size(10);
+    group.bench_function("with offloading, 10 nodes, 5 rounds, no echo", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points.clone(), true).await
+            })
+        })
+    });
+
+    group.finish()
+}
+
+criterion_group!(benches, bench_async_session,);
+criterion_main!(benches);
