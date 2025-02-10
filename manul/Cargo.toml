@@ -27,6 +27,7 @@ rand = { version = "0.8", default-features = false, optional = true }
 serde-persistent-deserializer = { version = "0.3", optional = true }
 postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
 serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
+tokio = { version = "1", default-features = false, features = ["sync", "rt", "macros", "time"], optional = true }
 
 [dev-dependencies]
 impls = "1"
@@ -43,6 +44,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [features]
 dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer"]
+tokio = ["dep:tokio"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -52,3 +54,8 @@ rustdoc-args = ["--cfg", "docsrs"]
 name = "empty_rounds"
 harness = false
 required-features = ["dev"]
+
+[[bench]]
+name = "async_session"
+harness = false
+required-features = ["dev", "tokio"]

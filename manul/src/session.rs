@@ -15,6 +15,9 @@ mod session;
 mod transcript;
 mod wire_format;
 
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 pub use crate::protocol::{LocalError, RemoteError};
 pub use evidence::{Evidence, EvidenceError};
 pub use message::{Message, VerifiedMessage};
