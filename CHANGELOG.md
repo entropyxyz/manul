@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the RNG parameter from `Round::receive_message()` and `Session::process_message()`. ([#83])
 - Renamed `Round::entry_round()` to `entry_round_id()` and made it mandatory to implement. ([#84])
 - Rework `RequiredMessageParts` API. ([#85])
+- Removed `Send + Sync` bound on `WireFormat`. ([#92])
+- Removed `Send` bound on `ProtocolError`. ([#92])
 
 
 ### Added
@@ -58,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#88]: https://github.com/entropyxyz/manul/pull/88
 [#90]: https://github.com/entropyxyz/manul/pull/90
 [#91]: https://github.com/entropyxyz/manul/pull/91
+[#92]: https://github.com/entropyxyz/manul/pull/92
 
 
 ## [0.1.0] - 2024-11-19

@@ -96,12 +96,11 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     }
 }
 
-// The `fn(Id) -> Id` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be
-// `Send + Sync`.
+// The `fn(Id)` bit is so that `ObjectSafeRoundWrapper` didn't require a bound on `Id` to be `Send + Sync`.
 #[derive(Debug)]
 pub(crate) struct ObjectSafeRoundWrapper<Id, R> {
     round: R,
-    phantom: PhantomData<fn(Id) -> Id>,
+    phantom: PhantomData<fn(Id)>,
 }
 
 impl<Id, R> ObjectSafeRoundWrapper<Id, R>

@@ -12,8 +12,9 @@ trait ObjectSafeSerializer: Debug {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError>;
 }
 
+// `fn(F)` makes the type `Send` + `Sync` even if `F` isn't.
 #[derive(Debug)]
-struct SerializerWrapper<F: WireFormat>(PhantomData<F>);
+struct SerializerWrapper<F: WireFormat>(PhantomData<fn(F)>);
 
 impl<F: WireFormat> ObjectSafeSerializer for SerializerWrapper<F> {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError> {
@@ -42,8 +43,9 @@ impl Serializer {
 
 // Deserialization
 
+// `fn(F)` makes the type `Send` + `Sync` even if `F` isn't.
 #[derive(Debug)]
-struct DeserializerFactoryWrapper<F>(PhantomData<F>);
+struct DeserializerFactoryWrapper<F>(PhantomData<fn(F)>);
 
 trait ObjectSafeDeserializerFactory: Debug {
     fn make_erased_deserializer<'de>(&self, bytes: &'de [u8]) -> Box<dyn erased_serde::Deserializer<'de> + 'de>;
@@ -68,7 +70,7 @@ impl Deserializer {
     where
         F: WireFormat,
     {
-        Self(Box::new(DeserializerFactoryWrapper(PhantomData::<F>)))
+        Self(Box::new(DeserializerFactoryWrapper::<F>(PhantomData)))
     }
 
     /// Deserializes a `serde`-deserializable object.
