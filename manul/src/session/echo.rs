@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use super::{
-    message::{MessageVerificationError, SignedMessagePart},
+    message::{MessageVerificationError, SignedMessageHash, SignedMessagePart},
     session::{EchoRoundInfo, SessionParameters},
     LocalError,
 };
@@ -40,9 +40,8 @@ pub(crate) enum EchoRoundError<Id> {
     /// This is the fault of the sender of that specific broadcast.
     MismatchedBroadcasts {
         guilty_party: Id,
-        error: MismatchedBroadcastsError,
         we_received: SignedMessagePart<EchoBroadcast>,
-        echoed_to_us: SignedMessagePart<EchoBroadcast>,
+        echoed_to_us: SignedMessageHash,
     },
 }
 
@@ -57,17 +56,10 @@ impl<Id> EchoRoundError<Id> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) enum MismatchedBroadcastsError {
-    /// The originally received message and the echoed one had different payloads.
-    DifferentPayloads,
-    /// The originally received message and the echoed one had different signatures.
-    DifferentSignatures,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
-    pub(super) echo_broadcasts: SerializableMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
+    /// Signatures of echo broadcasts from respective nodes.
+    pub(super) message_hashes: SerializableMap<SP::Verifier, SignedMessageHash>,
 }
 
 /// Each protocol round can contain one `EchoRound` with "echo messages" that are sent to all
@@ -90,16 +82,12 @@ where
 {
     pub fn new(
         verifier: SP::Verifier,
-        my_echo_broadcast: SignedMessagePart<EchoBroadcast>,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
         echo_round_info: EchoRoundInfo<SP::Verifier>,
         main_round: BoxedRound<SP::Verifier, P>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
-        let mut echo_broadcasts = echo_broadcasts;
-        echo_broadcasts.insert(verifier.clone(), my_echo_broadcast);
-
         debug!("{:?}: initialized echo round with {:?}", verifier, echo_round_info);
         Self {
             verifier,
@@ -166,9 +154,13 @@ where
             )));
         }
 
-        let message = EchoRoundMessage::<SP> {
-            echo_broadcasts: echo_broadcasts.into(),
-        };
+        let message_hashes = echo_broadcasts
+            .iter()
+            .map(|(id, echo_broadcast)| (id.clone(), echo_broadcast.to_signed_hash::<SP>()))
+            .collect::<BTreeMap<_, _>>()
+            .into();
+
+        let message = EchoRoundMessage::<SP> { message_hashes };
         NormalBroadcast::new(serializer, message)
     }
 
@@ -199,7 +191,7 @@ where
         // We don't expect the node to send its echo the second time.
         expected_keys.remove(from);
 
-        let message_keys = message.echo_broadcasts.keys().cloned().collect::<BTreeSet<_>>();
+        let message_keys = message.message_hashes.keys().cloned().collect::<BTreeSet<_>>();
 
         let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
         if !missing_keys.is_empty() {
@@ -221,7 +213,7 @@ where
         // If there's a difference, it's a provable fault,
         // since we have both messages signed by `from`.
 
-        for (sender, echo) in message.echo_broadcasts.iter() {
+        for (sender, echo) in message.message_hashes.iter() {
             // We expect the key to be there since
             // `message.echo_broadcasts.keys()` is within `self.destinations`
             // which was constructed as `self.echo_broadcasts.keys()`.
@@ -229,10 +221,6 @@ where
                 .echo_broadcasts
                 .get(sender)
                 .expect("the key is present by construction");
-
-            if echo == previously_received_echo {
-                continue;
-            }
 
             let verified_echo = match echo.clone().verify::<SP>(sender) {
                 Ok(echo) => echo,
@@ -253,28 +241,17 @@ where
                 return Err(EchoRoundError::InvalidEcho(sender.clone()).into());
             }
 
-            // `sender` sent us and `from` messages with different payloads.
+            // `sender` sent us and `from` messages with different payloads,
+            // but with correct signatures and the same metadata.
             // Provable fault of `sender`.
-            if verified_echo.payload() != previously_received_echo.payload() {
+            if !verified_echo.is_hash_of::<SP, _>(previously_received_echo) {
                 return Err(EchoRoundError::MismatchedBroadcasts {
                     guilty_party: sender.clone(),
-                    error: MismatchedBroadcastsError::DifferentPayloads,
                     we_received: previously_received_echo.clone(),
                     echoed_to_us: echo.clone(),
                 }
                 .into());
             }
-
-            // At this point, we know that the echoed broadcast is not identical to what we initially received,
-            // but somehow they both have the correct metadata, and correct signatures.
-            // Something strange is going on.
-            return Err(EchoRoundError::MismatchedBroadcasts {
-                guilty_party: sender.clone(),
-                error: MismatchedBroadcastsError::DifferentSignatures,
-                we_received: previously_received_echo.clone(),
-                echoed_to_us: echo.clone(),
-            }
-            .into());
         }
 
         Ok(Payload::empty())

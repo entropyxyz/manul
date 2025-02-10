@@ -1,5 +1,6 @@
 use alloc::string::{String, ToString};
 
+use digest::Digest;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -121,6 +122,42 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) enum PartKind {
+    EchoBroadcast,
+    NormalBroadcast,
+    DirectMessage,
+}
+
+pub(crate) trait HasPartKind {
+    const KIND: PartKind;
+}
+
+// We don't want to expose this functionality to the user, so it is separate from `ProtocolMessagePart` trait.
+pub(crate) trait ProtocolMessagePartHashable: ProtocolMessagePart + HasPartKind {
+    fn hash<D: Digest>(&self) -> digest::Output<D> {
+        let mut digest = D::new_with_prefix(b"ProtocolMessagePart");
+        match Self::KIND {
+            PartKind::EchoBroadcast => digest.update([0u8]),
+            PartKind::NormalBroadcast => digest.update([1u8]),
+            PartKind::DirectMessage => digest.update([2u8]),
+        }
+        match self.maybe_message().as_ref() {
+            None => digest.update([0u8]),
+            Some(payload) => {
+                let payload_len =
+                    u64::try_from(payload.as_ref().len()).expect("payload length does not exceed 18 exabytes");
+                digest.update([1u8]);
+                digest.update(payload_len.to_be_bytes());
+                digest.update(payload);
+            }
+        };
+        digest.finalize()
+    }
+}
+
+impl<T: ProtocolMessagePart + HasPartKind> ProtocolMessagePartHashable for T {}
+
 /// A serialized direct message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DirectMessage(Option<MessagePayload>);
@@ -133,6 +170,10 @@ impl ProtocolMessageWrapper for DirectMessage {
     fn maybe_message(&self) -> &Option<MessagePayload> {
         &self.0
     }
+}
+
+impl HasPartKind for DirectMessage {
+    const KIND: PartKind = PartKind::DirectMessage;
 }
 
 impl ProtocolMessagePart for DirectMessage {
@@ -153,6 +194,10 @@ impl ProtocolMessageWrapper for EchoBroadcast {
     }
 }
 
+impl HasPartKind for EchoBroadcast {
+    const KIND: PartKind = PartKind::EchoBroadcast;
+}
+
 impl ProtocolMessagePart for EchoBroadcast {
     type Error = EchoBroadcastError;
 }
@@ -169,6 +214,10 @@ impl ProtocolMessageWrapper for NormalBroadcast {
     fn maybe_message(&self) -> &Option<MessagePayload> {
         &self.0
     }
+}
+
+impl HasPartKind for NormalBroadcast {
+    const KIND: PartKind = PartKind::NormalBroadcast;
 }
 
 impl ProtocolMessagePart for NormalBroadcast {
