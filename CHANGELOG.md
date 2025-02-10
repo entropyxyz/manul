@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed `Round::entry_round()` to `entry_round_id()` and made it mandatory to implement. ([#84])
 - Rework `RequiredMessageParts` API. ([#85])
 - Removed `Send + Sync` bound on `WireFormat`. ([#92])
+- Removed `Send` bound on `ProtocolError`. ([#92])
 
 
 ### Added

@@ -283,7 +283,7 @@ impl RequiredMessages {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
+pub trait ProtocolError<Id>: Display + Debug + Clone + Serialize + for<'de> Deserialize<'de> {
     /// Additional data that cannot be derived from the node's messages alone
     /// and therefore has to be supplied externally during evidence verification.
     type AssociatedData: Debug;
