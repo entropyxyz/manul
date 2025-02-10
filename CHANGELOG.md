@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conversion from `u8` to `RoundId` and comparison of `RoundId` with `u8`. ([#84])
 - `Misbehaving::override_finalize()` for malicious finalization logic. ([#87])
 - `From<SerializableMap<K, V>> for BTreeMap<K, V>` impl. ([#88])
+- `session::tokio` submodule containing functions for executing a session in an async `tokio` environment and supporting types. Gated behind the `tokio` feature. ([#91])
 
 
 ### Fixed
@@ -52,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#86]: https://github.com/entropyxyz/manul/pull/86
 [#87]: https://github.com/entropyxyz/manul/pull/87
 [#88]: https://github.com/entropyxyz/manul/pull/88
+[#91]: https://github.com/entropyxyz/manul/pull/91
 
 
 ## [0.1.0] - 2024-11-19

@@ -5,7 +5,10 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use manul::{
     dev::{BinaryFormat, TestSessionParams, TestSigner},
     protocol::Protocol,
-    session::{CanFinalize, LocalError, Message, RoundOutcome, Session, SessionId, SessionParameters, SessionReport},
+    session::{
+        tokio::{run_session, MessageIn, MessageOut},
+        Session, SessionId, SessionParameters, SessionReport,
+    },
     signature::Keypair,
 };
 use manul_example::simple::{SimpleProtocol, SimpleProtocolEntryPoint};
@@ -15,139 +18,6 @@ use tokio::{
     sync::mpsc,
     time::{sleep, Duration},
 };
-use tracing::{debug, trace};
-
-struct MessageOut<SP: SessionParameters> {
-    from: SP::Verifier,
-    to: SP::Verifier,
-    message: Message<SP::Verifier>,
-}
-
-struct MessageIn<SP: SessionParameters> {
-    from: SP::Verifier,
-    message: Message<SP::Verifier>,
-}
-
-/// Runs a session. Simulates what each participating party would run as the protocol progresses.
-async fn run_session<P, SP>(
-    tx: mpsc::Sender<MessageOut<SP>>,
-    rx: mpsc::Receiver<MessageIn<SP>>,
-    session: Session<P, SP>,
-) -> Result<SessionReport<P, SP>, LocalError>
-where
-    P: Protocol<SP::Verifier>,
-    SP: SessionParameters,
-{
-    let rng = &mut OsRng;
-
-    let mut rx = rx;
-
-    let mut session = session;
-    // Some rounds can finalize early and put off sending messages to the next round. Such messages
-    // will be stored here and applied after the messages for this round are sent.
-    let mut cached_messages = Vec::new();
-
-    let key = session.verifier();
-
-    // Each iteration of the loop progresses the session as follows:
-    //  - Send out messages as dictated by the session "destinations".
-    //  - Apply any cached messages.
-    //  - Enter a nested loop:
-    //      - Try to finalize the session; if we're done, exit the inner loop.
-    //      - Wait until we get an incoming message.
-    //      - Process the message we received and continue the loop.
-    //  - When all messages have been sent and received as specified by the protocol, finalize the
-    //    round.
-    //  - If the protocol outcome is a new round, go to the top of the loop and start over with a
-    //    new session.
-    loop {
-        debug!("{key:?}: *** starting round {:?} ***", session.round_id());
-
-        // This is kept in the main task since it's mutable,
-        // and we don't want to bother with synchronization.
-        let mut accum = session.make_accumulator();
-
-        // Note: generating/sending messages and verifying newly received messages
-        // can be done in parallel, with the results being assembled into `accum`
-        // sequentially in the host task.
-
-        let destinations = session.message_destinations();
-        for destination in destinations.iter() {
-            // In production usage, this will happen in a spawned task
-            // (since it can take some time to create a message),
-            // and the artifact will be sent back to the host task
-            // to be added to the accumulator.
-            let (message, artifact) = session.make_message(rng, destination)?;
-            debug!("{key:?}: Sending a message to {destination:?}",);
-            tx.send(MessageOut {
-                from: key.clone(),
-                to: destination.clone(),
-                message,
-            })
-            .await
-            .unwrap();
-
-            // This would happen in a host task
-            session.add_artifact(&mut accum, artifact)?;
-        }
-
-        for preprocessed in cached_messages {
-            // In production usage, this would happen in a spawned task and relayed back to the main task.
-            debug!("{key:?}: Applying a cached message");
-            let processed = session.process_message(preprocessed);
-
-            // This would happen in a host task.
-            session.add_processed_message(&mut accum, processed)?;
-        }
-
-        loop {
-            match session.can_finalize(&accum) {
-                CanFinalize::Yes => break,
-                CanFinalize::NotYet => {}
-                // Due to already registered invalid messages from nodes,
-                // even if the remaining nodes send correct messages, it won't be enough.
-                // Terminating.
-                CanFinalize::Never => {
-                    tracing::warn!("{key:?}: This session cannot ever be finalized. Terminating.");
-                    return session.terminate_due_to_errors(accum);
-                }
-            }
-
-            debug!("{key:?}: Waiting for a message");
-            let incoming = rx.recv().await.unwrap();
-
-            // Perform quick checks before proceeding with the verification.
-            match session
-                .preprocess_message(&mut accum, &incoming.from, incoming.message)?
-                .ok()
-            {
-                Some(preprocessed) => {
-                    // In production usage, this would happen in a separate task.
-                    debug!("{key:?}: Applying a message from {:?}", incoming.from);
-                    let processed = session.process_message(preprocessed);
-                    // In production usage, this would be a host task.
-                    session.add_processed_message(&mut accum, processed)?;
-                }
-                None => {
-                    trace!("{key:?} Pre-processing complete. Current state: {accum:?}")
-                }
-            }
-        }
-
-        debug!("{key:?}: Finalizing the round");
-
-        match session.finalize_round(rng, accum)? {
-            RoundOutcome::Finished(report) => break Ok(report),
-            RoundOutcome::AnotherRound {
-                session: new_session,
-                cached_messages: new_cached_messages,
-            } => {
-                session = new_session;
-                cached_messages = new_cached_messages;
-            }
-        }
-    }
-}
 
 async fn message_dispatcher<SP>(
     txs: BTreeMap<SP::Verifier, mpsc::Sender<MessageIn<SP>>>,
@@ -217,8 +87,9 @@ where
     let handles = rxs
         .into_iter()
         .zip(sessions.into_iter())
-        .map(|(rx, session)| {
-            let node_task = run_session(dispatcher_tx.clone(), rx, session);
+        .map(|(mut rx, session)| {
+            let tx = dispatcher_tx.clone();
+            let node_task = async move { run_session(&mut OsRng, &tx, &mut rx, session).await };
             tokio::spawn(node_task)
         })
         .collect::<Vec<_>>();
