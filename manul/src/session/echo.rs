@@ -18,7 +18,7 @@ use super::{
 use crate::{
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeOutcome, MessageValidationError,
-        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId,
+        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundTransition,
         Serializer,
     },
     utils::SerializableMap,
@@ -126,12 +126,8 @@ where
 {
     type Protocol = P;
 
-    fn id(&self) -> RoundId {
-        self.main_round.id().echo()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.main_round.as_ref().possible_next_rounds()
+    fn transition_info(&self) -> RoundTransition {
+        self.main_round.transition_info().echo()
     }
 
     fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
