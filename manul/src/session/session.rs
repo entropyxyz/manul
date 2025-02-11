@@ -25,7 +25,7 @@ use super::{
 use crate::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
     FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
-    ReceiveErrorType, RoundId, Serializer,
+    ReceiveErrorType, RoundId, RoundTransition, Serializer,
 };
 
 /// A set of types needed to execute a session.
@@ -118,7 +118,7 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
-    possible_next_rounds: BTreeSet<RoundId>,
+    transition_info: RoundTransition,
     transcript: Transcript<P, SP>,
 }
 
@@ -210,11 +210,7 @@ where
             }),
         };
 
-        let possible_next_rounds = if echo_round_info.is_some() {
-            BTreeSet::from([round.id().echo()])
-        } else {
-            round.as_ref().possible_next_rounds()
-        };
+        let transition_info = round.transition_info();
 
         Ok(Self {
             session_id,
@@ -225,7 +221,7 @@ where
             round,
             echo_broadcast,
             normal_broadcast,
-            possible_next_rounds,
+            transition_info,
             message_destinations,
             echo_round_info,
             transcript,
@@ -339,8 +335,10 @@ where
 
         enum MessageFor {
             ThisRound,
-            NextRound,
+            SimultaneousRound,
         }
+
+        let acceptable_round_ids = self.transition_info.simultaneous_rounds(self.echo_round_info.is_some());
 
         let message_for = if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
@@ -350,14 +348,14 @@ where
                 return Ok(PreprocessOutcome::remote_error(err));
             }
             MessageFor::ThisRound
-        } else if self.possible_next_rounds.contains(&message_round_id) {
+        } else if acceptable_round_ids.contains(&message_round_id) {
             if accum.message_is_cached(from, &message_round_id) {
                 let err = format!("Message for {:?} is already cached", message_round_id);
                 accum.register_unprovable_error(from, RemoteError::new(&err))?;
                 trace!("{key:?} {err}");
                 return Ok(PreprocessOutcome::remote_error(err));
             }
-            MessageFor::NextRound
+            MessageFor::SimultaneousRound
         } else {
             let err = format!("Unexpected message round ID: {:?}", message_round_id);
             accum.register_unprovable_error(from, RemoteError::new(&err))?;
@@ -390,7 +388,7 @@ where
                 accum.mark_processing(&verified_message)?;
                 Ok(PreprocessOutcome::ToProcess(Box::new(verified_message)))
             }
-            MessageFor::NextRound => {
+            MessageFor::SimultaneousRound => {
                 debug!("{key:?}: Caching message from {from:?} for {message_round_id}");
                 accum.cache_message(verified_message)?;
                 Ok(PreprocessOutcome::Cached)
@@ -521,7 +519,7 @@ where
             ))),
             FinalizeOutcome::AnotherRound(round) => {
                 // Protecting against common bugs
-                if !self.possible_next_rounds.contains(&round.id()) {
+                if !self.transition_info.children.contains(&round.id()) {
                     return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
                 }
 
