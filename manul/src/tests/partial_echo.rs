@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-        FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
-        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
+        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
+        Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        TransitionInfo,
     },
     signature::Keypair,
 };
@@ -92,16 +93,12 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         TransitionInfo::new_linear_terminating(1)
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        &self.inputs.message_destinations
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        &self.inputs.expecting_messages_from
-    }
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        self.inputs.echo_round_participation.clone()
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        CommunicationInfo {
+            message_destinations: self.inputs.message_destinations.clone(),
+            expecting_messages_from: self.inputs.expecting_messages_from.clone(),
+            echo_round_participation: self.inputs.echo_round_participation.clone(),
+        }
     }
 
     fn make_echo_broadcast(

@@ -23,16 +23,13 @@ Usage:
    as the entry point of the new protocol.
 */
 
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet},
-};
+use alloc::{boxed::Box, collections::BTreeMap};
 use core::fmt::Debug;
 
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+    Artifact, BoxedRng, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
     FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolMessage,
     ReceiveError, RoundId, Serializer, TransitionInfo,
 };
@@ -237,16 +234,8 @@ where
         self.round.as_ref().transition_info()
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        self.round.as_ref().message_destinations()
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        self.round.as_ref().expecting_messages_from()
-    }
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        self.round.as_ref().echo_round_participation()
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        self.round.as_ref().communication_info()
     }
 
     fn make_direct_message(

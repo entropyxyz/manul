@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
-    ReceiveErrorType, RoundId, Serializer, TransitionInfo,
+    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+    EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart,
+    ReceiveError, ReceiveErrorType, RoundId, Serializer, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -114,7 +114,7 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     serializer: Serializer,
     deserializer: Deserializer,
     round: BoxedRound<SP::Verifier, P>,
-    message_destinations: BTreeSet<SP::Verifier>,
+    communication_info: CommunicationInfo<SP::Verifier>,
     echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
@@ -184,20 +184,18 @@ where
         let normal = round.as_ref().make_normal_broadcast(rng, &serializer, &deserializer)?;
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
-        let message_destinations = round.as_ref().message_destinations().clone();
-
-        let echo_round_participation = round.as_ref().echo_round_participation();
+        let communication_info = round.as_ref().communication_info();
 
         let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
-        let echo_round_info = match echo_round_participation {
+        let echo_round_info = match &communication_info.echo_round_participation {
             EchoRoundParticipation::Default => {
                 if round_sends_echo_broadcast {
                     // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
-                    let mut expected_echos = round.as_ref().expecting_messages_from().clone();
+                    let mut expected_echos = communication_info.expecting_messages_from.clone();
                     expected_echos.insert(verifier.clone());
                     Some(EchoRoundInfo {
-                        message_destinations: message_destinations.clone(),
-                        expecting_messages_from: message_destinations.clone(),
+                        message_destinations: communication_info.message_destinations.clone(),
+                        expecting_messages_from: communication_info.message_destinations.clone(),
                         expected_echos,
                     })
                 } else {
@@ -207,8 +205,8 @@ where
             EchoRoundParticipation::Send => None,
             EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
                 message_destinations: echo_targets.clone(),
-                expecting_messages_from: echo_targets,
-                expected_echos: round.as_ref().expecting_messages_from().clone(),
+                expecting_messages_from: echo_targets.clone(),
+                expected_echos: communication_info.expecting_messages_from.clone(),
             }),
         };
 
@@ -222,7 +220,7 @@ where
             echo_broadcast,
             normal_broadcast,
             transition_info,
-            message_destinations,
+            communication_info,
             echo_round_info,
             transcript,
         })
@@ -240,7 +238,7 @@ where
 
     /// Returns the set of message destinations for the current round.
     pub fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.message_destinations
+        &self.communication_info.message_destinations
     }
 
     /// Creates the message to be sent to the given destination.
@@ -427,7 +425,7 @@ where
 
     /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, SP> {
-        RoundAccumulator::new(self.round.as_ref().expecting_messages_from())
+        RoundAccumulator::new(&self.communication_info.expecting_messages_from)
     }
 
     fn terminate_inner(

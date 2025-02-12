@@ -2,8 +2,8 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
-    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-    MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
+    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
+    LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
     ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, Round, RoundId,
     Serializer, TransitionInfo,
 };
@@ -199,8 +199,8 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         TransitionInfo::new_linear(1)
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        &self.context.other_ids
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        CommunicationInfo::regular(&self.context.other_ids)
     }
 
     fn make_normal_broadcast(
@@ -294,10 +294,6 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         });
         Ok(FinalizeOutcome::AnotherRound(round2))
     }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        &self.context.other_ids
-    }
 }
 
 #[derive(Debug)]
@@ -319,8 +315,8 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         TransitionInfo::new_linear_terminating(2)
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        &self.context.other_ids
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        CommunicationInfo::regular(&self.context.other_ids)
     }
 
     fn make_direct_message(
@@ -381,10 +377,6 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
 
         Ok(FinalizeOutcome::Result(sum + self.round1_sum))
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        &self.context.other_ids
     }
 }
 

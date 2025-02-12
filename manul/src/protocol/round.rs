@@ -19,6 +19,43 @@ use super::{
     serialization::{Deserializer, Serializer},
 };
 
+/// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
+#[derive(Debug, Clone)]
+pub struct CommunicationInfo<Id> {
+    /// The destinations of the messages to be sent out by this round.
+    ///
+    /// The way it is interpreted by the execution layer is
+    /// - An echo broadcast (if any) is sent to all of these destinations;
+    /// - A direct message is sent to each of these destinations,
+    ///   which means [`make_direct_message`](`Round::make_direct_message`) may be called
+    ///   for each element of the returned set.
+    pub message_destinations: BTreeSet<Id>,
+
+    /// Returns the set of node IDs from which this round expects messages.
+    ///
+    /// The execution layer will not call [`finalize`](`Round::finalize`) until all these nodes have responded
+    /// (and the corresponding [`receive_message`](`Round::receive_message`) finished successfully).
+    pub expecting_messages_from: BTreeSet<Id>,
+
+    /// Returns the specific way the node participates in the echo round following this round.
+    ///
+    /// Returns [`EchoRoundParticipation::Default`] by default; this works fine when every node
+    /// sends messages to every other one, or do not send or receive any echo broadcasts.
+    /// Otherwise, review the options in [`EchoRoundParticipation`] and pick the appropriate one.
+    pub echo_round_participation: EchoRoundParticipation<Id>,
+}
+
+impl<Id: PartyId> CommunicationInfo<Id> {
+    /// A regular round that sends messages to all `other_parties`, and expects messages back from them.
+    pub fn regular(other_parties: &BTreeSet<Id>) -> Self {
+        Self {
+            message_destinations: other_parties.clone(),
+            expecting_messages_from: other_parties.clone(),
+            echo_round_participation: EchoRoundParticipation::Default,
+        }
+    }
+}
+
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
 pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
@@ -338,29 +375,10 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// See [`TransitionInfo`] documentation for more details.
     fn transition_info(&self) -> TransitionInfo;
 
-    /// The destinations of the messages to be sent out by this round.
+    /// Returns the information about the communication this rounds engages in with other nodes.
     ///
-    /// The way it is interpreted by the execution layer is
-    /// - An echo broadcast (if any) is sent to all of these destinations;
-    /// - A direct message is sent to each of these destinations,
-    ///   which means [`make_direct_message`](`Self::make_direct_message`) may be called
-    ///   for each element of the returned set.
-    fn message_destinations(&self) -> &BTreeSet<Id>;
-
-    /// Returns the set of node IDs from which this round expects messages.
-    ///
-    /// The execution layer will not call [`finalize`](`Self::finalize`) until all these nodes have responded
-    /// (and the corresponding [`receive_message`](`Self::receive_message`) finished successfully).
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
-
-    /// Returns the specific way the node participates in the echo round following this round.
-    ///
-    /// Returns [`EchoRoundParticipation::Default`] by default; this works fine when every node
-    /// sends messages to every other one, or do not send or receive any echo broadcasts.
-    /// Otherwise, review the options in [`EchoRoundParticipation`] and pick the appropriate one.
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        EchoRoundParticipation::Default
-    }
+    /// See [`CommunicationInfo`] documentation for more details.
+    fn communication_info(&self) -> CommunicationInfo<Id>;
 
     /// Returns the direct message to the given destination and (maybe) an accompanying artifact.
     ///
@@ -399,7 +417,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// Return [`NormalBroadcast::none`] if this round does not send normal broadcast messages.
     /// This is also the blanket implementation.
     ///
-    /// Unlike the echo broadcasts, these will be just sent to every node from [`Self::message_destinations`]
+    /// Unlike the echo broadcasts, these will be just sent to every node defined in [`Self::communication_info`]
     /// without any confirmation required.
     fn make_normal_broadcast(
         &self,

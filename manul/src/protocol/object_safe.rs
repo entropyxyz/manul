@@ -1,8 +1,4 @@
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet},
-    format,
-};
+use alloc::{boxed::Box, collections::BTreeMap, format};
 use core::{fmt::Debug, marker::PhantomData};
 
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
@@ -10,7 +6,7 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 use super::{
     errors::{LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage},
-    round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round},
+    round::{Artifact, CommunicationInfo, FinalizeOutcome, PartyId, Payload, Protocol, Round},
     round_id::{RoundId, TransitionInfo},
     serialization::{Deserializer, Serializer},
 };
@@ -45,11 +41,7 @@ pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
 
     fn transition_info(&self) -> TransitionInfo;
 
-    fn message_destinations(&self) -> &BTreeSet<Id>;
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id>;
+    fn communication_info(&self) -> CommunicationInfo<Id>;
 
     fn make_direct_message(
         &self,
@@ -124,16 +116,8 @@ where
         self.round.transition_info()
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        self.round.message_destinations()
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        self.round.expecting_messages_from()
-    }
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        self.round.echo_round_participation()
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        self.round.communication_info()
     }
 
     fn make_direct_message(

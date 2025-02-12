@@ -49,17 +49,14 @@ Usage:
    when verifying evidence from the chained protocol.
 */
 
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet},
-};
+use alloc::{boxed::Box, collections::BTreeMap};
 use core::fmt::{self, Debug};
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
-    Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+    Artifact, BoxedRng, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
     FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
     ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
     TransitionInfo,
@@ -365,24 +362,10 @@ where
         }
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
+    fn communication_info(&self) -> CommunicationInfo<Id> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().message_destinations(),
-            ChainState::Protocol2(round) => round.as_ref().message_destinations(),
-        }
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().expecting_messages_from(),
-            ChainState::Protocol2(round) => round.as_ref().expecting_messages_from(),
-        }
-    }
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().echo_round_participation(),
-            ChainState::Protocol2(round) => round.as_ref().echo_round_participation(),
+            ChainState::Protocol1 { round, .. } => round.as_ref().communication_info(),
+            ChainState::Protocol2(round) => round.as_ref().communication_info(),
         }
     }
 

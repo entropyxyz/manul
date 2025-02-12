@@ -8,9 +8,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     dev::{tokio::run_async, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-        MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
-        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
+        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
+        FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
+        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -113,8 +113,8 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         }
     }
 
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        &self.inputs.other_ids
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        CommunicationInfo::regular(&self.inputs.other_ids)
     }
 
     fn make_echo_broadcast(
@@ -184,10 +184,6 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
             });
             Ok(FinalizeOutcome::AnotherRound(round))
         }
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        &self.inputs.other_ids
     }
 }
 
