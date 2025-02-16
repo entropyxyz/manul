@@ -271,7 +271,7 @@ impl Payload {
 
     /// Creates an empty payload.
     ///
-    /// Use it in [`Round::receive_message`] if it does not need to create artifacts.
+    /// Use it in [`Round::receive_message`] if it does not need to create payloads.
     pub fn empty() -> Self {
         Self::new(())
     }
