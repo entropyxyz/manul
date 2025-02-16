@@ -5,17 +5,17 @@ use alloc::{
 };
 use core::{
     any::Any,
-    fmt::{self, Debug, Display},
+    fmt::{Debug, Display},
 };
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use tinyvec::TinyVec;
 
 use super::{
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     object_safe::BoxedRound,
+    round_id::{RoundId, TransitionInfo},
     serialization::{Deserializer, Serializer},
 };
 
@@ -26,132 +26,6 @@ pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
     AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
     Result(P::Result),
-}
-
-/// A round identifier.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RoundId {
-    round_nums: TinyVec<[u8; 4]>,
-    is_echo: bool,
-}
-
-impl Display for RoundId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "Round ")?;
-        for (i, round_num) in self.round_nums.iter().enumerate().rev() {
-            write!(f, "{}", round_num)?;
-            if i != 0 {
-                write!(f, "-")?;
-            }
-        }
-        if self.is_echo {
-            write!(f, " (echo)")?;
-        }
-        Ok(())
-    }
-}
-
-impl RoundId {
-    /// Creates a new round identifier.
-    pub fn new(round_num: u8) -> Self {
-        let mut round_nums = TinyVec::new();
-        round_nums.push(round_num);
-        Self {
-            round_nums,
-            is_echo: false,
-        }
-    }
-
-    /// Prefixes this round ID (possibly already nested) with a group number.
-    pub(crate) fn group_under(&self, round_num: u8) -> Self {
-        let mut round_nums = self.round_nums.clone();
-        round_nums.push(round_num);
-        Self {
-            round_nums,
-            is_echo: self.is_echo,
-        }
-    }
-
-    /// Removes the top group prefix from this round ID
-    /// and returns this prefix along with the resulting round ID.
-    ///
-    /// Returns the `Err` variant if the round ID is not nested.
-    pub(crate) fn split_group(&self) -> Result<(u8, Self), LocalError> {
-        if self.round_nums.len() == 1 {
-            Err(LocalError::new("This round ID is not in a group"))
-        } else {
-            let mut round_nums = self.round_nums.clone();
-            let group = round_nums.pop().expect("vector size greater than 1");
-            let round_id = Self {
-                round_nums,
-                is_echo: self.is_echo,
-            };
-            Ok((group, round_id))
-        }
-    }
-
-    /// Removes the top group prefix from this round ID and returns the resulting Round ID.
-    ///
-    /// Returns the `Err` variant if the round ID is not nested.
-    pub(crate) fn ungroup(&self) -> Result<Self, LocalError> {
-        if self.round_nums.len() == 1 {
-            Err(LocalError::new("This round ID is not in a group"))
-        } else {
-            let mut round_nums = self.round_nums.clone();
-            round_nums.pop().expect("vector size greater than 1");
-            Ok(Self {
-                round_nums,
-                is_echo: self.is_echo,
-            })
-        }
-    }
-
-    /// Returns `true` if this is an ID of an echo broadcast round.
-    pub(crate) fn is_echo(&self) -> bool {
-        self.is_echo
-    }
-
-    /// Returns the identifier of the echo round corresponding to the given non-echo round.
-    ///
-    /// Panics if `self` is already an echo round identifier.
-    pub(crate) fn echo(&self) -> Self {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
-        if self.is_echo {
-            panic!("This is already an echo round ID");
-        }
-        Self {
-            round_nums: self.round_nums.clone(),
-            is_echo: true,
-        }
-    }
-
-    /// Returns the identifier of the non-echo round corresponding to the given echo round.
-    ///
-    /// Panics if `self` is already a non-echo round identifier.
-    pub(crate) fn non_echo(&self) -> Self {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
-        if !self.is_echo {
-            panic!("This is already an non-echo round ID");
-        }
-        Self {
-            round_nums: self.round_nums.clone(),
-            is_echo: false,
-        }
-    }
-}
-
-impl From<u8> for RoundId {
-    fn from(source: u8) -> Self {
-        Self::new(source)
-    }
-}
-
-impl PartialEq<u8> for RoundId {
-    fn eq(&self, rhs: &u8) -> bool {
-        self == &RoundId::new(*rhs)
-    }
 }
 
 /// A distributed protocol.
@@ -459,22 +333,10 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 
-    /// The round ID.
+    /// Returns the information about the position of this round in the state transition graph.
     ///
-    /// **Note:** these should not repeat during execution.
-    fn id(&self) -> RoundId;
-
-    /// The round IDs of the rounds this round can finalize into.
-    ///
-    /// Returns an empty set if this round only finalizes into a result.
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
-
-    /// Returns ``true`` if this round's [`Round::finalize`] may return [`FinalizeOutcome::Result`].
-    ///
-    /// The blanket implementation returns ``false``.
-    fn may_produce_result(&self) -> bool {
-        false
-    }
+    /// See [`TransitionInfo`] documentation for more details.
+    fn transition_info(&self) -> TransitionInfo;
 
     /// The destinations of the messages to be sent out by this round.
     ///

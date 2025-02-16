@@ -34,7 +34,7 @@ use rand_core::CryptoRngCore;
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
     FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolMessage,
-    ReceiveError, RoundId, Serializer,
+    ReceiveError, RoundId, Serializer, TransitionInfo,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -233,16 +233,8 @@ where
 {
     type Protocol = <M::EntryPoint as EntryPoint<Id>>::Protocol;
 
-    fn id(&self) -> RoundId {
-        self.round.as_ref().id()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.round.as_ref().possible_next_rounds()
-    }
-
-    fn may_produce_result(&self) -> bool {
-        self.round.as_ref().may_produce_result()
+    fn transition_info(&self) -> TransitionInfo {
+        self.round.as_ref().transition_info()
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {

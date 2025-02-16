@@ -2,7 +2,7 @@
 API for protocol implementors.
 
 A protocol is a directed acyclic graph with the nodes being objects of types implementing [`Round`]
-(to be specific, "acyclic" means that the values returned by [`Round::id`]
+(to be specific, "acyclic" means that the values returned in the `id` field of [`TransitionInfo`]
 should not repeat during the protocol execution; the types might).
 The starting point is a type that implements [`EntryPoint`].
 All the rounds must have their associated type [`Round::Protocol`] set to the same [`Protocol`] instance
@@ -15,6 +15,7 @@ mod errors;
 mod message;
 mod object_safe;
 mod round;
+mod round_id;
 mod serialization;
 
 pub use errors::{
@@ -25,8 +26,9 @@ pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage
 pub use object_safe::BoxedRound;
 pub use round::{
     Artifact, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoProtocolErrors, PartyId, Payload, Protocol,
-    ProtocolError, RequiredMessageParts, RequiredMessages, Round, RoundId,
+    ProtocolError, RequiredMessageParts, RequiredMessages, Round,
 };
+pub use round_id::{RoundId, TransitionInfo};
 pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;

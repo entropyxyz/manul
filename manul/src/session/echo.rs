@@ -18,8 +18,8 @@ use super::{
 use crate::{
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeOutcome, MessageValidationError,
-        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId,
-        Serializer,
+        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, Serializer,
+        TransitionInfo,
     },
     utils::SerializableMap,
 };
@@ -126,12 +126,16 @@ where
 {
     type Protocol = P;
 
-    fn id(&self) -> RoundId {
-        self.main_round.id().echo()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.main_round.as_ref().possible_next_rounds()
+    fn transition_info(&self) -> TransitionInfo {
+        // We expect the echo round to be created internally from a regular round,
+        // which cannot be an echo round.
+        // Returning an error here would require allowing the trait method to fail,
+        // which is not needed by any protocol implementors.
+        self.main_round
+            .as_ref()
+            .transition_info()
+            .echo()
+            .expect("the main round is not an echo round")
     }
 
     fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {

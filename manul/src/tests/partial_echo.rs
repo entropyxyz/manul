@@ -13,7 +13,7 @@ use crate::{
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
         FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
-        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -88,12 +88,8 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<Id> {
     type Protocol = PartialEchoProtocol<Id>;
 
-    fn id(&self) -> RoundId {
-        1.into()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
+    fn transition_info(&self) -> TransitionInfo {
+        TransitionInfo::new_linear_terminating(1)
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {

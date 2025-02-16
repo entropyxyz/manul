@@ -10,7 +10,8 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 use super::{
     errors::{LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage},
-    round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
+    round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round},
+    round_id::{RoundId, TransitionInfo},
     serialization::{Deserializer, Serializer},
 };
 
@@ -42,11 +43,7 @@ impl RngCore for BoxedRng<'_> {
 pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     type Protocol: Protocol<Id>;
 
-    fn id(&self) -> RoundId;
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
-
-    fn may_produce_result(&self) -> bool;
+    fn transition_info(&self) -> TransitionInfo;
 
     fn message_destinations(&self) -> &BTreeSet<Id>;
 
@@ -123,16 +120,8 @@ where
 {
     type Protocol = <R as Round<Id>>::Protocol;
 
-    fn id(&self) -> RoundId {
-        self.round.id()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.round.possible_next_rounds()
-    }
-
-    fn may_produce_result(&self) -> bool {
-        self.round.may_produce_result()
+    fn transition_info(&self) -> TransitionInfo {
+        self.round.transition_info()
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
@@ -276,6 +265,9 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
 
     /// Returns the round's ID.
     pub fn id(&self) -> RoundId {
-        self.round.id()
+        // This constructs a new `TransitionInfo` object, so calling this method inside `Session`
+        // has mild performance drawbacks.
+        // This is mostly exposed for the sake of users writing `Misbehave` impls for testing.
+        self.round.transition_info().id()
     }
 }

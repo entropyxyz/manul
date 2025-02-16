@@ -9,7 +9,7 @@ use manul::{
     protocol::{
         Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
         MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
-        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -94,20 +94,12 @@ impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
 impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     type Protocol = EmptyProtocol;
 
-    fn id(&self) -> RoundId {
-        self.round_counter.into()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+    fn transition_info(&self) -> TransitionInfo {
         if self.inputs.rounds_num == self.round_counter {
-            BTreeSet::new()
+            TransitionInfo::new_linear_terminating(self.round_counter)
         } else {
-            [(self.round_counter + 1).into()].into()
+            TransitionInfo::new_linear(self.round_counter)
         }
-    }
-
-    fn may_produce_result(&self) -> bool {
-        self.inputs.rounds_num == self.round_counter
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {

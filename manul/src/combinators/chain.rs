@@ -62,6 +62,7 @@ use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
     FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
     ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
+    TransitionInfo,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -180,11 +181,11 @@ where
     ) -> Result<(), ProtocolValidationError> {
         let previous_messages = previous_messages
             .into_iter()
-            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
+            .map(|(round_id, message)| round_id.split_group().map(|(_group_num, round_id)| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         let combined_echos = combined_echos
             .into_iter()
-            .map(|(round_id, message)| round_id.ungroup().map(|round_id| (round_id, message)))
+            .map(|(round_id, message)| round_id.split_group().map(|(_group_num, round_id)| (round_id, message)))
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
         match self {
@@ -350,43 +351,17 @@ where
 {
     type Protocol = T::Protocol;
 
-    fn id(&self) -> RoundId {
-        match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().id().group_under(1),
-            ChainState::Protocol2(round) => round.as_ref().id().group_under(2),
-        }
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+    fn transition_info(&self) -> TransitionInfo {
         match &self.state {
             ChainState::Protocol1 { round, .. } => {
-                let mut next_rounds = round
-                    .as_ref()
-                    .possible_next_rounds()
-                    .into_iter()
-                    .map(|round_id| round_id.group_under(1))
-                    .collect::<BTreeSet<_>>();
-
-                if round.as_ref().may_produce_result() {
-                    tracing::debug!("Adding {}", T::EntryPoint::entry_round_id().group_under(2));
-                    next_rounds.insert(T::EntryPoint::entry_round_id().group_under(2));
+                let mut tinfo = round.as_ref().transition_info().group_under(1);
+                if tinfo.may_produce_result {
+                    tinfo.may_produce_result = false;
+                    tinfo.children.insert(T::EntryPoint::entry_round_id().group_under(2));
                 }
-
-                next_rounds
+                tinfo
             }
-            ChainState::Protocol2(round) => round
-                .as_ref()
-                .possible_next_rounds()
-                .into_iter()
-                .map(|round_id| round_id.group_under(2))
-                .collect(),
-        }
-    }
-
-    fn may_produce_result(&self) -> bool {
-        match &self.state {
-            ChainState::Protocol1 { .. } => false,
-            ChainState::Protocol2(round) => round.as_ref().may_produce_result(),
+            ChainState::Protocol2(round) => round.as_ref().transition_info().group_under(2),
         }
     }
 

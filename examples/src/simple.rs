@@ -5,7 +5,7 @@ use manul::protocol::{
     Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
     MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
     ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, Round, RoundId,
-    Serializer,
+    Serializer, TransitionInfo,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -195,12 +195,8 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
 impl<Id: PartyId> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
-    fn id(&self) -> RoundId {
-        1.into()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        [2.into()].into()
+    fn transition_info(&self) -> TransitionInfo {
+        TransitionInfo::new_linear(1)
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
@@ -319,16 +315,8 @@ pub(crate) struct Round2Message {
 impl<Id: PartyId> Round<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
 
-    fn id(&self) -> RoundId {
-        2.into()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        BTreeSet::new()
-    }
-
-    fn may_produce_result(&self) -> bool {
-        true
+    fn transition_info(&self) -> TransitionInfo {
+        TransitionInfo::new_linear_terminating(2)
     }
 
     fn message_destinations(&self) -> &BTreeSet<Id> {
