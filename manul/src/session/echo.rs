@@ -17,9 +17,9 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, FinalizeOutcome, MessageValidationError,
-        NormalBroadcast, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId,
-        Serializer,
+        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+        FinalizeOutcome, MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessage,
+        ProtocolMessagePart, ReceiveError, Round, Serializer, TransitionInfo,
     },
     utils::SerializableMap,
 };
@@ -70,6 +70,7 @@ pub struct EchoRound<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     verifier: SP::Verifier,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
     echo_round_info: EchoRoundInfo<SP::Verifier>,
+    communication_info: CommunicationInfo<SP::Verifier>,
     main_round: BoxedRound<SP::Verifier, P>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
@@ -89,10 +90,18 @@ where
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
         debug!("{:?}: initialized echo round with {:?}", verifier, echo_round_info);
+
+        let communication_info = CommunicationInfo {
+            message_destinations: echo_round_info.message_destinations.clone(),
+            expecting_messages_from: echo_round_info.expecting_messages_from.clone(),
+            echo_round_participation: EchoRoundParticipation::Default,
+        };
+
         Self {
             verifier,
             echo_broadcasts,
             echo_round_info,
+            communication_info,
             main_round,
             payloads,
             artifacts,
@@ -126,16 +135,20 @@ where
 {
     type Protocol = P;
 
-    fn id(&self) -> RoundId {
-        self.main_round.id().echo()
+    fn transition_info(&self) -> TransitionInfo {
+        // We expect the echo round to be created internally from a regular round,
+        // which cannot be an echo round.
+        // Returning an error here would require allowing the trait method to fail,
+        // which is not needed by any protocol implementors.
+        self.main_round
+            .as_ref()
+            .transition_info()
+            .echo()
+            .expect("the main round is not an echo round")
     }
 
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.main_round.as_ref().possible_next_rounds()
-    }
-
-    fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.echo_round_info.message_destinations
+    fn communication_info(&self) -> CommunicationInfo<SP::Verifier> {
+        self.communication_info.clone()
     }
 
     fn make_normal_broadcast(
@@ -162,10 +175,6 @@ where
 
         let message = EchoRoundMessage::<SP> { message_hashes };
         NormalBroadcast::new(serializer, message)
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<SP::Verifier> {
-        &self.echo_round_info.expecting_messages_from
     }
 
     fn receive_message(

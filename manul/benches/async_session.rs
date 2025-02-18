@@ -8,9 +8,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     dev::{tokio::run_async, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-        MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
-        ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
+        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
+        FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
+        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -105,24 +105,16 @@ impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
 impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     type Protocol = EmptyProtocol;
 
-    fn id(&self) -> RoundId {
-        self.round_counter.into()
-    }
-
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
+    fn transition_info(&self) -> TransitionInfo {
         if self.inputs.rounds_num == self.round_counter {
-            BTreeSet::new()
+            TransitionInfo::new_linear_terminating(self.round_counter)
         } else {
-            [(self.round_counter + 1).into()].into()
+            TransitionInfo::new_linear(self.round_counter)
         }
     }
 
-    fn may_produce_result(&self) -> bool {
-        self.inputs.rounds_num == self.round_counter
-    }
-
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        &self.inputs.other_ids
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        CommunicationInfo::regular(&self.inputs.other_ids)
     }
 
     fn make_echo_broadcast(
@@ -192,10 +184,6 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
             });
             Ok(FinalizeOutcome::AnotherRound(round))
         }
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        &self.inputs.other_ids
     }
 }
 

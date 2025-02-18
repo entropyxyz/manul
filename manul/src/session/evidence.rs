@@ -135,7 +135,7 @@ where
             for round_id in required_combined_echos {
                 echo_hashes.insert(
                     round_id.clone(),
-                    transcript.get_normal_broadcast(&round_id.echo(), verifier)?,
+                    transcript.get_normal_broadcast(&round_id.echo()?, verifier)?,
                 );
                 other_echo_broadcasts.insert(
                     round_id.clone(),
@@ -503,9 +503,9 @@ where
         } else if let Some(message) = &self.normal_broadcast {
             message.metadata()
         } else {
-            return Err(EvidenceError::Local(LocalError::new(
-                "At least one part of the trigger message must be present",
-            )));
+            return Err(EvidenceError::InvalidEvidence(
+                "At least one part of the trigger message must be present".into(),
+            ));
         };
 
         let session_id = metadata.session_id();
@@ -522,7 +522,11 @@ where
         let mut combined_echos = BTreeMap::new();
         for (round_id, echo_hashes) in self.echo_hashes.iter() {
             let metadata = echo_hashes.metadata();
-            if metadata.session_id() != session_id || &metadata.round_id().non_echo() != round_id {
+            let main_round_id = metadata
+                .round_id()
+                .non_echo()
+                .map_err(|_err| EvidenceError::InvalidEvidence("Invalid echo hash round ID".into()))?;
+            if metadata.session_id() != session_id || &main_round_id != round_id {
                 return Err(EvidenceError::InvalidEvidence(
                     "Invalid attached message metadata".into(),
                 ));

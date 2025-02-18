@@ -1,8 +1,4 @@
-use alloc::{
-    boxed::Box,
-    collections::{BTreeMap, BTreeSet},
-    format,
-};
+use alloc::{boxed::Box, collections::BTreeMap, format};
 use core::{fmt::Debug, marker::PhantomData};
 
 use rand_core::{CryptoRng, CryptoRngCore, RngCore};
@@ -10,7 +6,8 @@ use rand_core::{CryptoRng, CryptoRngCore, RngCore};
 use super::{
     errors::{LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage},
-    round::{Artifact, EchoRoundParticipation, FinalizeOutcome, PartyId, Payload, Protocol, Round, RoundId},
+    round::{Artifact, CommunicationInfo, FinalizeOutcome, PartyId, Payload, Protocol, Round},
+    round_id::{RoundId, TransitionInfo},
     serialization::{Deserializer, Serializer},
 };
 
@@ -42,17 +39,9 @@ impl RngCore for BoxedRng<'_> {
 pub(crate) trait ObjectSafeRound<Id: PartyId>: 'static + Debug + Send + Sync {
     type Protocol: Protocol<Id>;
 
-    fn id(&self) -> RoundId;
+    fn transition_info(&self) -> TransitionInfo;
 
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
-
-    fn may_produce_result(&self) -> bool;
-
-    fn message_destinations(&self) -> &BTreeSet<Id>;
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id>;
+    fn communication_info(&self) -> CommunicationInfo<Id>;
 
     fn make_direct_message(
         &self,
@@ -123,28 +112,12 @@ where
 {
     type Protocol = <R as Round<Id>>::Protocol;
 
-    fn id(&self) -> RoundId {
-        self.round.id()
+    fn transition_info(&self) -> TransitionInfo {
+        self.round.transition_info()
     }
 
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId> {
-        self.round.possible_next_rounds()
-    }
-
-    fn may_produce_result(&self) -> bool {
-        self.round.may_produce_result()
-    }
-
-    fn message_destinations(&self) -> &BTreeSet<Id> {
-        self.round.message_destinations()
-    }
-
-    fn expecting_messages_from(&self) -> &BTreeSet<Id> {
-        self.round.expecting_messages_from()
-    }
-
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        self.round.echo_round_participation()
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        self.round.communication_info()
     }
 
     fn make_direct_message(
@@ -276,6 +249,9 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
 
     /// Returns the round's ID.
     pub fn id(&self) -> RoundId {
-        self.round.id()
+        // This constructs a new `TransitionInfo` object, so calling this method inside `Session`
+        // has mild performance drawbacks.
+        // This is mostly exposed for the sake of users writing `Misbehave` impls for testing.
+        self.round.transition_info().id()
     }
 }
