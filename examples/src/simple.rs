@@ -283,7 +283,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
         let typed_payloads = payloads
             .into_values()
-            .map(|payload| payload.try_to_typed::<Round1Payload>())
+            .map(|payload| payload.downcast::<Round1Payload>())
             .collect::<Result<Vec<_>, _>>()?;
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
@@ -371,7 +371,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
 
         let typed_payloads = payloads
             .into_values()
-            .map(|payload| payload.try_to_typed::<Round1Payload>())
+            .map(|payload| payload.downcast::<Round1Payload>())
             .collect::<Result<Vec<_>, _>>()?;
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();

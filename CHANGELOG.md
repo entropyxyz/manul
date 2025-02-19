@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `Send` bound on `ProtocolError`. ([#92])
 - Merged `Round::id()`, `possible_next_rounds()` and `may_produce_result()` into `transition_info()`. ([#93])
 - Merged `Round::message_destinations()`, `expecting_messages_from()` and `echo_round_participation()` into `communication_info()`. ([#93])
+- Renamed `Payload::try_to_typed()` and `Artifact::try_to_typed()` to `downcast()`. ([#94])
 
 
 ### Added
@@ -64,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#91]: https://github.com/entropyxyz/manul/pull/91
 [#92]: https://github.com/entropyxyz/manul/pull/92
 [#93]: https://github.com/entropyxyz/manul/pull/93
+[#94]: https://github.com/entropyxyz/manul/pull/94
 
 
 ## [0.1.0] - 2024-11-19

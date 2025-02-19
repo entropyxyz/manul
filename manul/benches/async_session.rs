@@ -169,10 +169,10 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         for payload in payloads.into_values() {
-            let _payload = payload.try_to_typed::<Round1Payload>()?;
+            let _payload = payload.downcast::<Round1Payload>()?;
         }
         for artifact in artifacts.into_values() {
-            let _artifact = artifact.try_to_typed::<Round1Artifact>()?;
+            let _artifact = artifact.downcast::<Round1Artifact>()?;
         }
 
         if self.round_counter == self.inputs.rounds_num {

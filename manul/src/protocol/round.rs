@@ -279,7 +279,7 @@ impl Payload {
     /// Attempts to downcast back to the concrete type.
     ///
     /// Would be normally called in [`Round::finalize`].
-    pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
+    pub fn downcast<T: 'static>(self) -> Result<T, LocalError> {
         Ok(*(self
             .0
             .downcast::<T>()
@@ -302,7 +302,7 @@ impl Artifact {
     /// Attempts to downcast back to the concrete type.
     ///
     /// Would be normally called in [`Round::finalize`].
-    pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
+    pub fn downcast<T: 'static>(self) -> Result<T, LocalError> {
         Ok(*(self
             .0
             .downcast::<T>()
