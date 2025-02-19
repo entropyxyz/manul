@@ -166,7 +166,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
 
     fn make_round(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         _shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -205,7 +205,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn make_normal_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
     ) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making normal broadcast", self.context.id);
@@ -220,7 +220,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
@@ -234,7 +234,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -271,7 +271,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -321,7 +321,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -359,7 +359,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {

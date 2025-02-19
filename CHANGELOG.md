@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Merged `Round::id()`, `possible_next_rounds()` and `may_produce_result()` into `transition_info()`. ([#93])
 - Merged `Round::message_destinations()`, `expecting_messages_from()` and `echo_round_participation()` into `communication_info()`. ([#93])
 - Renamed `Payload::try_to_typed()` and `Artifact::try_to_typed()` to `downcast()`. ([#94])
+- `Round` methods take `dyn CryptoRngCore` instead of `impl CryptoRngCore`. ([#94])
 
 
 ### Added

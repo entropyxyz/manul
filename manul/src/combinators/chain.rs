@@ -56,10 +56,9 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
-    Artifact, BoxedRng, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
-    FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
-    ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
-    TransitionInfo,
+    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
+    LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolError,
+    ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer, TransitionInfo,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -299,7 +298,7 @@ where
 
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -446,9 +445,8 @@ where
                 shared_randomness,
             } => match round.into_boxed().finalize(rng, payloads, artifacts)? {
                 FinalizeOutcome::Result(result) => {
-                    let mut boxed_rng = BoxedRng(rng);
                     let entry_point2 = transition.make_entry_point2(result);
-                    let round = entry_point2.make_round(&mut boxed_rng, &shared_randomness, &id)?;
+                    let round = entry_point2.make_round(rng, &shared_randomness, &id)?;
 
                     Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
                         ChainedRound::<Id, T> {

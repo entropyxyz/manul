@@ -29,9 +29,9 @@ use core::fmt::Debug;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, BoxedRng, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
-    FinalizeOutcome, LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolMessage,
-    ReceiveError, RoundId, Serializer, TransitionInfo,
+    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
+    LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolMessage, ReceiveError, RoundId,
+    Serializer, TransitionInfo,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -56,7 +56,7 @@ where
     /// The default implementation passes through the original message.
     #[allow(unused_variables)]
     fn modify_echo_broadcast(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         serializer: &Serializer,
@@ -72,7 +72,7 @@ where
     /// The default implementation passes through the original message.
     #[allow(unused_variables)]
     fn modify_normal_broadcast(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         serializer: &Serializer,
@@ -88,7 +88,7 @@ where
     /// The default implementation passes through the original message.
     #[allow(unused_variables, clippy::too_many_arguments)]
     fn modify_direct_message(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         serializer: &Serializer,
@@ -109,7 +109,7 @@ where
     /// in which case the existing `finalize()` will not be called.
     #[allow(unused_variables)]
     fn override_finalize(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         round: BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         payloads: BTreeMap<Id, Payload>,
@@ -179,7 +179,7 @@ where
 
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -250,9 +250,8 @@ where
                 .as_ref()
                 .make_direct_message(rng, serializer, deserializer, destination)?;
         if let Some(behavior) = self.behavior.as_ref() {
-            let mut boxed_rng = BoxedRng(rng);
             M::modify_direct_message(
-                &mut boxed_rng,
+                rng,
                 &self.round,
                 behavior,
                 serializer,
@@ -274,15 +273,7 @@ where
     ) -> Result<EchoBroadcast, LocalError> {
         let echo_broadcast = self.round.as_ref().make_echo_broadcast(rng, serializer, deserializer)?;
         if let Some(behavior) = self.behavior.as_ref() {
-            let mut boxed_rng = BoxedRng(rng);
-            M::modify_echo_broadcast(
-                &mut boxed_rng,
-                &self.round,
-                behavior,
-                serializer,
-                deserializer,
-                echo_broadcast,
-            )
+            M::modify_echo_broadcast(rng, &self.round, behavior, serializer, deserializer, echo_broadcast)
         } else {
             Ok(echo_broadcast)
         }
@@ -299,15 +290,7 @@ where
             .as_ref()
             .make_normal_broadcast(rng, serializer, deserializer)?;
         if let Some(behavior) = self.behavior.as_ref() {
-            let mut boxed_rng = BoxedRng(rng);
-            M::modify_normal_broadcast(
-                &mut boxed_rng,
-                &self.round,
-                behavior,
-                serializer,
-                deserializer,
-                normal_broadcast,
-            )
+            M::modify_normal_broadcast(rng, &self.round, behavior, serializer, deserializer, normal_broadcast)
         } else {
             Ok(normal_broadcast)
         }
@@ -329,8 +312,7 @@ where
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         let (round, payloads, artifacts) = if let Some(behavior) = self.behavior.as_ref() {
-            let mut boxed_rng = BoxedRng(rng);
-            let result = M::override_finalize(&mut boxed_rng, self.round, behavior, payloads, artifacts)?;
+            let result = M::override_finalize(rng, self.round, behavior, payloads, artifacts)?;
             match result {
                 FinalizeOverride::UseDefault {
                     round,

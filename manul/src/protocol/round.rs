@@ -327,7 +327,7 @@ pub trait EntryPoint<Id: PartyId> {
     /// `id` is the ID of this node.
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError>;
@@ -389,7 +389,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// These should be put in an [`Artifact`] and will be available at the time of [`finalize`](`Self::finalize`).
     fn make_direct_message(
         &self,
-        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
+        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
         #[allow(unused_variables)] serializer: &Serializer,
         #[allow(unused_variables)] destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -406,7 +406,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// if an evidence of malicious behavior has to be constructed.
     fn make_echo_broadcast(
         &self,
-        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
+        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
         #[allow(unused_variables)] serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         Ok(EchoBroadcast::none())
@@ -421,7 +421,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// without any confirmation required.
     fn make_normal_broadcast(
         &self,
-        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
+        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
         #[allow(unused_variables)] serializer: &Serializer,
     ) -> Result<NormalBroadcast, LocalError> {
         Ok(NormalBroadcast::none())
@@ -445,7 +445,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// [`make_direct_message`](`Self::make_direct_message`).
     fn finalize(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError>;

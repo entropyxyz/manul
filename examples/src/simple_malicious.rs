@@ -28,7 +28,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
     type EntryPoint = SimpleProtocolEntryPoint<Id>;
 
     fn modify_direct_message(
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &Behavior,
         serializer: &Serializer,

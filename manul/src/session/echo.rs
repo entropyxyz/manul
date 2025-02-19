@@ -153,7 +153,7 @@ where
 
     fn make_normal_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         serializer: &Serializer,
     ) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making an echo round message", self.verifier);
@@ -268,7 +268,7 @@ where
 
     fn finalize(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, LocalError> {

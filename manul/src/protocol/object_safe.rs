@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, collections::BTreeMap, format};
 use core::{fmt::Debug, marker::PhantomData};
 
-use rand_core::{CryptoRng, CryptoRngCore, RngCore};
+use rand_core::CryptoRngCore;
 
 use super::{
     errors::{LocalError, ReceiveError},
@@ -10,28 +10,6 @@ use super::{
     round_id::{RoundId, TransitionInfo},
     serialization::{Deserializer, Serializer},
 };
-
-/// Since object-safe trait methods cannot take `impl CryptoRngCore` arguments,
-/// this structure wraps the dynamic object and exposes a `CryptoRngCore` interface,
-/// to be passed to statically typed round methods.
-pub(crate) struct BoxedRng<'a>(pub(crate) &'a mut dyn CryptoRngCore);
-
-impl CryptoRng for BoxedRng<'_> {}
-
-impl RngCore for BoxedRng<'_> {
-    fn next_u32(&mut self) -> u32 {
-        self.0.next_u32()
-    }
-    fn next_u64(&mut self) -> u64 {
-        self.0.next_u64()
-    }
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        self.0.fill_bytes(dest)
-    }
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.0.try_fill_bytes(dest)
-    }
-}
 
 // Since we want `Round` methods to take `&mut impl CryptoRngCore` arguments
 // (which is what all cryptographic libraries generally take), it cannot be object-safe.
@@ -127,8 +105,7 @@ where
         #[allow(unused_variables)] deserializer: &Deserializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let mut boxed_rng = BoxedRng(rng);
-        self.round.make_direct_message(&mut boxed_rng, serializer, destination)
+        self.round.make_direct_message(rng, serializer, destination)
     }
 
     fn make_echo_broadcast(
@@ -137,8 +114,7 @@ where
         serializer: &Serializer,
         #[allow(unused_variables)] deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError> {
-        let mut boxed_rng = BoxedRng(rng);
-        self.round.make_echo_broadcast(&mut boxed_rng, serializer)
+        self.round.make_echo_broadcast(rng, serializer)
     }
 
     fn make_normal_broadcast(
@@ -147,8 +123,7 @@ where
         serializer: &Serializer,
         #[allow(unused_variables)] deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError> {
-        let mut boxed_rng = BoxedRng(rng);
-        self.round.make_normal_broadcast(&mut boxed_rng, serializer)
+        self.round.make_normal_broadcast(rng, serializer)
     }
 
     fn receive_message(
@@ -166,8 +141,7 @@ where
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
-        let mut boxed_rng = BoxedRng(rng);
-        self.round.finalize(&mut boxed_rng, payloads, artifacts)
+        self.round.finalize(rng, payloads, artifacts)
     }
 }
 
