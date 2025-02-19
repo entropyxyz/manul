@@ -12,9 +12,9 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    boxed_round::BoxedRound,
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
-    object_safe::BoxedRound,
     round_id::{RoundId, TransitionInfo},
     serialization::BoxedFormat,
 };
