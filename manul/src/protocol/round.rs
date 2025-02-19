@@ -357,6 +357,20 @@ pub enum EchoRoundParticipation<Id> {
     },
 }
 
+mod sealed {
+    /// A dyn safe trait to get the type's ID.
+    pub trait DynTypeId: 'static {
+        /// Returns the type ID of the implementing type.
+        fn get_type_id(&self) -> core::any::TypeId {
+            core::any::TypeId::of::<Self>()
+        }
+    }
+
+    impl<T: 'static> DynTypeId for T {}
+}
+
+use sealed::DynTypeId;
+
 /**
 A type representing a single round of a protocol.
 
@@ -366,7 +380,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
+pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 
@@ -449,11 +463,4 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError>;
-
-    /// Returns the type ID of the implementing type.
-    ///
-    /// **Warning:** replacing the blanket implementation may lead to bugs.
-    fn get_type_id(&self) -> core::any::TypeId {
-        core::any::TypeId::of::<Self>()
-    }
 }
