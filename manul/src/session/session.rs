@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
     EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart,
-    ReceiveError, ReceiveErrorType, RoundId, Serializer, TransitionInfo,
+    ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -111,8 +111,7 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     session_id: SessionId,
     signer: SP::Signer,
     verifier: SP::Verifier,
-    serializer: Serializer,
-    deserializer: Deserializer,
+    format: BoxedFormat,
     round: BoxedRound<SP::Verifier, P>,
     communication_info: CommunicationInfo<SP::Verifier>,
     echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
@@ -152,25 +151,15 @@ where
         EP: EntryPoint<SP::Verifier, Protocol = P>,
     {
         let first_round = entry_point.make_round(rng, session_id.as_ref(), &signer.verifying_key())?;
-        let serializer = Serializer::new::<SP::WireFormat>();
-        let deserializer = Deserializer::new::<SP::WireFormat>();
-        Self::new_for_next_round(
-            rng,
-            session_id,
-            signer,
-            serializer,
-            deserializer,
-            first_round,
-            Transcript::new(),
-        )
+        let format = BoxedFormat::new::<SP::WireFormat>();
+        Self::new_for_next_round(rng, session_id, signer, format, first_round, Transcript::new())
     }
 
     fn new_for_next_round(
         rng: &mut impl CryptoRngCore,
         session_id: SessionId,
         signer: SP::Signer,
-        serializer: Serializer,
-        deserializer: Deserializer,
+        format: BoxedFormat,
         round: BoxedRound<SP::Verifier, P>,
         transcript: Transcript<P, SP>,
     ) -> Result<Self, LocalError> {
@@ -178,10 +167,10 @@ where
 
         let transition_info = round.as_ref().transition_info();
 
-        let echo = round.as_ref().make_echo_broadcast(rng, &serializer, &deserializer)?;
+        let echo = round.as_ref().make_echo_broadcast(rng, &format)?;
         let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), echo)?;
 
-        let normal = round.as_ref().make_normal_broadcast(rng, &serializer, &deserializer)?;
+        let normal = round.as_ref().make_normal_broadcast(rng, &format)?;
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
         let communication_info = round.as_ref().communication_info();
@@ -214,8 +203,7 @@ where
             session_id,
             signer,
             verifier,
-            serializer,
-            deserializer,
+            format,
             round,
             echo_broadcast,
             normal_broadcast,
@@ -249,10 +237,10 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
-        let (direct_message, artifact) =
-            self.round
-                .as_ref()
-                .make_direct_message(rng, &self.serializer, &self.deserializer, destination)?;
+        let (direct_message, artifact) = self
+            .round
+            .as_ref()
+            .make_direct_message(rng, &self.format, destination)?;
 
         let message = Message::new::<SP>(
             rng,
@@ -408,7 +396,7 @@ where
         let processed = self
             .round
             .as_ref()
-            .receive_message(&self.deserializer, message.from(), protocol_message);
+            .receive_message(&self.format, message.from(), protocol_message);
         // We could filter out and return a possible `LocalError` at this stage,
         // but it's no harm in delaying it until `ProcessedMessage` is added to the accumulator.
         ProcessedMessage { message, processed }
@@ -497,15 +485,8 @@ where
                 accum.artifacts,
             ));
             let cached_messages = filter_messages(accum.cached, &round.id());
-            let session = Session::new_for_next_round(
-                rng,
-                self.session_id,
-                self.signer,
-                self.serializer,
-                self.deserializer,
-                round,
-                transcript,
-            )?;
+            let session =
+                Session::new_for_next_round(rng, self.session_id, self.signer, self.format, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
                 session,
                 cached_messages,
@@ -533,15 +514,8 @@ where
                     .filter(|message| !transcript.is_banned(message.from()))
                     .collect::<Vec<_>>();
 
-                let session = Session::new_for_next_round(
-                    rng,
-                    self.session_id,
-                    self.signer,
-                    self.serializer,
-                    self.deserializer,
-                    round,
-                    transcript,
-                )?;
+                let session =
+                    Session::new_for_next_round(rng, self.session_id, self.signer, self.format, round, transcript)?;
                 Ok(RoundOutcome::AnotherRound {
                     cached_messages,
                     session,
@@ -839,8 +813,7 @@ mod tests {
     use impls::impls;
 
     use super::{
-        Deserializer, Message, ProcessedArtifact, ProcessedMessage, RoundId, Session, SessionParameters,
-        VerifiedMessage,
+        BoxedFormat, Message, ProcessedArtifact, ProcessedMessage, RoundId, Session, SessionParameters, VerifiedMessage,
     };
     use crate::{
         dev::{BinaryFormat, TestSessionParams, TestVerifier},
@@ -866,7 +839,7 @@ mod tests {
             type ProtocolError = NoProtocolErrors;
 
             fn verify_direct_message_is_invalid(
-                _deserializer: &Deserializer,
+                _format: &BoxedFormat,
                 _round_id: &RoundId,
                 _message: &DirectMessage,
             ) -> Result<(), MessageValidationError> {
@@ -874,7 +847,7 @@ mod tests {
             }
 
             fn verify_echo_broadcast_is_invalid(
-                _deserializer: &Deserializer,
+                _format: &BoxedFormat,
                 _round_id: &RoundId,
                 _message: &EchoBroadcast,
             ) -> Result<(), MessageValidationError> {
@@ -882,7 +855,7 @@ mod tests {
             }
 
             fn verify_normal_broadcast_is_invalid(
-                _deserializer: &Deserializer,
+                _format: &BoxedFormat,
                 _round_id: &RoundId,
                 _message: &NormalBroadcast,
             ) -> Result<(), MessageValidationError> {
