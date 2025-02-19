@@ -8,9 +8,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     dev::{tokio::run_async, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
+        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
         FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
-        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer, TransitionInfo,
+        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -35,7 +35,7 @@ impl<Id> Protocol<Id> for EmptyProtocol {
     type ProtocolError = NoProtocolErrors;
 
     fn verify_direct_message_is_invalid(
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _round_id: &RoundId,
         _message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
@@ -43,7 +43,7 @@ impl<Id> Protocol<Id> for EmptyProtocol {
     }
 
     fn verify_echo_broadcast_is_invalid(
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _round_id: &RoundId,
         _message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
@@ -51,7 +51,7 @@ impl<Id> Protocol<Id> for EmptyProtocol {
     }
 
     fn verify_normal_broadcast_is_invalid(
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _round_id: &RoundId,
         _message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
@@ -120,10 +120,10 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     fn make_echo_broadcast(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
+        format: &BoxedFormat,
     ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
-            EchoBroadcast::new(serializer, Round1EchoBroadcast)
+            EchoBroadcast::new(format, Round1EchoBroadcast)
         } else {
             Ok(EchoBroadcast::none())
         }
@@ -132,38 +132,34 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     fn make_direct_message(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
+        format: &BoxedFormat,
         _destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = DirectMessage::new(serializer, Round1DirectMessage(do_work(self.round_counter + 2)))?;
+        let dm = DirectMessage::new(format, Round1DirectMessage(do_work(self.round_counter + 2)))?;
         let artifact = Artifact::new(Round1Artifact);
         Ok((dm, Some(artifact)))
     }
 
     fn receive_message(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         _from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         //std::thread::sleep(std::time::Duration::from_secs_f64(0.001));
         if self.inputs.echo {
-            let _echo_broadcast = message
-                .echo_broadcast
-                .deserialize::<Round1EchoBroadcast>(deserializer)?;
+            let _echo_broadcast = message.echo_broadcast.deserialize::<Round1EchoBroadcast>(format)?;
         } else {
             message.echo_broadcast.assert_is_none()?;
         }
         message.normal_broadcast.assert_is_none()?;
-        let direct_message = message
-            .direct_message
-            .deserialize::<Round1DirectMessage>(deserializer)?;
+        let direct_message = message.direct_message.deserialize::<Round1DirectMessage>(format)?;
         assert!(direct_message.0 == do_work(self.round_counter + 2));
         Ok(Payload::new(Round1Payload))
     }
 
     fn finalize(
-        self,
+        self: Box<Self>,
         _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,

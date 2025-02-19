@@ -5,8 +5,7 @@ use manul::{
     combinators::misbehave::{Misbehaving, MisbehavingEntryPoint},
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedRound, Deserializer, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
-        Serializer,
+        Artifact, BoxedFormat, BoxedRound, DirectMessage, EntryPoint, LocalError, PartyId, ProtocolMessagePart,
     },
     signature::Keypair,
 };
@@ -31,22 +30,21 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
         _rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &Behavior,
-        serializer: &Serializer,
-        _deserializer: &Deserializer,
+        format: &BoxedFormat,
         _destination: &Id,
         direct_message: DirectMessage,
         artifact: Option<Artifact>,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         let dm = if round.id() == 1 {
             match behavior {
-                Behavior::SerializedGarbage => DirectMessage::new(serializer, [99u8])?,
+                Behavior::SerializedGarbage => DirectMessage::new(format, [99u8])?,
                 Behavior::AttributableFailure => {
                     let round1 = round.downcast_ref::<Round1<Id>>()?;
                     let message = Round1Message {
                         my_position: round1.context.ids_to_positions[&round1.context.id],
                         your_position: round1.context.ids_to_positions[&round1.context.id],
                     };
-                    DirectMessage::new(serializer, message)?
+                    DirectMessage::new(format, message)?
                 }
                 _ => direct_message,
             }
@@ -58,7 +56,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
                         my_position: round2.context.ids_to_positions[&round2.context.id],
                         your_position: round2.context.ids_to_positions[&round2.context.id],
                     };
-                    DirectMessage::new(serializer, message)?
+                    DirectMessage::new(format, message)?
                 }
                 _ => direct_message,
             }

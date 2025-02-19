@@ -29,9 +29,9 @@ use core::fmt::Debug;
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
-    LocalError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol, ProtocolMessage, ReceiveError, RoundId,
-    Serializer, TransitionInfo,
+    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
+    LocalError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ReceiveError, Round, RoundId,
+    TransitionInfo,
 };
 
 /// A trait describing required properties for a behavior type.
@@ -59,8 +59,7 @@ where
         rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         echo_broadcast: EchoBroadcast,
     ) -> Result<EchoBroadcast, LocalError> {
         Ok(echo_broadcast)
@@ -75,8 +74,7 @@ where
         rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         normal_broadcast: NormalBroadcast,
     ) -> Result<NormalBroadcast, LocalError> {
         Ok(normal_broadcast)
@@ -91,8 +89,7 @@ where
         rng: &mut dyn CryptoRngCore,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         destination: &Id,
         direct_message: DirectMessage,
         artifact: Option<Artifact>,
@@ -184,7 +181,7 @@ where
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
         let round = self.entry_point.make_round(rng, shared_randomness, id)?;
-        Ok(BoxedRound::new_object_safe(MisbehavingRound::<Id, B, M> {
+        Ok(BoxedRound::new_dynamic(MisbehavingRound::<Id, B, M> {
             round,
             behavior: self.behavior,
         }))
@@ -210,19 +207,19 @@ where
 {
     /// Wraps the outcome of the underlying Round into the MisbehavingRound structure.
     fn map_outcome(
-        outcome: FinalizeOutcome<Id, <Self as ObjectSafeRound<Id>>::Protocol>,
+        outcome: FinalizeOutcome<Id, <Self as Round<Id>>::Protocol>,
         behavior: Option<B>,
-    ) -> FinalizeOutcome<Id, <Self as ObjectSafeRound<Id>>::Protocol> {
+    ) -> FinalizeOutcome<Id, <Self as Round<Id>>::Protocol> {
         match outcome {
             FinalizeOutcome::Result(result) => FinalizeOutcome::Result(result),
             FinalizeOutcome::AnotherRound(round) => {
-                FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(Self { round, behavior }))
+                FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(Self { round, behavior }))
             }
         }
     }
 }
 
-impl<Id, B, M> ObjectSafeRound<Id> for MisbehavingRound<Id, B, M>
+impl<Id, B, M> Round<Id> for MisbehavingRound<Id, B, M>
 where
     Id: PartyId,
     B: Behavior,
@@ -241,21 +238,16 @@ where
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let (direct_message, artifact) =
-            self.round
-                .as_ref()
-                .make_direct_message(rng, serializer, deserializer, destination)?;
+        let (direct_message, artifact) = self.round.as_ref().make_direct_message(rng, format, destination)?;
         if let Some(behavior) = self.behavior.as_ref() {
             M::modify_direct_message(
                 rng,
                 &self.round,
                 behavior,
-                serializer,
-                deserializer,
+                format,
                 destination,
                 direct_message,
                 artifact,
@@ -268,12 +260,11 @@ where
     fn make_echo_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
     ) -> Result<EchoBroadcast, LocalError> {
-        let echo_broadcast = self.round.as_ref().make_echo_broadcast(rng, serializer, deserializer)?;
+        let echo_broadcast = self.round.as_ref().make_echo_broadcast(rng, format)?;
         if let Some(behavior) = self.behavior.as_ref() {
-            M::modify_echo_broadcast(rng, &self.round, behavior, serializer, deserializer, echo_broadcast)
+            M::modify_echo_broadcast(rng, &self.round, behavior, format, echo_broadcast)
         } else {
             Ok(echo_broadcast)
         }
@@ -282,15 +273,11 @@ where
     fn make_normal_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
     ) -> Result<NormalBroadcast, LocalError> {
-        let normal_broadcast = self
-            .round
-            .as_ref()
-            .make_normal_broadcast(rng, serializer, deserializer)?;
+        let normal_broadcast = self.round.as_ref().make_normal_broadcast(rng, format)?;
         if let Some(behavior) = self.behavior.as_ref() {
-            M::modify_normal_broadcast(rng, &self.round, behavior, serializer, deserializer, normal_broadcast)
+            M::modify_normal_broadcast(rng, &self.round, behavior, format, normal_broadcast)
         } else {
             Ok(normal_broadcast)
         }
@@ -298,11 +285,11 @@ where
 
     fn receive_message(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        self.round.as_ref().receive_message(deserializer, from, message)
+        self.round.as_ref().receive_message(format, from, message)
     }
 
     fn finalize(

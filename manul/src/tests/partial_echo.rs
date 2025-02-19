@@ -1,4 +1,5 @@
 use alloc::{
+    boxed::Box,
     collections::{BTreeMap, BTreeSet},
     vec,
     vec::Vec,
@@ -11,10 +12,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
         EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
-        Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, Serializer,
-        TransitionInfo,
+        Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -27,7 +27,7 @@ impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type ProtocolError = NoProtocolErrors;
 
     fn verify_direct_message_is_invalid(
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _round_id: &RoundId,
         _message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
@@ -35,7 +35,7 @@ impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     }
 
     fn verify_echo_broadcast_is_invalid(
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _round_id: &RoundId,
         _message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
@@ -43,7 +43,7 @@ impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     }
 
     fn verify_normal_broadcast_is_invalid(
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _round_id: &RoundId,
         _message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
@@ -104,13 +104,13 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
     fn make_echo_broadcast(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
+        format: &BoxedFormat,
     ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.message_destinations.is_empty() {
             Ok(EchoBroadcast::none())
         } else {
             EchoBroadcast::new(
-                serializer,
+                format,
                 Round1Echo {
                     sender: self.inputs.id.clone(),
                 },
@@ -120,7 +120,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
 
     fn receive_message(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
@@ -130,7 +130,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         if self.inputs.expecting_messages_from.is_empty() {
             message.echo_broadcast.assert_is_none()?;
         } else {
-            let echo = message.echo_broadcast.deserialize::<Round1Echo<Id>>(deserializer)?;
+            let echo = message.echo_broadcast.deserialize::<Round1Echo<Id>>(format)?;
             assert_eq!(&echo.sender, from);
             assert!(self.inputs.expecting_messages_from.contains(from));
         }
@@ -139,7 +139,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
     }
 
     fn finalize(
-        self,
+        self: Box<Self>,
         _rng: &mut dyn CryptoRngCore,
         _payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,

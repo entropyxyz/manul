@@ -29,8 +29,7 @@ pub use round::{
     Payload, Protocol, ProtocolError, RequiredMessageParts, RequiredMessages, Round,
 };
 pub use round_id::{RoundId, TransitionInfo};
-pub use serialization::{Deserializer, Serializer};
+pub use serialization::BoxedFormat;
 
 pub(crate) use errors::ReceiveErrorType;
 pub(crate) use message::ProtocolMessagePartHashable;
-pub(crate) use object_safe::ObjectSafeRound;

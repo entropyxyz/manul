@@ -1,4 +1,5 @@
 use alloc::{
+    boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
     string::String,
@@ -17,9 +18,9 @@ use super::{
 };
 use crate::{
     protocol::{
-        Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
         FinalizeOutcome, MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessage,
-        ProtocolMessagePart, ReceiveError, Round, Serializer, TransitionInfo,
+        ProtocolMessagePart, ReceiveError, Round, TransitionInfo,
     },
     utils::SerializableMap,
 };
@@ -121,10 +122,10 @@ where
     }
 
     pub fn verify_normal_broadcast_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
-        message.verify_is_not::<EchoRoundMessage<SP>>(deserializer)
+        message.verify_is_not::<EchoRoundMessage<SP>>(format)
     }
 }
 
@@ -154,7 +155,7 @@ where
     fn make_normal_broadcast(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
+        format: &BoxedFormat,
     ) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making an echo round message", self.verifier);
 
@@ -174,12 +175,12 @@ where
             .into();
 
         let message = EchoRoundMessage::<SP> { message_hashes };
-        NormalBroadcast::new(serializer, message)
+        NormalBroadcast::new(format, message)
     }
 
     fn receive_message(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         from: &SP::Verifier,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<SP::Verifier, Self::Protocol>> {
@@ -188,9 +189,7 @@ where
         message.echo_broadcast.assert_is_none()?;
         message.direct_message.assert_is_none()?;
 
-        let message = message
-            .normal_broadcast
-            .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
+        let message = message.normal_broadcast.deserialize::<EchoRoundMessage<SP>>(format)?;
 
         // Check that the received message contains entries from `expected_echos`.
         // It is an unprovable fault.
@@ -267,7 +266,7 @@ where
     }
 
     fn finalize(
-        self,
+        self: Box<Self>,
         rng: &mut dyn CryptoRngCore,
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
