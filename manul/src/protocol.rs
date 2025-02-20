@@ -11,26 +11,25 @@ to be executed by a [`Session`](`crate::session::Session`).
 For more details, see the documentation of the mentioned traits.
 */
 
+mod boxed_format;
+mod boxed_round;
 mod errors;
 mod message;
-mod object_safe;
 mod round;
 mod round_id;
-mod serialization;
 
+pub use boxed_format::BoxedFormat;
+pub use boxed_round::BoxedRound;
 pub use errors::{
     DeserializationError, DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError,
     NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,
 };
 pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart};
-pub use object_safe::BoxedRound;
 pub use round::{
     Artifact, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoProtocolErrors, PartyId,
     Payload, Protocol, ProtocolError, RequiredMessageParts, RequiredMessages, Round,
 };
 pub use round_id::{RoundId, TransitionInfo};
-pub use serialization::{Deserializer, Serializer};
 
 pub(crate) use errors::ReceiveErrorType;
 pub(crate) use message::ProtocolMessagePartHashable;
-pub(crate) use object_safe::{BoxedRng, ObjectSafeRound};
