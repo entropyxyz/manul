@@ -300,7 +300,7 @@ where
     ) -> Result<PreprocessOutcome<SP::Verifier>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
         let key = self.verifier();
-        if self.transcript.is_banned(from) || accum.is_banned(from) {
+        if accum.is_banned(from) {
             trace!("{key:?} Banned.");
             return Ok(PreprocessOutcome::remote_error("The sender is banned"));
         }
@@ -417,7 +417,10 @@ where
 
     /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, SP> {
-        RoundAccumulator::new(&self.communication_info.expecting_messages_from)
+        RoundAccumulator::new(
+            &self.communication_info.expecting_messages_from,
+            self.transcript.banned_ids(),
+        )
     }
 
     fn terminate_inner(
@@ -549,6 +552,7 @@ pub enum CanFinalize {
 /// A mutable accumulator for collecting the results and errors from processing messages for a single round.
 #[derive_where::derive_where(Debug)]
 pub struct RoundAccumulator<P: Protocol<SP::Verifier>, SP: SessionParameters> {
+    banned_ids: BTreeSet<SP::Verifier>,
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
     expecting_messages_from: IdSet<SP::Verifier>,
     processing: BTreeSet<SP::Verifier>,
@@ -567,8 +571,9 @@ where
     P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
-    fn new(expecting_messages_from: &IdSet<SP::Verifier>) -> Self {
+    fn new(expecting_messages_from: &IdSet<SP::Verifier>, banned_ids: BTreeSet<SP::Verifier>) -> Self {
         Self {
+            banned_ids,
             still_have_not_sent_messages: expecting_messages_from.all().clone(),
             expecting_messages_from: expecting_messages_from.clone(),
             processing: BTreeSet::new(),
@@ -589,7 +594,7 @@ where
             .is_quorum(&self.payloads.keys().cloned().collect::<BTreeSet<_>>())
         {
             CanFinalize::Yes
-        } else if !self.still_have_not_sent_messages.is_empty() {
+        } else if self.expecting_messages_from.is_quorum_possible(&self.banned_ids) {
             CanFinalize::NotYet
         } else {
             CanFinalize::Never
@@ -597,7 +602,7 @@ where
     }
 
     fn is_banned(&self, from: &SP::Verifier) -> bool {
-        self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
+        self.banned_ids.contains(from)
     }
 
     fn message_is_being_processed(&self, from: &SP::Verifier) -> bool {
@@ -619,6 +624,7 @@ where
                 from
             )))
         } else {
+            self.banned_ids.insert(from.clone());
             Ok(())
         }
     }
@@ -630,6 +636,7 @@ where
                 from
             )))
         } else {
+            self.banned_ids.insert(from.clone());
             Ok(())
         }
     }
@@ -728,10 +735,7 @@ where
                 )?;
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::Unprovable(error) => {
-                self.unprovable_errors.insert(from.clone(), error);
-                Ok(())
-            }
+            ReceiveErrorType::Unprovable(error) => self.register_unprovable_error(&from, error),
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, *error)?;

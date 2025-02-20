@@ -50,6 +50,11 @@ impl<Id: Ord> IdSet<Id> {
         // TODO: assuming `ids` are a subset of `self.ids`. Can we?
         ids.len() >= self.threshold
     }
+
+    pub(crate) fn is_quorum_possible(&self, banned_ids: &BTreeSet<Id>) -> bool {
+        let ids = self.ids.intersection(banned_ids).collect::<BTreeSet<_>>();
+        self.ids.len() - ids.len() >= self.threshold
+    }
 }
 
 /// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
