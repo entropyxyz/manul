@@ -19,6 +19,39 @@ use super::{
     round_id::{RoundId, TransitionInfo},
 };
 
+// TODO: make a trait to implement custom threshold strategies
+/// A set of IDs with an associated quorum condition.
+#[derive(Debug, Clone)]
+pub struct IdSet<Id> {
+    ids: BTreeSet<Id>,
+    threshold: usize,
+}
+
+impl<Id: Ord> IdSet<Id> {
+    /// Creates a non-threshold ID set (that is, messages from all `ids` must be present for the quorum).
+    pub fn new_non_threshold(ids: BTreeSet<Id>) -> Self {
+        let threshold = ids.len();
+        Self { ids, threshold }
+    }
+
+    /// Creates an empty ID set.
+    pub fn empty() -> Self {
+        Self {
+            ids: BTreeSet::new(),
+            threshold: 0,
+        }
+    }
+
+    pub(crate) fn all(&self) -> &BTreeSet<Id> {
+        &self.ids
+    }
+
+    pub(crate) fn is_quorum(&self, ids: &BTreeSet<Id>) -> bool {
+        // TODO: assuming `ids` are a subset of `self.ids`. Can we?
+        ids.len() >= self.threshold
+    }
+}
+
 /// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
 #[derive(Debug, Clone)]
 pub struct CommunicationInfo<Id> {
@@ -35,7 +68,7 @@ pub struct CommunicationInfo<Id> {
     ///
     /// The execution layer will not call [`finalize`](`Round::finalize`) until all these nodes have responded
     /// (and the corresponding [`receive_message`](`Round::receive_message`) finished successfully).
-    pub expecting_messages_from: BTreeSet<Id>,
+    pub expecting_messages_from: IdSet<Id>,
 
     /// Returns the specific way the node participates in the echo round following this round.
     ///
@@ -50,7 +83,7 @@ impl<Id: PartyId> CommunicationInfo<Id> {
     pub fn regular(other_parties: &BTreeSet<Id>) -> Self {
         Self {
             message_destinations: other_parties.clone(),
-            expecting_messages_from: other_parties.clone(),
+            expecting_messages_from: IdSet::new_non_threshold(other_parties.clone()),
             echo_round_participation: EchoRoundParticipation::Default,
         }
     }

@@ -13,8 +13,8 @@ use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
         Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
-        Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
+        EntryPoint, FinalizeOutcome, IdSet, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast,
+        PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -55,7 +55,7 @@ impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
 struct Inputs<Id> {
     id: Id,
     message_destinations: BTreeSet<Id>,
-    expecting_messages_from: BTreeSet<Id>,
+    expecting_messages_from: IdSet<Id>,
     echo_round_participation: EchoRoundParticipation<Id>,
 }
 
@@ -127,12 +127,13 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         message.normal_broadcast.assert_is_none()?;
         message.direct_message.assert_is_none()?;
 
-        if self.inputs.expecting_messages_from.is_empty() {
+        // TODO: or use an Option<>?
+        if self.inputs.expecting_messages_from.all().is_empty() {
             message.echo_broadcast.assert_is_none()?;
         } else {
             let echo = message.echo_broadcast.deserialize::<Round1Echo<Id>>(format)?;
             assert_eq!(&echo.sender, from);
-            assert!(self.inputs.expecting_messages_from.contains(from));
+            assert!(self.inputs.expecting_messages_from.all().contains(from));
         }
 
         Ok(Payload::new(()))
@@ -163,7 +164,7 @@ fn partial_echo() {
         Inputs {
             id: signers[0].verifying_key(),
             message_destinations: BTreeSet::from([ids[1], ids[2], ids[3]]),
-            expecting_messages_from: BTreeSet::new(),
+            expecting_messages_from: IdSet::empty(),
             echo_round_participation: EchoRoundParticipation::Send,
         },
     );
@@ -172,7 +173,7 @@ fn partial_echo() {
         Inputs {
             id: signers[1].verifying_key(),
             message_destinations: BTreeSet::from([ids[2], ids[3]]),
-            expecting_messages_from: BTreeSet::from([ids[0]]),
+            expecting_messages_from: IdSet::new_non_threshold([ids[0]].into()),
             echo_round_participation: EchoRoundParticipation::Default,
         },
     );
@@ -181,7 +182,7 @@ fn partial_echo() {
         Inputs {
             id: signers[2].verifying_key(),
             message_destinations: BTreeSet::new(),
-            expecting_messages_from: BTreeSet::from([ids[0], ids[1]]),
+            expecting_messages_from: IdSet::new_non_threshold([ids[0], ids[1]].into()),
             echo_round_participation: EchoRoundParticipation::Receive {
                 echo_targets: BTreeSet::from([ids[1], ids[3]]),
             },
@@ -192,7 +193,7 @@ fn partial_echo() {
         Inputs {
             id: signers[3].verifying_key(),
             message_destinations: BTreeSet::new(),
-            expecting_messages_from: BTreeSet::from([ids[0], ids[1]]),
+            expecting_messages_from: IdSet::new_non_threshold([ids[0], ids[1]].into()),
             echo_round_participation: EchoRoundParticipation::Receive {
                 echo_targets: BTreeSet::from([ids[1], ids[2]]),
             },
@@ -203,7 +204,7 @@ fn partial_echo() {
         Inputs {
             id: signers[4].verifying_key(),
             message_destinations: BTreeSet::new(),
-            expecting_messages_from: BTreeSet::new(),
+            expecting_messages_from: IdSet::empty(),
             echo_round_participation: EchoRoundParticipation::<TestVerifier>::Default,
         },
     );
