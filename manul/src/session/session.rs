@@ -24,8 +24,8 @@ use super::{
 };
 use crate::protocol::{
     Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-    EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart,
-    ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
+    EntryPoint, FinalizeOutcome, IdSet, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
+    ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -100,7 +100,7 @@ impl AsRef<[u8]> for SessionId {
 #[derive(Debug)]
 pub(crate) struct EchoRoundInfo<Verifier> {
     pub(crate) message_destinations: BTreeSet<Verifier>,
-    pub(crate) expecting_messages_from: BTreeSet<Verifier>,
+    pub(crate) expecting_messages_from: IdSet<Verifier>,
     pub(crate) expected_echos: BTreeSet<Verifier>,
 }
 
@@ -180,11 +180,14 @@ where
             EchoRoundParticipation::Default => {
                 if round_sends_echo_broadcast {
                     // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
-                    let mut expected_echos = communication_info.expecting_messages_from.clone();
+                    let mut expected_echos = communication_info.expecting_messages_from.all().clone();
                     expected_echos.insert(verifier.clone());
                     Some(EchoRoundInfo {
                         message_destinations: communication_info.message_destinations.clone(),
-                        expecting_messages_from: communication_info.message_destinations.clone(),
+                        // TODO: this is not correct in general
+                        expecting_messages_from: IdSet::new_non_threshold(
+                            communication_info.message_destinations.clone(),
+                        ),
                         expected_echos,
                     })
                 } else {
@@ -194,8 +197,9 @@ where
             EchoRoundParticipation::Send => None,
             EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
                 message_destinations: echo_targets.clone(),
-                expecting_messages_from: echo_targets.clone(),
-                expected_echos: communication_info.expecting_messages_from.clone(),
+                // TODO: this is not correct in general
+                expecting_messages_from: IdSet::new_non_threshold(echo_targets.clone()),
+                expected_echos: communication_info.expecting_messages_from.all().clone(),
             }),
         };
 
@@ -546,7 +550,7 @@ pub enum CanFinalize {
 #[derive_where::derive_where(Debug)]
 pub struct RoundAccumulator<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
-    expecting_messages_from: BTreeSet<SP::Verifier>,
+    expecting_messages_from: IdSet<SP::Verifier>,
     processing: BTreeSet<SP::Verifier>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
@@ -563,9 +567,9 @@ where
     P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
-    fn new(expecting_messages_from: &BTreeSet<SP::Verifier>) -> Self {
+    fn new(expecting_messages_from: &IdSet<SP::Verifier>) -> Self {
         Self {
-            still_have_not_sent_messages: expecting_messages_from.clone(),
+            still_have_not_sent_messages: expecting_messages_from.all().clone(),
             expecting_messages_from: expecting_messages_from.clone(),
             processing: BTreeSet::new(),
             payloads: BTreeMap::new(),
@@ -582,8 +586,7 @@ where
     fn can_finalize(&self) -> CanFinalize {
         if self
             .expecting_messages_from
-            .iter()
-            .all(|key| self.payloads.contains_key(key))
+            .is_quorum(&self.payloads.keys().cloned().collect::<BTreeSet<_>>())
         {
             CanFinalize::Yes
         } else if !self.still_have_not_sent_messages.is_empty() {
