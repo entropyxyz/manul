@@ -113,6 +113,7 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     verifier: SP::Verifier,
     format: BoxedFormat,
     round: BoxedRound<SP::Verifier, P>,
+    message_destinations: BTreeSet<SP::Verifier>,
     communication_info: CommunicationInfo<SP::Verifier>,
     echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
@@ -174,6 +175,11 @@ where
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
         let communication_info = round.as_ref().communication_info();
+        let message_destinations = communication_info
+            .message_destinations
+            .difference(&transcript.banned_ids())
+            .cloned()
+            .collect::<BTreeSet<_>>();
 
         let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
         let echo_round_info = match &communication_info.echo_round_participation {
@@ -212,6 +218,7 @@ where
             echo_broadcast,
             normal_broadcast,
             transition_info,
+            message_destinations,
             communication_info,
             echo_round_info,
             transcript,
@@ -230,7 +237,7 @@ where
 
     /// Returns the set of message destinations for the current round.
     pub fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.communication_info.message_destinations
+        &self.message_destinations
     }
 
     /// Creates the message to be sent to the given destination.
@@ -241,6 +248,12 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
+        if !self.message_destinations.contains(destination) {
+            return Err(LocalError::new(
+                "Destination {destination} is not in the set of message destinations for this round",
+            ));
+        }
+
         let (direct_message, artifact) = self
             .round
             .as_ref()
