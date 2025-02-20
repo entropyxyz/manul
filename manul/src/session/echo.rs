@@ -34,7 +34,12 @@ pub(crate) enum EchoRoundError<Id> {
     ///
     /// The attached identifier points out the sender for whom the echoed message was invalid,
     /// to speed up the verification process.
-    InvalidEcho(Id),
+    InvalidEcho {
+        // Even though this will be the same as the message sender, it is convenient to record it here
+        // because of the way this error will be processed.
+        guilty_party: Id,
+        failed_for: Id,
+    },
     /// The originally received message and the one received in the echo pack were both valid,
     /// but different.
     ///
@@ -49,7 +54,7 @@ pub(crate) enum EchoRoundError<Id> {
 impl<Id> EchoRoundError<Id> {
     pub(crate) fn description(&self) -> String {
         match self {
-            Self::InvalidEcho(_) => "Invalid message received among the ones echoed".into(),
+            Self::InvalidEcho { .. } => "Invalid message received among the ones echoed".into(),
             Self::MismatchedBroadcasts { .. } => {
                 "The echoed message is different from the originally received one".into()
             }
@@ -236,17 +241,29 @@ where
                 // This means `from` sent us an incorrectly signed message.
                 // Provable fault of `from`.
                 Err(MessageVerificationError::InvalidSignature) => {
-                    return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
+                    return Err(EchoRoundError::InvalidEcho {
+                        guilty_party: from.clone(),
+                        failed_for: sender.clone(),
+                    }
+                    .into())
                 }
                 Err(MessageVerificationError::SignatureMismatch) => {
-                    return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
+                    return Err(EchoRoundError::InvalidEcho {
+                        guilty_party: from.clone(),
+                        failed_for: sender.clone(),
+                    }
+                    .into())
                 }
             };
 
             // `from` sent us a correctly signed message but from another round or another session.
             // Provable fault of `from`.
             if verified_echo.metadata() != previously_received_echo.metadata() {
-                return Err(EchoRoundError::InvalidEcho(sender.clone()).into());
+                return Err(EchoRoundError::InvalidEcho {
+                    guilty_party: from.clone(),
+                    failed_for: sender.clone(),
+                }
+                .into());
             }
 
             // `sender` sent us and `from` messages with different payloads,
