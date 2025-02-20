@@ -12,11 +12,11 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    boxed_format::BoxedFormat,
     boxed_round::BoxedRound,
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     round_id::{RoundId, TransitionInfo},
-    serialization::BoxedFormat,
 };
 
 /// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
