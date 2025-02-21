@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 use super::errors::{DeserializationError, LocalError};
 use crate::session::WireFormat;
 
-// Serialization
-
 trait ObjectSafeSerializer: Debug {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError>;
 }
@@ -21,27 +19,6 @@ impl<F: WireFormat> ObjectSafeSerializer for SerializerWrapper<F> {
         F::serialize(&value)
     }
 }
-
-/// A serializer for protocol messages.
-#[derive(Debug)]
-pub struct Serializer(Box<dyn ObjectSafeSerializer + Send + Sync>);
-
-impl Serializer {
-    pub(crate) fn new<F: WireFormat>() -> Self {
-        Self(Box::new(SerializerWrapper::<F>(PhantomData)))
-    }
-
-    /// Serializes a `serde`-serializable object.
-    pub fn serialize<T>(&self, value: T) -> Result<Box<[u8]>, LocalError>
-    where
-        T: 'static + Serialize,
-    {
-        let boxed_value: Box<dyn erased_serde::Serialize> = Box::new(value);
-        self.0.serialize(boxed_value)
-    }
-}
-
-// Deserialization
 
 // `fn(F)` makes the type `Send` + `Sync` even if `F` isn't.
 #[derive(Debug)]
@@ -61,24 +38,36 @@ where
     }
 }
 
-/// A deserializer for protocol messages.
+/// A serializer/deserializer for protocol messages.
 #[derive(Debug)]
-pub struct Deserializer(Box<dyn ObjectSafeDeserializerFactory + Send + Sync>);
+pub struct BoxedFormat {
+    serializer: Box<dyn ObjectSafeSerializer + Send + Sync>,
+    deserializer_factory: Box<dyn ObjectSafeDeserializerFactory + Send + Sync>,
+}
 
-impl Deserializer {
-    pub(crate) fn new<F>() -> Self
+impl BoxedFormat {
+    pub(crate) fn new<F: WireFormat>() -> Self {
+        Self {
+            serializer: Box::new(SerializerWrapper::<F>(PhantomData)),
+            deserializer_factory: Box::new(DeserializerFactoryWrapper::<F>(PhantomData)),
+        }
+    }
+
+    /// Serializes a `serde`-serializable object.
+    pub(crate) fn serialize<T>(&self, value: T) -> Result<Box<[u8]>, LocalError>
     where
-        F: WireFormat,
+        T: 'static + Serialize,
     {
-        Self(Box::new(DeserializerFactoryWrapper::<F>(PhantomData)))
+        let boxed_value: Box<dyn erased_serde::Serialize> = Box::new(value);
+        self.serializer.serialize(boxed_value)
     }
 
     /// Deserializes a `serde`-deserializable object.
-    pub fn deserialize<'de, T>(&self, bytes: &'de [u8]) -> Result<T, DeserializationError>
+    pub(crate) fn deserialize<'de, T>(&self, bytes: &'de [u8]) -> Result<T, DeserializationError>
     where
         T: Deserialize<'de>,
     {
-        let mut deserializer = self.0.make_erased_deserializer(bytes);
+        let mut deserializer = self.deserializer_factory.make_erased_deserializer(bytes);
         erased_serde::deserialize::<T>(&mut deserializer)
             .map_err(|err| DeserializationError::new(format!("Deserialization error: {err:?}")))
     }
@@ -88,13 +77,11 @@ impl Deserializer {
 mod tests {
     use impls::impls;
 
-    use super::{Deserializer, Serializer};
+    use super::BoxedFormat;
 
     #[test]
     fn test_concurrency_bounds() {
-        assert!(impls!(Serializer: Send));
-        assert!(impls!(Serializer: Sync));
-        assert!(impls!(Deserializer: Send));
-        assert!(impls!(Deserializer: Sync));
+        assert!(impls!(BoxedFormat: Send));
+        assert!(impls!(BoxedFormat: Sync));
     }
 }
