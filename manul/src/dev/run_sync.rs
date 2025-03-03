@@ -153,7 +153,7 @@ where
     Ok((state, messages))
 }
 
-/// Execute sessions for multiple nodes concurrently,
+/// Execute sessions for multiple nodes in a single thread,
 /// given a vector of the signer and the entry point as a tuple for each node.
 pub fn run_sync<EP, SP>(
     rng: &mut impl CryptoRngCore,

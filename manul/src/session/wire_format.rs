@@ -25,7 +25,7 @@ if we could instead type-erase the serializer, we wouldn't need that.
 */
 
 /// A (de)serializer that will be used for the protocol messages.
-pub trait WireFormat: 'static + Send + Sync + Debug {
+pub trait WireFormat: 'static + Debug {
     /// Serializes the given object into a bytestring.
     fn serialize<T: Serialize>(value: T) -> Result<Box<[u8]>, LocalError>;
 

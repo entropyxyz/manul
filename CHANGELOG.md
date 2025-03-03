@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the RNG parameter from `Round::receive_message()` and `Session::process_message()`. ([#83])
 - Renamed `Round::entry_round()` to `entry_round_id()` and made it mandatory to implement. ([#84])
 - Rework `RequiredMessageParts` API. ([#85])
+- Removed `Send + Sync` bound on `WireFormat`. ([#92])
+- Removed `Send` bound on `ProtocolError`. ([#92])
+- Merged `Round::id()`, `possible_next_rounds()` and `may_produce_result()` into `transition_info()`. ([#93])
+- Merged `Round::message_destinations()`, `expecting_messages_from()` and `echo_round_participation()` into `communication_info()`. ([#93])
 
 
 ### Added
@@ -35,11 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Conversion from `u8` to `RoundId` and comparison of `RoundId` with `u8`. ([#84])
 - `Misbehaving::override_finalize()` for malicious finalization logic. ([#87])
 - `From<SerializableMap<K, V>> for BTreeMap<K, V>` impl. ([#88])
+- `session::tokio` submodule containing functions for executing a session in an async `tokio` environment and supporting types. Gated behind the `tokio` feature. ([#91])
+- `dev::tokio` submoduloe containing functions for executing multiple sessions in an async `tokio` environment. Gated behind the `tokio` feature. ([#91])
 
 
 ### Fixed
 
 - An error message in `ProtocolMessagePart::assert_is_none()`. ([#86])
+- Output size mismatch in `TestHasher`. ([#90])
+- Reduced the size of echo round message by sending hashes instead of full messages. ([#90])
 
 
 [#75]: https://github.com/entropyxyz/manul/pull/75
@@ -52,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#86]: https://github.com/entropyxyz/manul/pull/86
 [#87]: https://github.com/entropyxyz/manul/pull/87
 [#88]: https://github.com/entropyxyz/manul/pull/88
+[#90]: https://github.com/entropyxyz/manul/pull/90
+[#91]: https://github.com/entropyxyz/manul/pull/91
+[#92]: https://github.com/entropyxyz/manul/pull/92
+[#93]: https://github.com/entropyxyz/manul/pull/93
 
 
 ## [0.1.0] - 2024-11-19

@@ -11,12 +11,10 @@ use super::{
     wire_format::WireFormat,
     LocalError,
 };
-use crate::protocol::{
-    DeserializationError, DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart, RoundId,
-};
+use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePartHashable, RoundId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
+struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
 
 impl SerializedSignature {
     pub fn new<SP>(signature: SP::Signature) -> Result<Self, LocalError>
@@ -26,11 +24,11 @@ impl SerializedSignature {
         SP::WireFormat::serialize(signature).map(Self)
     }
 
-    pub fn deserialize<SP>(&self) -> Result<SP::Signature, DeserializationError>
+    pub fn deserialize<SP>(&self) -> Result<SP::Signature, MessageVerificationError>
     where
         SP: SessionParameters,
     {
-        SP::WireFormat::deserialize::<SP::Signature>(&self.0)
+        SP::WireFormat::deserialize::<SP::Signature>(&self.0).map_err(|_| MessageVerificationError::InvalidSignature)
     }
 }
 
@@ -41,6 +39,18 @@ pub(crate) enum MessageVerificationError {
     InvalidSignature,
     /// The signature does not match the signed payload.
     SignatureMismatch,
+}
+
+impl From<LocalError> for MessageVerificationError {
+    fn from(source: LocalError) -> Self {
+        Self::Local(source)
+    }
+}
+
+impl From<signature::Error> for MessageVerificationError {
+    fn from(_source: signature::Error) -> Self {
+        Self::SignatureMismatch
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,26 +88,32 @@ pub struct MessageWithMetadata<M> {
     message: M,
 }
 
-impl<M: ProtocolMessagePart> MessageWithMetadata<M> {
+fn message_digest<SP: SessionParameters>(
+    metadata: &MessageMetadata,
+    message_part_hash: &[u8],
+) -> Result<SP::Digest, LocalError> {
+    let message_part_hash_len =
+        u64::try_from(message_part_hash.as_ref().len()).expect("message part hash length does not exceed 18 exabytes");
+    Ok(SP::Digest::new_with_prefix(b"SignedMessagePartDigest")
+        .chain_update(SP::WireFormat::serialize(metadata)?)
+        .chain_update(message_part_hash_len.to_be_bytes())
+        .chain_update(message_part_hash))
+}
+
+impl<M: ProtocolMessagePartHashable> MessageWithMetadata<M> {
     fn digest<SP>(&self) -> Result<SP::Digest, LocalError>
     where
         SP: SessionParameters,
     {
-        let digest =
-            SP::Digest::new_with_prefix(b"SignedMessagePart").chain_update(SP::WireFormat::serialize(&self.metadata)?);
-
-        let digest = match self.message.maybe_message().as_ref() {
-            None => digest.chain_update([0u8]),
-            Some(payload) => digest.chain_update([1u8]).chain_update(payload),
-        };
-
+        let message_part_hash = self.message.hash::<SP::Digest>();
+        let digest = message_digest::<SP>(&self.metadata, &message_part_hash)?;
         Ok(digest)
     }
 }
 
 impl<M> SignedMessagePart<M>
 where
-    M: ProtocolMessagePart,
+    M: ProtocolMessagePartHashable,
 {
     pub fn new<SP>(
         rng: &mut impl CryptoRngCore,
@@ -121,6 +137,18 @@ where
         })
     }
 
+    pub(crate) fn to_signed_hash<SP>(&self) -> SignedMessageHash
+    where
+        SP: SessionParameters,
+    {
+        let message_part_hash = self.message_with_metadata.message.hash::<SP::Digest>();
+        SignedMessageHash {
+            signature: self.signature.clone(),
+            metadata: self.message_with_metadata.metadata.clone(),
+            message_part_hash: message_part_hash.as_ref().into(),
+        }
+    }
+
     pub(crate) fn metadata(&self) -> &MessageMetadata {
         &self.message_with_metadata.metadata
     }
@@ -133,22 +161,13 @@ where
     where
         SP: SessionParameters,
     {
-        let digest = self
-            .message_with_metadata
-            .digest::<SP>()
-            .map_err(MessageVerificationError::Local)?;
-        let signature = self
-            .signature
-            .deserialize::<SP>()
-            .map_err(|_| MessageVerificationError::InvalidSignature)?;
-        if verifier.verify_digest(digest, &signature).is_ok() {
-            Ok(VerifiedMessagePart {
-                signature: self.signature,
-                message_with_metadata: self.message_with_metadata,
-            })
-        } else {
-            Err(MessageVerificationError::SignatureMismatch)
-        }
+        let digest = self.message_with_metadata.digest::<SP>()?;
+        let signature = self.signature.deserialize::<SP>()?;
+        verifier.verify_digest(digest, &signature)?;
+        Ok(VerifiedMessagePart {
+            signature: self.signature,
+            message_with_metadata: self.message_with_metadata,
+        })
     }
 }
 
@@ -322,5 +341,55 @@ impl<Verifier> VerifiedMessage<Verifier> {
         let echo_broadcast = self.echo_broadcast.into_unverified();
         let normal_broadcast = self.normal_broadcast.into_unverified();
         (echo_broadcast, normal_broadcast, direct_message)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SignedMessageHash {
+    signature: SerializedSignature,
+    metadata: MessageMetadata,
+    #[serde(with = "SliceLike::<Hex>")]
+    message_part_hash: Box<[u8]>,
+}
+
+impl SignedMessageHash {
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageHash, MessageVerificationError>
+    where
+        SP: SessionParameters,
+    {
+        let digest = message_digest::<SP>(&self.metadata, &self.message_part_hash)?;
+        let signature = self.signature.deserialize::<SP>()?;
+        verifier.verify_digest(digest, &signature)?;
+        Ok(VerifiedMessageHash {
+            signature: self.signature,
+            metadata: self.metadata,
+            message_part_hash: self.message_part_hash,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedMessageHash {
+    signature: SerializedSignature,
+    metadata: MessageMetadata,
+    message_part_hash: Box<[u8]>,
+}
+
+impl VerifiedMessageHash {
+    pub(crate) fn metadata(&self) -> &MessageMetadata {
+        &self.metadata
+    }
+
+    pub(crate) fn is_hash_of<SP, M>(&self, message: &SignedMessagePart<M>) -> bool
+    where
+        SP: SessionParameters,
+        M: ProtocolMessagePartHashable,
+    {
+        let message_part_hash = message.message_with_metadata.message.hash::<SP::Digest>();
+        message_part_hash.as_ref() == self.message_part_hash.as_ref()
     }
 }

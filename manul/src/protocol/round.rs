@@ -5,19 +5,56 @@ use alloc::{
 };
 use core::{
     any::Any,
-    fmt::{self, Debug, Display},
+    fmt::{Debug, Display},
 };
 
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
-use tinyvec::TinyVec;
 
 use super::{
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     object_safe::BoxedRound,
+    round_id::{RoundId, TransitionInfo},
     serialization::{Deserializer, Serializer},
 };
+
+/// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
+#[derive(Debug, Clone)]
+pub struct CommunicationInfo<Id> {
+    /// The destinations of the messages to be sent out by this round.
+    ///
+    /// The way it is interpreted by the execution layer is
+    /// - An echo broadcast (if any) is sent to all of these destinations;
+    /// - A direct message is sent to each of these destinations,
+    ///   which means [`make_direct_message`](`Round::make_direct_message`) may be called
+    ///   for each element of the returned set.
+    pub message_destinations: BTreeSet<Id>,
+
+    /// Returns the set of node IDs from which this round expects messages.
+    ///
+    /// The execution layer will not call [`finalize`](`Round::finalize`) until all these nodes have responded
+    /// (and the corresponding [`receive_message`](`Round::receive_message`) finished successfully).
+    pub expecting_messages_from: BTreeSet<Id>,
+
+    /// Returns the specific way the node participates in the echo round following this round.
+    ///
+    /// Returns [`EchoRoundParticipation::Default`] by default; this works fine when every node
+    /// sends messages to every other one, or do not send or receive any echo broadcasts.
+    /// Otherwise, review the options in [`EchoRoundParticipation`] and pick the appropriate one.
+    pub echo_round_participation: EchoRoundParticipation<Id>,
+}
+
+impl<Id: PartyId> CommunicationInfo<Id> {
+    /// A regular round that sends messages to all `other_parties`, and expects messages back from them.
+    pub fn regular(other_parties: &BTreeSet<Id>) -> Self {
+        Self {
+            message_destinations: other_parties.clone(),
+            expecting_messages_from: other_parties.clone(),
+            echo_round_participation: EchoRoundParticipation::Default,
+        }
+    }
+}
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
@@ -26,132 +63,6 @@ pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
     AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
     Result(P::Result),
-}
-
-/// A round identifier.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RoundId {
-    round_nums: TinyVec<[u8; 4]>,
-    is_echo: bool,
-}
-
-impl Display for RoundId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "Round ")?;
-        for (i, round_num) in self.round_nums.iter().enumerate().rev() {
-            write!(f, "{}", round_num)?;
-            if i != 0 {
-                write!(f, "-")?;
-            }
-        }
-        if self.is_echo {
-            write!(f, " (echo)")?;
-        }
-        Ok(())
-    }
-}
-
-impl RoundId {
-    /// Creates a new round identifier.
-    pub fn new(round_num: u8) -> Self {
-        let mut round_nums = TinyVec::new();
-        round_nums.push(round_num);
-        Self {
-            round_nums,
-            is_echo: false,
-        }
-    }
-
-    /// Prefixes this round ID (possibly already nested) with a group number.
-    pub(crate) fn group_under(&self, round_num: u8) -> Self {
-        let mut round_nums = self.round_nums.clone();
-        round_nums.push(round_num);
-        Self {
-            round_nums,
-            is_echo: self.is_echo,
-        }
-    }
-
-    /// Removes the top group prefix from this round ID
-    /// and returns this prefix along with the resulting round ID.
-    ///
-    /// Returns the `Err` variant if the round ID is not nested.
-    pub(crate) fn split_group(&self) -> Result<(u8, Self), LocalError> {
-        if self.round_nums.len() == 1 {
-            Err(LocalError::new("This round ID is not in a group"))
-        } else {
-            let mut round_nums = self.round_nums.clone();
-            let group = round_nums.pop().expect("vector size greater than 1");
-            let round_id = Self {
-                round_nums,
-                is_echo: self.is_echo,
-            };
-            Ok((group, round_id))
-        }
-    }
-
-    /// Removes the top group prefix from this round ID and returns the resulting Round ID.
-    ///
-    /// Returns the `Err` variant if the round ID is not nested.
-    pub(crate) fn ungroup(&self) -> Result<Self, LocalError> {
-        if self.round_nums.len() == 1 {
-            Err(LocalError::new("This round ID is not in a group"))
-        } else {
-            let mut round_nums = self.round_nums.clone();
-            round_nums.pop().expect("vector size greater than 1");
-            Ok(Self {
-                round_nums,
-                is_echo: self.is_echo,
-            })
-        }
-    }
-
-    /// Returns `true` if this is an ID of an echo broadcast round.
-    pub(crate) fn is_echo(&self) -> bool {
-        self.is_echo
-    }
-
-    /// Returns the identifier of the echo round corresponding to the given non-echo round.
-    ///
-    /// Panics if `self` is already an echo round identifier.
-    pub(crate) fn echo(&self) -> Self {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
-        if self.is_echo {
-            panic!("This is already an echo round ID");
-        }
-        Self {
-            round_nums: self.round_nums.clone(),
-            is_echo: true,
-        }
-    }
-
-    /// Returns the identifier of the non-echo round corresponding to the given echo round.
-    ///
-    /// Panics if `self` is already a non-echo round identifier.
-    pub(crate) fn non_echo(&self) -> Self {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
-        if !self.is_echo {
-            panic!("This is already an non-echo round ID");
-        }
-        Self {
-            round_nums: self.round_nums.clone(),
-            is_echo: false,
-        }
-    }
-}
-
-impl From<u8> for RoundId {
-    fn from(source: u8) -> Self {
-        Self::new(source)
-    }
-}
-
-impl PartialEq<u8> for RoundId {
-    fn eq(&self, rhs: &u8) -> bool {
-        self == &RoundId::new(*rhs)
-    }
 }
 
 /// A distributed protocol.
@@ -283,7 +194,7 @@ impl RequiredMessages {
 ///
 /// Provable here means that we can create an evidence object entirely of messages signed by some party,
 /// which, in combination, prove the party's malicious actions.
-pub trait ProtocolError<Id>: Display + Debug + Clone + Send + Serialize + for<'de> Deserialize<'de> {
+pub trait ProtocolError<Id>: Display + Debug + Clone + Serialize + for<'de> Deserialize<'de> {
     /// Additional data that cannot be derived from the node's messages alone
     /// and therefore has to be supplied externally during evidence verification.
     type AssociatedData: Debug;
@@ -459,46 +370,15 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 
-    /// The round ID.
+    /// Returns the information about the position of this round in the state transition graph.
     ///
-    /// **Note:** these should not repeat during execution.
-    fn id(&self) -> RoundId;
+    /// See [`TransitionInfo`] documentation for more details.
+    fn transition_info(&self) -> TransitionInfo;
 
-    /// The round IDs of the rounds this round can finalize into.
+    /// Returns the information about the communication this rounds engages in with other nodes.
     ///
-    /// Returns an empty set if this round only finalizes into a result.
-    fn possible_next_rounds(&self) -> BTreeSet<RoundId>;
-
-    /// Returns ``true`` if this round's [`Round::finalize`] may return [`FinalizeOutcome::Result`].
-    ///
-    /// The blanket implementation returns ``false``.
-    fn may_produce_result(&self) -> bool {
-        false
-    }
-
-    /// The destinations of the messages to be sent out by this round.
-    ///
-    /// The way it is interpreted by the execution layer is
-    /// - An echo broadcast (if any) is sent to all of these destinations;
-    /// - A direct message is sent to each of these destinations,
-    ///   which means [`make_direct_message`](`Self::make_direct_message`) may be called
-    ///   for each element of the returned set.
-    fn message_destinations(&self) -> &BTreeSet<Id>;
-
-    /// Returns the set of node IDs from which this round expects messages.
-    ///
-    /// The execution layer will not call [`finalize`](`Self::finalize`) until all these nodes have responded
-    /// (and the corresponding [`receive_message`](`Self::receive_message`) finished successfully).
-    fn expecting_messages_from(&self) -> &BTreeSet<Id>;
-
-    /// Returns the specific way the node participates in the echo round following this round.
-    ///
-    /// Returns [`EchoRoundParticipation::Default`] by default; this works fine when every node
-    /// sends messages to every other one, or do not send or receive any echo broadcasts.
-    /// Otherwise, review the options in [`EchoRoundParticipation`] and pick the appropriate one.
-    fn echo_round_participation(&self) -> EchoRoundParticipation<Id> {
-        EchoRoundParticipation::Default
-    }
+    /// See [`CommunicationInfo`] documentation for more details.
+    fn communication_info(&self) -> CommunicationInfo<Id>;
 
     /// Returns the direct message to the given destination and (maybe) an accompanying artifact.
     ///
@@ -537,7 +417,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// Return [`NormalBroadcast::none`] if this round does not send normal broadcast messages.
     /// This is also the blanket implementation.
     ///
-    /// Unlike the echo broadcasts, these will be just sent to every node from [`Self::message_destinations`]
+    /// Unlike the echo broadcasts, these will be just sent to every node defined in [`Self::communication_info`]
     /// without any confirmation required.
     fn make_normal_broadcast(
         &self,

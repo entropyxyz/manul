@@ -12,6 +12,9 @@ mod run_sync;
 mod session_parameters;
 mod wire_format;
 
+#[cfg(feature = "tokio")]
+pub mod tokio;
+
 pub use run_sync::{run_sync, ExecutionResult};
 pub use session_parameters::{TestHasher, TestSessionParams, TestSignature, TestSigner, TestVerifier};
 pub use wire_format::{BinaryFormat, HumanReadableFormat};

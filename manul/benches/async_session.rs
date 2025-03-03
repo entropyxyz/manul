@@ -1,11 +1,12 @@
 extern crate alloc;
+extern crate std;
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
-    dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
+    dev::{tokio::run_async, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
         Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
         FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
@@ -15,6 +16,16 @@ use manul::{
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
+
+fn do_work(seed: u8) -> u128 {
+    let mut x = seed as u128;
+    let p = (1u128 << 64) - 59;
+    for _ in 0..1000000 {
+        x *= x;
+        x %= p;
+    }
+    x
+}
 
 #[derive(Debug)]
 pub struct EmptyProtocol;
@@ -62,7 +73,7 @@ struct Inputs<Id> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Round1DirectMessage;
+struct Round1DirectMessage(u128);
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Round1EchoBroadcast;
@@ -124,7 +135,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         serializer: &Serializer,
         _destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = DirectMessage::new(serializer, Round1DirectMessage)?;
+        let dm = DirectMessage::new(serializer, Round1DirectMessage(do_work(self.round_counter + 2)))?;
         let artifact = Artifact::new(Round1Artifact);
         Ok((dm, Some(artifact)))
     }
@@ -135,6 +146,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         _from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
+        //std::thread::sleep(std::time::Duration::from_secs_f64(0.001));
         if self.inputs.echo {
             let _echo_broadcast = message
                 .echo_broadcast
@@ -143,9 +155,10 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
             message.echo_broadcast.assert_is_none()?;
         }
         message.normal_broadcast.assert_is_none()?;
-        let _direct_message = message
+        let direct_message = message
             .direct_message
             .deserialize::<Round1DirectMessage>(deserializer)?;
+        assert!(direct_message.0 == do_work(self.round_counter + 2));
         Ok(Payload::new(Round1Payload))
     }
 
@@ -174,15 +187,15 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     }
 }
 
-fn bench_empty_rounds(c: &mut Criterion) {
+fn bench_async_session(c: &mut Criterion) {
     // Benchmarks a full run of a protocol with rounds that do nothing but send and receive empty messages.
     // This serves as an "integration" benchmark for the whole `Session`.
     // Necessarily includes the overhead of `run_sync()` as well.
 
-    let mut group = c.benchmark_group("Empty rounds");
+    let mut group = c.benchmark_group("Async session execution");
 
-    let nodes = 25;
-    let rounds_num = 5;
+    let nodes = 10;
+    let rounds_num = 1;
 
     let signers = (0..nodes).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
@@ -190,66 +203,45 @@ fn bench_empty_rounds(c: &mut Criterion) {
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
 
-    let entry_points_no_echo = signers
-        .iter()
-        .cloned()
+    let entry_points = signers
+        .into_iter()
         .map(|signer| {
             let mut other_ids = all_ids.clone();
             other_ids.remove(&signer.verifying_key());
-            (
-                signer,
-                Inputs {
-                    rounds_num,
-                    other_ids,
-                    echo: false,
-                },
-            )
+            let entry_point = Inputs {
+                rounds_num,
+                other_ids,
+                echo: false,
+            };
+            (signer, entry_point)
         })
         .collect::<Vec<_>>();
 
-    group.bench_function("25 nodes, 5 rounds, no echo", |b| {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    group.sample_size(10);
+    group.bench_function("no offloading, 10 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
-            assert!(
-                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_no_echo.clone())
-                    .unwrap()
-                    .results()
-                    .is_ok()
-            )
+            rt.block_on(async {
+                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points.clone(), false).await
+            })
         })
     });
 
-    let entry_points_echo = signers
-        .iter()
-        .cloned()
-        .map(|signer| {
-            let mut other_ids = all_ids.clone();
-            other_ids.remove(&signer.verifying_key());
-            (
-                signer,
-                Inputs {
-                    rounds_num,
-                    other_ids,
-                    echo: true,
-                },
-            )
-        })
-        .collect::<Vec<_>>();
-
-    group.sample_size(30);
-
-    group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
+    group.sample_size(10);
+    group.bench_function("with offloading, 10 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
-            assert!(
-                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_echo.clone())
-                    .unwrap()
-                    .results()
-                    .is_ok()
-            )
+            rt.block_on(async {
+                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points.clone(), true).await
+            })
         })
     });
 
     group.finish()
 }
 
-criterion_group!(benches, bench_empty_rounds,);
+criterion_group!(benches, bench_async_session,);
 criterion_main!(benches);

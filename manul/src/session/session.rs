@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedRound, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-    FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError,
-    ReceiveErrorType, RoundId, Serializer,
+    Artifact, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+    EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart,
+    ReceiveError, ReceiveErrorType, RoundId, Serializer, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -114,11 +114,11 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     serializer: Serializer,
     deserializer: Deserializer,
     round: BoxedRound<SP::Verifier, P>,
-    message_destinations: BTreeSet<SP::Verifier>,
+    communication_info: CommunicationInfo<SP::Verifier>,
     echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
-    possible_next_rounds: BTreeSet<RoundId>,
+    transition_info: TransitionInfo,
     transcript: Transcript<P, SP>,
 }
 
@@ -176,26 +176,26 @@ where
     ) -> Result<Self, LocalError> {
         let verifier = signer.verifying_key();
 
+        let transition_info = round.as_ref().transition_info();
+
         let echo = round.as_ref().make_echo_broadcast(rng, &serializer, &deserializer)?;
-        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &round.id(), echo)?;
+        let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), echo)?;
 
         let normal = round.as_ref().make_normal_broadcast(rng, &serializer, &deserializer)?;
-        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &round.id(), normal)?;
+        let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
-        let message_destinations = round.as_ref().message_destinations().clone();
-
-        let echo_round_participation = round.as_ref().echo_round_participation();
+        let communication_info = round.as_ref().communication_info();
 
         let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
-        let echo_round_info = match echo_round_participation {
+        let echo_round_info = match &communication_info.echo_round_participation {
             EchoRoundParticipation::Default => {
                 if round_sends_echo_broadcast {
                     // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
-                    let mut expected_echos = round.as_ref().expecting_messages_from().clone();
+                    let mut expected_echos = communication_info.expecting_messages_from.clone();
                     expected_echos.insert(verifier.clone());
                     Some(EchoRoundInfo {
-                        message_destinations: message_destinations.clone(),
-                        expecting_messages_from: message_destinations.clone(),
+                        message_destinations: communication_info.message_destinations.clone(),
+                        expecting_messages_from: communication_info.message_destinations.clone(),
                         expected_echos,
                     })
                 } else {
@@ -205,15 +205,9 @@ where
             EchoRoundParticipation::Send => None,
             EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
                 message_destinations: echo_targets.clone(),
-                expecting_messages_from: echo_targets,
-                expected_echos: round.as_ref().expecting_messages_from().clone(),
+                expecting_messages_from: echo_targets.clone(),
+                expected_echos: communication_info.expecting_messages_from.clone(),
             }),
-        };
-
-        let possible_next_rounds = if echo_round_info.is_some() {
-            BTreeSet::from([round.id().echo()])
-        } else {
-            round.as_ref().possible_next_rounds()
         };
 
         Ok(Self {
@@ -225,8 +219,8 @@ where
             round,
             echo_broadcast,
             normal_broadcast,
-            possible_next_rounds,
-            message_destinations,
+            transition_info,
+            communication_info,
             echo_round_info,
             transcript,
         })
@@ -244,7 +238,7 @@ where
 
     /// Returns the set of message destinations for the current round.
     pub fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.message_destinations
+        &self.communication_info.message_destinations
     }
 
     /// Creates the message to be sent to the given destination.
@@ -264,7 +258,7 @@ where
             rng,
             &self.signer,
             &self.session_id,
-            &self.round.id(),
+            &self.transition_info.id(),
             destination,
             direct_message,
             self.echo_broadcast.clone(),
@@ -290,7 +284,7 @@ where
 
     /// Returns the ID of the current round.
     pub fn round_id(&self) -> RoundId {
-        self.round.id()
+        self.transition_info.id()
     }
 
     /// Performs some preliminary checks on the message to verify its integrity.
@@ -339,8 +333,12 @@ where
 
         enum MessageFor {
             ThisRound,
-            NextRound,
+            SimultaneousRound,
         }
+
+        let acceptable_round_ids = self
+            .transition_info
+            .simultaneous_rounds(self.echo_round_info.is_some())?;
 
         let message_for = if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
@@ -350,14 +348,14 @@ where
                 return Ok(PreprocessOutcome::remote_error(err));
             }
             MessageFor::ThisRound
-        } else if self.possible_next_rounds.contains(&message_round_id) {
+        } else if acceptable_round_ids.contains(&message_round_id) {
             if accum.message_is_cached(from, &message_round_id) {
                 let err = format!("Message for {:?} is already cached", message_round_id);
                 accum.register_unprovable_error(from, RemoteError::new(&err))?;
                 trace!("{key:?} {err}");
                 return Ok(PreprocessOutcome::remote_error(err));
             }
-            MessageFor::NextRound
+            MessageFor::SimultaneousRound
         } else {
             let err = format!("Unexpected message round ID: {:?}", message_round_id);
             accum.register_unprovable_error(from, RemoteError::new(&err))?;
@@ -390,7 +388,7 @@ where
                 accum.mark_processing(&verified_message)?;
                 Ok(PreprocessOutcome::ToProcess(Box::new(verified_message)))
             }
-            MessageFor::NextRound => {
+            MessageFor::SimultaneousRound => {
                 debug!("{key:?}: Caching message from {from:?} for {message_round_id}");
                 accum.cache_message(verified_message)?;
                 Ok(PreprocessOutcome::Cached)
@@ -427,7 +425,7 @@ where
 
     /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, SP> {
-        RoundAccumulator::new(self.round.as_ref().expecting_messages_from())
+        RoundAccumulator::new(&self.communication_info.expecting_messages_from)
     }
 
     fn terminate_inner(
@@ -436,8 +434,10 @@ where
         not_enough_messages: bool,
     ) -> Result<SessionReport<P, SP>, LocalError> {
         let round_id = self.round_id();
+        let verifier = self.verifier();
         let transcript = self.transcript.update(
             &round_id,
+            (verifier, self.echo_broadcast),
             accum.echo_broadcasts,
             accum.normal_broadcasts,
             accum.direct_messages,
@@ -478,6 +478,7 @@ where
 
         let transcript = self.transcript.update(
             &round_id,
+            (verifier.clone(), self.echo_broadcast),
             accum.echo_broadcasts,
             accum.normal_broadcasts,
             accum.direct_messages,
@@ -489,7 +490,6 @@ where
         if let Some(echo_round_info) = self.echo_round_info {
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
-                self.echo_broadcast,
                 transcript.echo_broadcasts(&round_id)?,
                 echo_round_info,
                 self.round,
@@ -518,16 +518,17 @@ where
                 transcript,
             ))),
             FinalizeOutcome::AnotherRound(round) => {
+                let round_id = round.as_ref().transition_info().id();
                 // Protecting against common bugs
-                if !self.possible_next_rounds.contains(&round.id()) {
-                    return Err(LocalError::new(format!("Unexpected next round id: {:?}", round.id())));
+                if !self.transition_info.children.contains(&round_id) {
+                    return Err(LocalError::new(format!("Unexpected next round id: {:?}", round_id)));
                 }
 
                 // These messages could have been cached before
                 // processing messages from the same node for the current round.
                 // So there might have been some new errors, and we need to check again
                 // if the sender is already banned.
-                let cached_messages = filter_messages(accum.cached, &round.id())
+                let cached_messages = filter_messages(accum.cached, &round_id)
                     .into_iter()
                     .filter(|message| !transcript.is_banned(message.from()))
                     .collect::<Vec<_>>();
