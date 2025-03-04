@@ -2,7 +2,7 @@
 
 use alloc::{format, sync::Arc, vec::Vec};
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{debug, trace};
 
@@ -47,7 +47,7 @@ pub struct MessageIn<SP: SessionParameters> {
 /// Executes the session waiting for the messages from the `rx` channel
 /// and pushing outgoing messages into the `tx` channel.
 pub async fn run_session<P, SP>(
-    rng: &mut impl CryptoRngCore,
+    rng: &mut impl CryptoRng,
     tx: &mpsc::Sender<MessageOut<SP>>,
     rx: &mut mpsc::Receiver<MessageIn<SP>>,
     session: Session<P, SP>,
@@ -181,7 +181,7 @@ where
 /// to offset the parallelizing overhead.
 /// Use [`tokio::run_async`](`crate::dev::tokio::run_async`) to benchmark your specific protocol.
 pub async fn par_run_session<P, SP>(
-    rng: &mut (impl 'static + Clone + CryptoRngCore + Send),
+    rng: &mut (impl 'static + Clone + CryptoRng + Send),
     tx: &mpsc::Sender<MessageOut<SP>>,
     rx: &mut mpsc::Receiver<MessageIn<SP>>,
     session: Session<P, SP>,

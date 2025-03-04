@@ -52,7 +52,7 @@ Usage:
 use alloc::{boxed::Box, collections::BTreeMap};
 use core::fmt::{self, Debug};
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
@@ -299,7 +299,7 @@ where
 
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -371,7 +371,7 @@ where
 
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         serializer: &Serializer,
         deserializer: &Deserializer,
         destination: &Id,
@@ -392,7 +392,7 @@ where
 
     fn make_echo_broadcast(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         serializer: &Serializer,
         deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError> {
@@ -404,7 +404,7 @@ where
 
     fn make_normal_broadcast(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         serializer: &Serializer,
         deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError> {
@@ -434,7 +434,7 @@ where
 
     fn finalize(
         self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {

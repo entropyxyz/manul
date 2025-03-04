@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::fmt::Debug;
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -153,7 +153,7 @@ where
 
     fn make_normal_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
     ) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making an echo round message", self.verifier);
@@ -268,7 +268,7 @@ where
 
     fn finalize(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         _payloads: BTreeMap<SP::Verifier, Payload>,
         _artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Result<FinalizeOutcome<SP::Verifier, Self::Protocol>, LocalError> {

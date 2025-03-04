@@ -7,7 +7,7 @@ use manul::protocol::{
     ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, Round, RoundId,
     Serializer, TransitionInfo,
 };
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -166,7 +166,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
 
     fn make_round(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         _shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -205,7 +205,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn make_normal_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
     ) -> Result<NormalBroadcast, LocalError> {
         debug!("{:?}: making normal broadcast", self.context.id);
@@ -220,7 +220,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
@@ -234,7 +234,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -271,7 +271,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -321,7 +321,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -359,7 +359,7 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -388,7 +388,7 @@ mod tests {
         dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
         signature::Keypair,
     };
-    use rand_core::OsRng;
+    use rand_core::{OsRng, TryRngCore};
     use test_log::test;
 
     use super::SimpleProtocolEntryPoint;
@@ -405,7 +405,7 @@ mod tests {
             .map(|signer| (signer, SimpleProtocolEntryPoint::new(all_ids.clone())))
             .collect::<Vec<_>>();
 
-        let results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        let results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points)
             .unwrap()
             .results()
             .unwrap();

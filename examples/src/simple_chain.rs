@@ -70,7 +70,7 @@ mod tests {
         dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
         signature::Keypair,
     };
-    use rand_core::OsRng;
+    use rand_core::{OsRng, TryRngCore};
     use test_log::test;
 
     use super::DoubleSimpleEntryPoint;
@@ -87,7 +87,7 @@ mod tests {
             .map(|signer| (signer, DoubleSimpleEntryPoint::new(all_ids.clone())))
             .collect::<Vec<_>>();
 
-        let results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+        let results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points)
             .unwrap()
             .results()
             .unwrap();

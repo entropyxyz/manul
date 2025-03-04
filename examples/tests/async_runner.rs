@@ -7,7 +7,7 @@ use manul::{
     signature::Keypair,
 };
 use manul_example::simple::SimpleProtocolEntryPoint;
-use rand_core::OsRng;
+use rand_core::{OsRng, TryRngCore};
 
 async fn async_run(offload_processing: bool) {
     // Create 4 parties
@@ -27,7 +27,7 @@ async fn async_run(offload_processing: bool) {
         .collect::<Vec<_>>();
 
     // Run the protocol
-    run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points, offload_processing)
+    run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points, offload_processing)
         .await
         .unwrap();
 }

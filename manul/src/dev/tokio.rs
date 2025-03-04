@@ -3,7 +3,7 @@
 use alloc::{collections::BTreeMap, format, vec::Vec};
 
 use rand::Rng;
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use signature::Keypair;
 use tokio::sync::mpsc;
 
@@ -17,7 +17,7 @@ use crate::{
 };
 
 async fn message_dispatcher<SP>(
-    rng: impl CryptoRngCore,
+    rng: impl CryptoRng,
     txs: BTreeMap<SP::Verifier, mpsc::Sender<MessageIn<SP>>>,
     rx: mpsc::Receiver<MessageOut<SP>>,
 ) -> Result<(), LocalError>
@@ -42,7 +42,7 @@ where
         while !messages.is_empty() {
             // Pull a random message from the list,
             // to increase the chances that they are delivered out of order.
-            let message_idx = rng.gen_range(0..messages.len());
+            let message_idx = rng.random_range(0..messages.len());
             let outgoing = messages.swap_remove(message_idx);
 
             txs.get(&outgoing.to)
@@ -74,7 +74,7 @@ where
 ///
 /// If `offload_processing` is `true`, message creation and verification will be launched in separate tasks.
 pub async fn run_async<EP, SP>(
-    rng: &mut (impl 'static + CryptoRngCore + Clone + Send),
+    rng: &mut (impl 'static + CryptoRng + Clone + Send),
     entry_points: Vec<(SP::Signer, EP)>,
     offload_processing: bool,
 ) -> Result<ExecutionResult<EP::Protocol, SP>, LocalError>

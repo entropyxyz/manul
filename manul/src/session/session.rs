@@ -8,7 +8,7 @@ use alloc::{
 use core::fmt::Debug;
 
 use digest::Digest;
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use serde::{Deserialize, Serialize};
 use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, Keypair, RandomizedDigestSigner};
@@ -64,10 +64,11 @@ impl SessionId {
     /// **Warning:** this should generally be used for testing; creating a random session ID in a centralized way
     /// usually defeats the purpose of having a distributed protocol.
     #[cfg(any(test, feature = "dev"))]
-    pub fn random<SP: SessionParameters>(rng: &mut impl CryptoRngCore) -> Self {
+    pub fn random<SP: SessionParameters>(rng: &mut impl CryptoRng) -> Self {
         let mut buffer = digest::Output::<SP::Digest>::default();
         rng.fill_bytes(&mut buffer);
-        Self(buffer.as_ref().into())
+        let buffer: &[u8] = buffer.as_ref();
+        Self(buffer.into())
     }
 
     /// Creates a session identifier deterministically from the given bytestring.
@@ -81,13 +82,9 @@ impl SessionId {
     /// In a blockchain setting, it may be some combination of the current block hash with the public parameters
     /// (identities of the parties, hash of the inputs).
     pub fn from_seed<SP: SessionParameters>(bytes: &[u8]) -> Self {
-        Self(
-            SP::Digest::new_with_prefix(b"SessionId")
-                .chain_update(bytes)
-                .finalize()
-                .as_ref()
-                .into(),
-        )
+        let digest = SP::Digest::new_with_prefix(b"SessionId").chain_update(bytes).finalize();
+        let digest: &[u8] = digest.as_ref();
+        Self(digest.into())
     }
 }
 
@@ -143,7 +140,7 @@ where
 {
     /// Initializes a new session.
     pub fn new<EP>(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         session_id: SessionId,
         signer: SP::Signer,
         entry_point: EP,
@@ -166,7 +163,7 @@ where
     }
 
     fn new_for_next_round(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         session_id: SessionId,
         signer: SP::Signer,
         serializer: Serializer,
@@ -246,7 +243,7 @@ where
     /// The destination must be one of those returned by [`message_destinations`](`Self::message_destinations`).
     pub fn make_message(
         &self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
         let (direct_message, artifact) =
@@ -470,7 +467,7 @@ where
     /// Attempts to finalize the current round.
     pub fn finalize_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         accum: RoundAccumulator<P, SP>,
     ) -> Result<RoundOutcome<P, SP>, LocalError> {
         let verifier = self.verifier().clone();

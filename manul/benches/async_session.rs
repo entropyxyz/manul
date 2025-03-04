@@ -14,7 +14,7 @@ use manul::{
     },
     signature::Keypair,
 };
-use rand_core::{CryptoRngCore, OsRng};
+use rand_core::{CryptoRng, OsRng, TryRngCore};
 use serde::{Deserialize, Serialize};
 
 fn do_work(seed: u8) -> u128 {
@@ -91,7 +91,7 @@ impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
 
     fn make_round(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -119,7 +119,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
@@ -131,7 +131,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
         _destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -164,7 +164,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -226,7 +226,8 @@ fn bench_async_session(c: &mut Criterion) {
     group.bench_function("no offloading, 10 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
             rt.block_on(async {
-                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points.clone(), false).await
+                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points.clone(), false)
+                    .await
             })
         })
     });
@@ -235,7 +236,8 @@ fn bench_async_session(c: &mut Criterion) {
     group.bench_function("with offloading, 10 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
             rt.block_on(async {
-                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points.clone(), true).await
+                run_async::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points.clone(), true)
+                    .await
             })
         })
     });

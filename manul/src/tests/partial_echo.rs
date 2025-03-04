@@ -4,8 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use core::{fmt::Debug, marker::PhantomData};
-
-use rand_core::{CryptoRngCore, OsRng};
+use rand_core::{CryptoRng, OsRng, TryRngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -78,7 +77,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
 
     fn make_round(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -103,7 +102,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.message_destinations.is_empty() {
@@ -140,7 +139,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         _payloads: BTreeMap<Id, Payload>,
         _artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -210,7 +209,7 @@ fn partial_echo() {
 
     let entry_points = vec![node0, node1, node2, node3, node4];
 
-    let _results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let _results = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points)
         .unwrap()
         .results()
         .unwrap();

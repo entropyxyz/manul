@@ -1,5 +1,5 @@
-use digest::generic_array::typenum;
-use rand_core::CryptoRngCore;
+use digest::array::typenum;
+use rand_core::TryCryptoRng;
 use serde::{Deserialize, Serialize};
 
 use crate::session::{SessionParameters, WireFormat};
@@ -27,14 +27,14 @@ impl TestSigner {
 }
 
 impl<D: digest::Digest> signature::RandomizedDigestSigner<D, TestSignature> for TestSigner {
-    fn try_sign_digest_with_rng(
+    fn try_sign_digest_with_rng<R: TryCryptoRng>(
         &self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut R,
         _digest: D,
     ) -> Result<TestSignature, signature::Error> {
         Ok(TestSignature {
             signed_by: self.0,
-            randomness: rng.next_u64(),
+            randomness: rng.try_next_u64().expect("The OsRng works"),
         })
     }
 }
@@ -79,7 +79,7 @@ impl digest::Update for TestHasher {
 
 impl digest::FixedOutput for TestHasher {
     fn finalize_into(self, out: &mut digest::Output<Self>) {
-        AsMut::<[u8]>::as_mut(out).copy_from_slice(&self.buffer)
+        AsMut::<[u8]>::as_mut(out).copy_from_slice(self.buffer.as_ref())
     }
 }
 
