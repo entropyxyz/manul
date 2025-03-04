@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
+use rand::TryRngCore;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
@@ -13,7 +14,7 @@ use manul::{
     },
     signature::Keypair,
 };
-use rand_core::{CryptoRngCore, OsRng};
+use rand_core::{CryptoRng, OsRng};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -80,7 +81,7 @@ impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
 
     fn make_round(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -108,7 +109,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn make_echo_broadcast(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
     ) -> Result<EchoBroadcast, LocalError> {
         if self.inputs.echo {
@@ -120,7 +121,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         serializer: &Serializer,
         _destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -151,7 +152,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
 
     fn finalize(
         self,
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -209,12 +210,13 @@ fn bench_empty_rounds(c: &mut Criterion) {
 
     group.bench_function("25 nodes, 5 rounds, no echo", |b| {
         b.iter(|| {
-            assert!(
-                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_no_echo.clone())
-                    .unwrap()
-                    .results()
-                    .is_ok()
+            assert!(run_sync::<_, TestSessionParams<BinaryFormat>>(
+                &mut OsRng.unwrap_err(),
+                entry_points_no_echo.clone()
             )
+            .unwrap()
+            .results()
+            .is_ok())
         })
     });
 
@@ -240,7 +242,7 @@ fn bench_empty_rounds(c: &mut Criterion) {
     group.bench_function("25 nodes, 5 rounds, echo each round", |b| {
         b.iter(|| {
             assert!(
-                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points_echo.clone())
+                run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points_echo.clone())
                     .unwrap()
                     .results()
                     .is_ok()

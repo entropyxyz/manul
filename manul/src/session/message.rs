@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, format};
 
 use digest::Digest;
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use serde::{Deserialize, Serialize};
 use serde_encoded_bytes::{Hex, SliceLike};
 use signature::{DigestVerifier, RandomizedDigestSigner};
@@ -116,7 +116,7 @@ where
     M: ProtocolMessagePartHashable,
 {
     pub fn new<SP>(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         signer: &SP::Signer,
         session_id: &SessionId,
         round_id: &RoundId,
@@ -142,10 +142,11 @@ where
         SP: SessionParameters,
     {
         let message_part_hash = self.message_with_metadata.message.hash::<SP::Digest>();
+        let message_part_hash: &[u8] = message_part_hash.as_ref();
         SignedMessageHash {
             signature: self.signature.clone(),
             metadata: self.message_with_metadata.metadata.clone(),
-            message_part_hash: message_part_hash.as_ref().into(),
+            message_part_hash: message_part_hash.into(),
         }
     }
 
@@ -213,7 +214,7 @@ where
 {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new<SP>(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         signer: &SP::Signer,
         session_id: &SessionId,
         round_id: &RoundId,
@@ -390,6 +391,7 @@ impl VerifiedMessageHash {
         M: ProtocolMessagePartHashable,
     {
         let message_part_hash = message.message_with_metadata.message.hash::<SP::Digest>();
-        message_part_hash.as_ref() == self.message_part_hash.as_ref()
+        let message_part_hash: &[u8] = message_part_hash.as_ref();
+        message_part_hash == self.message_part_hash.as_ref()
     }
 }

@@ -13,13 +13,13 @@ manul = { path = "../manul" }
 postcard = { version = "1", features = ["alloc"] }
 serde = "1"
 sha3 = "0.10"
-rand_core = "0.6"
+rand_core = "0.9"
 tracing = "0.1"
 displaydoc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
-rand = "0.8"
-digest = "0.10"
+rand = "0.9"
+digest = { version = "0.11.0-pre.9", default-features = false }
 manul = { path = "../manul", features = ["dev", "tokio"] }
 test-log = { version = "0.2", features = ["trace", "color"] }

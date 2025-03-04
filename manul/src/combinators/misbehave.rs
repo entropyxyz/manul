@@ -26,7 +26,7 @@ Usage:
 use alloc::{boxed::Box, collections::BTreeMap};
 use core::fmt::Debug;
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 
 use crate::protocol::{
     Artifact, BoxedRng, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
@@ -56,7 +56,7 @@ where
     /// The default implementation passes through the original message.
     #[allow(unused_variables)]
     fn modify_echo_broadcast(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         serializer: &Serializer,
@@ -72,7 +72,7 @@ where
     /// The default implementation passes through the original message.
     #[allow(unused_variables)]
     fn modify_normal_broadcast(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         serializer: &Serializer,
@@ -88,7 +88,7 @@ where
     /// The default implementation passes through the original message.
     #[allow(unused_variables, clippy::too_many_arguments)]
     fn modify_direct_message(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         serializer: &Serializer,
@@ -109,7 +109,7 @@ where
     /// in which case the existing `finalize()` will not be called.
     #[allow(unused_variables)]
     fn override_finalize(
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         round: BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &B,
         payloads: BTreeMap<Id, Payload>,
@@ -179,7 +179,7 @@ where
 
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut impl CryptoRng,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -240,7 +240,7 @@ where
 
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         serializer: &Serializer,
         deserializer: &Deserializer,
         destination: &Id,
@@ -268,7 +268,7 @@ where
 
     fn make_echo_broadcast(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         serializer: &Serializer,
         deserializer: &Deserializer,
     ) -> Result<EchoBroadcast, LocalError> {
@@ -290,7 +290,7 @@ where
 
     fn make_normal_broadcast(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         serializer: &Serializer,
         deserializer: &Deserializer,
     ) -> Result<NormalBroadcast, LocalError> {
@@ -324,7 +324,7 @@ where
 
     fn finalize(
         self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        rng: &mut dyn CryptoRng,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {

@@ -1,7 +1,7 @@
 use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 
 use rand::Rng;
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use signature::Keypair;
 use tracing::debug;
 
@@ -62,11 +62,11 @@ where
     }
 
     /// Removes a random message from the queue and returns it.
-    fn pop(&mut self, rng: &mut impl CryptoRngCore) -> RoundMessage<SP> {
+    fn pop(&mut self, rng: &mut impl CryptoRng) -> RoundMessage<SP> {
         match self {
             Self::Ordered(m) => {
                 let senders_num = m.len();
-                let sender_idx = rng.gen_range(0..senders_num);
+                let sender_idx = rng.random_range(0..senders_num);
                 let sender = m.keys().nth(sender_idx).expect("the entry exists").clone();
 
                 let (message, is_empty) = {
@@ -80,7 +80,7 @@ where
                 message
             }
             Self::Unordered(v) => {
-                let message_idx = rng.gen_range(0..v.len());
+                let message_idx = rng.random_range(0..v.len());
                 v.swap_remove(message_idx)
             }
         }
@@ -96,7 +96,7 @@ where
 
 #[allow(clippy::type_complexity)]
 fn propagate<P, SP>(
-    rng: &mut impl CryptoRngCore,
+    rng: &mut impl CryptoRng,
     session: Session<P, SP>,
     accum: RoundAccumulator<P, SP>,
 ) -> Result<(State<P, SP>, Vec<RoundMessage<SP>>), LocalError>
@@ -156,7 +156,7 @@ where
 /// Execute sessions for multiple nodes in a single thread,
 /// given a vector of the signer and the entry point as a tuple for each node.
 pub fn run_sync<EP, SP>(
-    rng: &mut impl CryptoRngCore,
+    rng: &mut impl CryptoRng,
     entry_points: Vec<(SP::Signer, EP)>,
 ) -> Result<ExecutionResult<EP::Protocol, SP>, LocalError>
 where

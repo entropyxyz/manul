@@ -10,7 +10,7 @@ use manul::{
     },
     signature::Keypair,
 };
-use rand_core::{CryptoRngCore, OsRng};
+use rand_core::{CryptoRng, OsRng, TryRngCore};
 use test_log::test;
 
 use crate::simple::{Round1, Round1Message, Round2, Round2Message, SimpleProtocolEntryPoint};
@@ -28,7 +28,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
     type EntryPoint = SimpleProtocolEntryPoint<Id>;
 
     fn modify_direct_message(
-        _rng: &mut impl CryptoRngCore,
+        _rng: &mut impl CryptoRng,
         round: &BoxedRound<Id, <Self::EntryPoint as EntryPoint<Id>>::Protocol>,
         behavior: &Behavior,
         serializer: &Serializer,
@@ -94,7 +94,7 @@ fn serialized_garbage() {
         })
         .collect::<Vec<_>>();
 
-    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points)
         .unwrap()
         .reports;
 
@@ -133,7 +133,7 @@ fn attributable_failure() {
         })
         .collect::<Vec<_>>();
 
-    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points)
         .unwrap()
         .reports;
 
@@ -172,7 +172,7 @@ fn attributable_failure_round2() {
         })
         .collect::<Vec<_>>();
 
-    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
+    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng.unwrap_err(), entry_points)
         .unwrap()
         .reports;
 
