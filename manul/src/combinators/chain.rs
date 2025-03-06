@@ -436,37 +436,30 @@ where
                 FinalizeOutcome::Result(result) => {
                     let entry_point2 = transition.make_entry_point2(result);
                     let round = entry_point2.make_round(rng, &shared_randomness, &id)?;
-
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(ChainedRound::<
-                        Id,
-                        T,
-                    > {
+                    let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
-                    })))
+                    };
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
                 }
                 FinalizeOutcome::AnotherRound(round) => {
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(ChainedRound::<
-                        Id,
-                        T,
-                    > {
+                    let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol1 {
                             id,
                             shared_randomness,
                             round,
                             transition,
                         },
-                    })))
+                    };
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
                 }
             },
             ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts)? {
                 FinalizeOutcome::Result(result) => Ok(FinalizeOutcome::Result(result)),
                 FinalizeOutcome::AnotherRound(round) => {
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(ChainedRound::<
-                        Id,
-                        T,
-                    > {
+                    let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
-                    })))
+                    };
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
                 }
             },
         }
