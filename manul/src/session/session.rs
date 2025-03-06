@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast,
     EntryPoint, FinalizeOutcome, IdSet, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
-    ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
+    ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundCommunicationInfo, RoundId, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -97,13 +97,6 @@ impl AsRef<[u8]> for SessionId {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct EchoRoundInfo<Verifier> {
-    pub(crate) message_destinations: BTreeSet<Verifier>,
-    pub(crate) expecting_messages_from: IdSet<Verifier>,
-    pub(crate) expected_echos: BTreeSet<Verifier>,
-}
-
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
 #[derive(Debug)]
@@ -114,8 +107,9 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     format: BoxedFormat,
     round: BoxedRound<SP::Verifier, P>,
     message_destinations: BTreeSet<SP::Verifier>,
-    communication_info: CommunicationInfo<SP::Verifier>,
-    echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
+    main_round_cinfo: RoundCommunicationInfo<SP::Verifier>,
+    echo_round_cinfo: RoundCommunicationInfo<SP::Verifier>,
+    expected_echos: IdSet<SP::Verifier>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
     transition_info: TransitionInfo,
@@ -174,40 +168,20 @@ where
         let normal = round.as_ref().make_normal_broadcast(rng, &format)?;
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
-        let communication_info = round.as_ref().communication_info();
-        let message_destinations = communication_info
+        let CommunicationInfo {
+            main_round: main_round_cinfo,
+            echo_round: echo_round_cinfo,
+            expected_echos,
+        } = round.as_ref().communication_info();
+
+        let echo_round_cinfo = echo_round_cinfo.unwrap_or(main_round_cinfo.clone());
+        let expected_echos = expected_echos.unwrap_or(echo_round_cinfo.expecting_messages_from.clone());
+
+        let message_destinations = main_round_cinfo
             .message_destinations
             .difference(&transcript.banned_ids())
             .cloned()
             .collect::<BTreeSet<_>>();
-
-        let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
-        let echo_round_info = match &communication_info.echo_round_participation {
-            EchoRoundParticipation::Default => {
-                if round_sends_echo_broadcast {
-                    // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
-                    let mut expected_echos = communication_info.expecting_messages_from.all().clone();
-                    expected_echos.insert(verifier.clone());
-                    Some(EchoRoundInfo {
-                        message_destinations: communication_info.message_destinations.clone(),
-                        // TODO: this is not correct in general
-                        expecting_messages_from: IdSet::new_non_threshold(
-                            communication_info.message_destinations.clone(),
-                        ),
-                        expected_echos,
-                    })
-                } else {
-                    None
-                }
-            }
-            EchoRoundParticipation::Send => None,
-            EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
-                message_destinations: echo_targets.clone(),
-                // TODO: this is not correct in general
-                expecting_messages_from: IdSet::new_non_threshold(echo_targets.clone()),
-                expected_echos: communication_info.expecting_messages_from.all().clone(),
-            }),
-        };
 
         Ok(Self {
             session_id,
@@ -219,8 +193,9 @@ where
             normal_broadcast,
             transition_info,
             message_destinations,
-            communication_info,
-            echo_round_info,
+            main_round_cinfo,
+            echo_round_cinfo,
+            expected_echos,
             transcript,
         })
     }
@@ -343,7 +318,7 @@ where
 
         let acceptable_round_ids = self
             .transition_info
-            .simultaneous_rounds(self.echo_round_info.is_some())?;
+            .simultaneous_rounds(self.echo_round_cinfo.is_some())?;
 
         let message_for = if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
@@ -431,7 +406,7 @@ where
     /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, SP> {
         RoundAccumulator::new(
-            &self.communication_info.expecting_messages_from,
+            &self.main_round_cinfo.expecting_messages_from,
             self.transcript.banned_ids(),
         )
     }
@@ -484,6 +459,8 @@ where
         let verifier = self.verifier().clone();
         let round_id = self.round_id();
 
+        let echo_round = !self.echo_broadcast.payload().is_none();
+
         let transcript = self.transcript.update(
             &round_id,
             (verifier.clone(), self.echo_broadcast),
@@ -495,11 +472,13 @@ where
             accum.still_have_not_sent_messages,
         )?;
 
-        if let Some(echo_round_info) = self.echo_round_info {
+        if echo_round {
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
                 transcript.echo_broadcasts(&round_id)?,
-                echo_round_info,
+                self.echo_round_cinfo,
+                self.expected_echos,
+                transcript.banned_ids().clone(),
                 self.round,
                 accum.payloads,
                 accum.artifacts,
