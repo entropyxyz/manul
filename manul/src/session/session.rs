@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundCommunicationInfo,
     EntryPoint, FinalizeOutcome, IdSet, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
-    ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
+    ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundCommunicationInfo, RoundId, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -97,13 +97,6 @@ impl AsRef<[u8]> for SessionId {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct EchoRoundInfo<Verifier> {
-    pub(crate) message_destinations: BTreeSet<Verifier>,
-    pub(crate) expecting_messages_from: IdSet<Verifier>,
-    pub(crate) expected_echos: BTreeSet<Verifier>,
-}
-
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
 #[derive(Debug)]
@@ -114,8 +107,9 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     format: BoxedFormat,
     round: BoxedRound<SP::Verifier, P>,
     message_destinations: BTreeSet<SP::Verifier>,
-    communication_info: CommunicationInfo<SP::Verifier>,
-    echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
+    main_round_cinfo: CommunicationInfo<SP::Verifier>,
+    echo_round_cinfo: CommunicationInfo<SP::Verifier>,
+    expected_echos: BTreeSet<SP::Verifier>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
     transition_info: TransitionInfo,
@@ -174,40 +168,39 @@ where
         let normal = round.as_ref().make_normal_broadcast(rng, &format)?;
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
-        let communication_info = round.as_ref().communication_info();
-        let message_destinations = communication_info
+        let CommunicationInfo {
+            main_round: main_round_cinfo,
+            echo_round: echo_round_cinfo,
+        } = round.as_ref().communication_info();
+
+        let (echo_round_cinfo, expected_echos) = match echo_round_cinfo {
+            EchoRoundCommunicationInfo::None => {
+                let echo_round_cinfo = RoundCommunicationInfo::none();
+                let expected_echos = BTreeSet::new();
+                (echo_round_cinfo, expected_echos)
+            }
+            EchoRoundCommunicationInfo::SameAsMainRound => {
+                let echo_round_cinfo = main_round_cinfo.clone();
+                let mut expected_echos = main_round_cinfo.expecting_messages_from.all().clone();
+                // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
+                expected_echos.insert(verifier.clone());
+                (echo_round_cinfo, expected_echos)
+            }
+            EchoRoundCommunicationInfo::Custom(cinfo) => {
+                let mut expected_echos = main_round_cinfo.expecting_messages_from.all().clone();
+                // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
+                expected_echos.insert(verifier.clone());
+                (cinfo, expected_echos)
+            }
+        };
+
+        let message_destinations = main_round_cinfo
             .message_destinations
             .difference(&transcript.banned_ids())
             .cloned()
             .collect::<BTreeSet<_>>();
 
         let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
-        let echo_round_info = match &communication_info.echo_round_participation {
-            EchoRoundParticipation::Default => {
-                if round_sends_echo_broadcast {
-                    // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
-                    let mut expected_echos = communication_info.expecting_messages_from.all().clone();
-                    expected_echos.insert(verifier.clone());
-                    Some(EchoRoundInfo {
-                        message_destinations: communication_info.message_destinations.clone(),
-                        // TODO: this is not correct in general
-                        expecting_messages_from: IdSet::new_non_threshold(
-                            communication_info.message_destinations.clone(),
-                        ),
-                        expected_echos,
-                    })
-                } else {
-                    None
-                }
-            }
-            EchoRoundParticipation::Send => None,
-            EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
-                message_destinations: echo_targets.clone(),
-                // TODO: this is not correct in general
-                expecting_messages_from: IdSet::new_non_threshold(echo_targets.clone()),
-                expected_echos: communication_info.expecting_messages_from.all().clone(),
-            }),
-        };
 
         Ok(Self {
             session_id,
