@@ -57,9 +57,22 @@ impl<Id: Ord> IdSet<Id> {
     }
 }
 
-/// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
+/// Encapsulates the communication info for the main round and the possible echo round.
 #[derive(Debug, Clone)]
 pub struct CommunicationInfo<Id> {
+    /// Communication info for the main part of the round (that is, not considering the echo round).
+    pub main_round: RoundCommunicationInfo<Id>,
+
+    /// The specific way the node participates in the echo round following this round.
+    ///
+    /// `None` means that, if there is an echo round, the message destinations and expected messages senders
+    /// are the same as in the main round.
+    pub echo_round: EchoRoundCommunicationInfo<Id>,
+}
+
+/// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
+#[derive(Debug, Clone)]
+pub struct RoundCommunicationInfo<Id> {
     /// The destinations of the messages to be sent out by this round.
     ///
     /// The way it is interpreted by the execution layer is
@@ -69,29 +82,35 @@ pub struct CommunicationInfo<Id> {
     ///   for each element of the returned set.
     pub message_destinations: BTreeSet<Id>,
 
-    /// Returns the set of node IDs from which this round expects messages.
+    /// The set of node IDs from which this round expects messages.
     ///
-    /// The execution layer will not call [`finalize`](`Round::finalize`) until all these nodes have responded
-    /// (and the corresponding [`receive_message`](`Round::receive_message`) finished successfully).
+    /// The execution layer will not call [`finalize`](`Round::finalize`) until enough nodes to constitute the quorum
+    /// have responded (and the corresponding [`receive_message`](`Round::receive_message`) finished successfully).
     pub expecting_messages_from: IdSet<Id>,
-
-    /// Returns the specific way the node participates in the echo round following this round.
-    ///
-    /// Returns [`EchoRoundParticipation::Default`] by default; this works fine when every node
-    /// sends messages to every other one, or do not send or receive any echo broadcasts.
-    /// Otherwise, review the options in [`EchoRoundParticipation`] and pick the appropriate one.
-    pub echo_round_participation: EchoRoundParticipation<Id>,
 }
 
-impl<Id: PartyId> CommunicationInfo<Id> {
+impl<Id: PartyId> RoundCommunicationInfo<Id> {
     /// A regular round that sends messages to all `other_parties`, and expects messages back from them.
-    pub fn regular(other_parties: &BTreeSet<Id>) -> Self {
+    pub fn all_to_all(other_parties: &BTreeSet<Id>) -> Self {
         Self {
             message_destinations: other_parties.clone(),
             expecting_messages_from: IdSet::new_non_threshold(other_parties.clone()),
-            echo_round_participation: EchoRoundParticipation::Default,
         }
     }
+
+    pub fn none() -> Self {
+        Self {
+            message_destinations: BTreeSet::new(),
+            expecting_messages_from: IdSet::empty(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum EchoRoundCommunicationInfo<Id> {
+    None,
+    SameAsMainRound,
+    Custom(RoundCommunicationInfo<Id>),
 }
 
 /// Possible successful outcomes of [`Round::finalize`].
@@ -375,25 +394,6 @@ pub trait EntryPoint<Id: PartyId> {
 pub trait PartyId: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
 
 impl<T> PartyId for T where T: 'static + Debug + Clone + Ord + Send + Sync + Serialize + for<'de> Deserialize<'de> {}
-
-/// The specific way the node participates in the echo round (if any).
-#[derive(Debug, Clone)]
-pub enum EchoRoundParticipation<Id> {
-    /// The default behavior: sends broadcasts and receives echoed messages, or does neither.
-    ///
-    /// That is, this node will be a part of the echo round if [`Round::make_echo_broadcast`] generates a message.
-    Default,
-
-    /// This node sends broadcasts that will be echoed, but does not receive any.
-    Send,
-
-    /// This node receives broadcasts that it needs to echo, but does not send any itself.
-    Receive {
-        /// The other participants of the echo round
-        /// (that is, the nodes to which echoed messages will be sent).
-        echo_targets: BTreeSet<Id>,
-    },
-}
 
 mod sealed {
     /// A dyn safe trait to get the type's ID.
