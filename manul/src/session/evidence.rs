@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     protocol::{
-        Deserializer, DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
+        BoxedFormat, DirectMessage, DirectMessageError, EchoBroadcast, EchoBroadcastError, MessageValidationError,
         NormalBroadcast, NormalBroadcastError, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart,
         ProtocolMessagePartHashable, ProtocolValidationError, RoundId,
     },
@@ -247,17 +247,13 @@ where
         &self,
         associated_data: &<P::ProtocolError as ProtocolError<SP::Verifier>>::AssociatedData,
     ) -> Result<(), EvidenceError> {
-        let deserializer = Deserializer::new::<SP::WireFormat>();
+        let format = BoxedFormat::new::<SP::WireFormat>();
         match &self.evidence {
-            EvidenceEnum::Protocol(evidence) => {
-                evidence.verify::<SP>(&self.guilty_party, &deserializer, associated_data)
-            }
-            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &deserializer),
-            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &deserializer),
-            EvidenceEnum::InvalidNormalBroadcast(evidence) => {
-                evidence.verify::<P, SP>(&self.guilty_party, &deserializer)
-            }
-            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(&self.guilty_party, &deserializer),
+            EvidenceEnum::Protocol(evidence) => evidence.verify::<SP>(&self.guilty_party, &format, associated_data),
+            EvidenceEnum::InvalidDirectMessage(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &format),
+            EvidenceEnum::InvalidEchoBroadcast(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &format),
+            EvidenceEnum::InvalidNormalBroadcast(evidence) => evidence.verify::<P, SP>(&self.guilty_party, &format),
+            EvidenceEnum::InvalidEchoPack(evidence) => evidence.verify(&self.guilty_party, &format),
             EvidenceEnum::MismatchedBroadcasts(evidence) => evidence.verify::<SP>(&self.guilty_party),
         }
     }
@@ -285,9 +281,9 @@ impl<SP> InvalidEchoPackEvidence<SP>
 where
     SP: SessionParameters,
 {
-    fn verify(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError> {
+    fn verify(&self, verifier: &SP::Verifier, format: &BoxedFormat) -> Result<(), EvidenceError> {
         let verified = self.normal_broadcast.clone().verify::<SP>(verifier)?;
-        let deserialized = verified.payload().deserialize::<EchoRoundMessage<SP>>(deserializer)?;
+        let deserialized = verified.payload().deserialize::<EchoRoundMessage<SP>>(format)?;
         let invalid_echo = deserialized
             .message_hashes
             .get(&self.invalid_echo_sender)
@@ -346,7 +342,7 @@ impl MismatchedBroadcastsEvidence {
 pub struct InvalidDirectMessageEvidence(SignedMessagePart<DirectMessage>);
 
 impl InvalidDirectMessageEvidence {
-    fn verify<P, SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+    fn verify<P, SP>(&self, verifier: &SP::Verifier, format: &BoxedFormat) -> Result<(), EvidenceError>
     where
         P: Protocol<SP::Verifier>,
         SP: SessionParameters,
@@ -358,7 +354,7 @@ impl InvalidDirectMessageEvidence {
             Ok(EchoRound::<P, SP>::verify_direct_message_is_invalid(payload)?)
         } else {
             Ok(P::verify_direct_message_is_invalid(
-                deserializer,
+                format,
                 self.0.metadata().round_id(),
                 payload,
             )?)
@@ -370,7 +366,7 @@ impl InvalidDirectMessageEvidence {
 pub struct InvalidEchoBroadcastEvidence(SignedMessagePart<EchoBroadcast>);
 
 impl InvalidEchoBroadcastEvidence {
-    fn verify<P, SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+    fn verify<P, SP>(&self, verifier: &SP::Verifier, format: &BoxedFormat) -> Result<(), EvidenceError>
     where
         P: Protocol<SP::Verifier>,
         SP: SessionParameters,
@@ -382,7 +378,7 @@ impl InvalidEchoBroadcastEvidence {
             Ok(EchoRound::<P, SP>::verify_echo_broadcast_is_invalid(payload)?)
         } else {
             Ok(P::verify_echo_broadcast_is_invalid(
-                deserializer,
+                format,
                 self.0.metadata().round_id(),
                 payload,
             )?)
@@ -394,7 +390,7 @@ impl InvalidEchoBroadcastEvidence {
 pub struct InvalidNormalBroadcastEvidence(SignedMessagePart<NormalBroadcast>);
 
 impl InvalidNormalBroadcastEvidence {
-    fn verify<P, SP>(&self, verifier: &SP::Verifier, deserializer: &Deserializer) -> Result<(), EvidenceError>
+    fn verify<P, SP>(&self, verifier: &SP::Verifier, format: &BoxedFormat) -> Result<(), EvidenceError>
     where
         P: Protocol<SP::Verifier>,
         SP: SessionParameters,
@@ -403,13 +399,10 @@ impl InvalidNormalBroadcastEvidence {
         let payload = verified_normal_broadcast.payload();
 
         if self.0.metadata().round_id().is_echo() {
-            Ok(EchoRound::<P, SP>::verify_normal_broadcast_is_invalid(
-                deserializer,
-                payload,
-            )?)
+            Ok(EchoRound::<P, SP>::verify_normal_broadcast_is_invalid(format, payload)?)
         } else {
             Ok(P::verify_normal_broadcast_is_invalid(
-                deserializer,
+                format,
                 self.0.metadata().round_id(),
                 payload,
             )?)
@@ -487,7 +480,7 @@ where
     fn verify<SP>(
         &self,
         verifier: &SP::Verifier,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         associated_data: &<P::ProtocolError as ProtocolError<Id>>::AssociatedData,
     ) -> Result<(), EvidenceError>
     where
@@ -535,7 +528,7 @@ where
             let verified_echo_hashes = echo_hashes.clone().verify::<SP>(verifier)?;
             let echo_round_payload = verified_echo_hashes
                 .payload()
-                .deserialize::<EchoRoundMessage<SP>>(deserializer)?;
+                .deserialize::<EchoRoundMessage<SP>>(format)?;
 
             let signed_echo_broadcasts = self
                 .other_echo_broadcasts
@@ -602,7 +595,7 @@ where
         }
 
         Ok(self.error.verify_messages_constitute_error(
-            deserializer,
+            format,
             verifier,
             session_id.as_ref(),
             associated_data,

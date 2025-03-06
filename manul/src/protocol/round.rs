@@ -12,11 +12,11 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use super::{
+    boxed_format::BoxedFormat,
+    boxed_round::BoxedRound,
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
-    object_safe::BoxedRound,
     round_id::{RoundId, TransitionInfo},
-    serialization::{Deserializer, Serializer},
 };
 
 /// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
@@ -79,7 +79,7 @@ pub trait Protocol<Id>: 'static {
     /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
     /// when implementing this.
     fn verify_direct_message_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         round_id: &RoundId,
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError>;
@@ -90,7 +90,7 @@ pub trait Protocol<Id>: 'static {
     /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
     /// when implementing this.
     fn verify_echo_broadcast_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         round_id: &RoundId,
         message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError>;
@@ -101,7 +101,7 @@ pub trait Protocol<Id>: 'static {
     /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
     /// when implementing this.
     fn verify_normal_broadcast_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         round_id: &RoundId,
         message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError>;
@@ -222,7 +222,7 @@ pub trait ProtocolError<Id>: Display + Debug + Clone + Serialize + for<'de> Dese
     #[allow(clippy::too_many_arguments)]
     fn verify_messages_constitute_error(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         guilty_party: &Id,
         shared_randomness: &[u8],
         associated_data: &Self::AssociatedData,
@@ -245,7 +245,7 @@ impl<Id> ProtocolError<Id> for NoProtocolErrors {
 
     fn verify_messages_constitute_error(
         &self,
-        _deserializer: &Deserializer,
+        _format: &BoxedFormat,
         _guilty_party: &Id,
         _shared_randomness: &[u8],
         _associated_data: &Self::AssociatedData,
@@ -271,7 +271,7 @@ impl Payload {
 
     /// Creates an empty payload.
     ///
-    /// Use it in [`Round::receive_message`] if it does not need to create artifacts.
+    /// Use it in [`Round::receive_message`] if it does not need to create payloads.
     pub fn empty() -> Self {
         Self::new(())
     }
@@ -279,7 +279,7 @@ impl Payload {
     /// Attempts to downcast back to the concrete type.
     ///
     /// Would be normally called in [`Round::finalize`].
-    pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
+    pub fn downcast<T: 'static>(self) -> Result<T, LocalError> {
         Ok(*(self
             .0
             .downcast::<T>()
@@ -302,7 +302,7 @@ impl Artifact {
     /// Attempts to downcast back to the concrete type.
     ///
     /// Would be normally called in [`Round::finalize`].
-    pub fn try_to_typed<T: 'static>(self) -> Result<T, LocalError> {
+    pub fn downcast<T: 'static>(self) -> Result<T, LocalError> {
         Ok(*(self
             .0
             .downcast::<T>()
@@ -327,7 +327,7 @@ pub trait EntryPoint<Id: PartyId> {
     /// `id` is the ID of this node.
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError>;
@@ -357,6 +357,20 @@ pub enum EchoRoundParticipation<Id> {
     },
 }
 
+mod sealed {
+    /// A dyn safe trait to get the type's ID.
+    pub trait DynTypeId: 'static {
+        /// Returns the type ID of the implementing type.
+        fn get_type_id(&self) -> core::any::TypeId {
+            core::any::TypeId::of::<Self>()
+        }
+    }
+
+    impl<T: 'static> DynTypeId for T {}
+}
+
+use sealed::DynTypeId;
+
 /**
 A type representing a single round of a protocol.
 
@@ -366,7 +380,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
+pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 
@@ -389,8 +403,8 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// These should be put in an [`Artifact`] and will be available at the time of [`finalize`](`Self::finalize`).
     fn make_direct_message(
         &self,
-        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
-        #[allow(unused_variables)] serializer: &Serializer,
+        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
+        #[allow(unused_variables)] format: &BoxedFormat,
         #[allow(unused_variables)] destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         Ok((DirectMessage::none(), None))
@@ -406,8 +420,8 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// if an evidence of malicious behavior has to be constructed.
     fn make_echo_broadcast(
         &self,
-        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
-        #[allow(unused_variables)] serializer: &Serializer,
+        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
+        #[allow(unused_variables)] format: &BoxedFormat,
     ) -> Result<EchoBroadcast, LocalError> {
         Ok(EchoBroadcast::none())
     }
@@ -421,8 +435,8 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// without any confirmation required.
     fn make_normal_broadcast(
         &self,
-        #[allow(unused_variables)] rng: &mut impl CryptoRngCore,
-        #[allow(unused_variables)] serializer: &Serializer,
+        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
+        #[allow(unused_variables)] format: &BoxedFormat,
     ) -> Result<NormalBroadcast, LocalError> {
         Ok(NormalBroadcast::none())
     }
@@ -433,7 +447,7 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// it has already been done by the execution layer.
     fn receive_message(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>>;
@@ -444,8 +458,8 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync {
     /// and `artifacts` are the ones previously generated by
     /// [`make_direct_message`](`Self::make_direct_message`).
     fn finalize(
-        self,
-        rng: &mut impl CryptoRngCore,
+        self: Box<Self>,
+        rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<Id, Payload>,
         artifacts: BTreeMap<Id, Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError>;
