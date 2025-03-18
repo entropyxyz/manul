@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `From<SerializableMap<K, V>> for BTreeMap<K, V>` impl. ([#88])
 - `session::tokio` submodule containing functions for executing a session in an async `tokio` environment and supporting types. Gated behind the `tokio` feature. ([#91])
 - `dev::tokio` submoduloe containing functions for executing multiple sessions in an async `tokio` environment. Gated behind the `tokio` feature. ([#91])
+- `impl FromIterator` for `SerializableMap`. ([#97])
 
 
 ### Fixed
@@ -68,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#92]: https://github.com/entropyxyz/manul/pull/92
 [#93]: https://github.com/entropyxyz/manul/pull/93
 [#94]: https://github.com/entropyxyz/manul/pull/94
+[#97]: https://github.com/entropyxyz/manul/pull/97
 
 
 ## [0.1.0] - 2024-11-19
