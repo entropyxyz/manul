@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     errors::{DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError, NormalBroadcastError},
-    Deserializer, Serializer,
+    BoxedFormat,
 };
 
 mod private {
@@ -50,11 +50,11 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Creates a new serialized message.
-    fn new<T>(serializer: &Serializer, message: T) -> Result<Self, LocalError>
+    fn new<T>(format: &BoxedFormat, message: T) -> Result<Self, LocalError>
     where
         T: 'static + Serialize,
     {
-        let payload = MessagePayload(serializer.serialize(message)?);
+        let payload = MessagePayload(format.serialize(message)?);
         Ok(Self::new_inner(Some(payload)))
     }
 
@@ -79,11 +79,8 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     /// This is intended to be used in the implementations of
     /// [`Protocol::verify_direct_message_is_invalid`](`crate::protocol::Protocol::verify_direct_message_is_invalid`) or
     /// [`Protocol::verify_echo_broadcast_is_invalid`](`crate::protocol::Protocol::verify_echo_broadcast_is_invalid`).
-    fn verify_is_not<'de, T: Deserialize<'de>>(
-        &'de self,
-        deserializer: &Deserializer,
-    ) -> Result<(), MessageValidationError> {
-        if self.deserialize::<T>(deserializer).is_err() {
+    fn verify_is_not<'de, T: Deserialize<'de>>(&'de self, format: &BoxedFormat) -> Result<(), MessageValidationError> {
+        if self.deserialize::<T>(format).is_err() {
             Ok(())
         } else {
             Err(MessageValidationError::InvalidEvidence(
@@ -108,7 +105,7 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
     }
 
     /// Deserializes the message into `T`.
-    fn deserialize<'de, T>(&'de self, deserializer: &Deserializer) -> Result<T, Self::Error>
+    fn deserialize<'de, T>(&'de self, format: &BoxedFormat) -> Result<T, Self::Error>
     where
         T: Deserialize<'de>,
     {
@@ -116,9 +113,7 @@ pub trait ProtocolMessagePart: ProtocolMessageWrapper {
             .maybe_message()
             .as_ref()
             .ok_or_else(|| "The payload is `None` and cannot be deserialized".into())?;
-        deserializer
-            .deserialize(&payload.0)
-            .map_err(|err| err.to_string().into())
+        format.deserialize(&payload.0).map_err(|err| err.to_string().into())
     }
 }
 

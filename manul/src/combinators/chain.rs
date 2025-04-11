@@ -56,10 +56,9 @@ use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
-    Artifact, BoxedRng, BoxedRound, CommunicationInfo, Deserializer, DirectMessage, EchoBroadcast, EntryPoint,
-    FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, ObjectSafeRound, PartyId, Payload, Protocol,
-    ProtocolError, ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, RoundId, Serializer,
-    TransitionInfo,
+    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
+    LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
+    ProtocolValidationError, ReceiveError, RequiredMessages, Round, RoundId, TransitionInfo,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -168,7 +167,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn verify_messages_constitute_error(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         guilty_party: &Id,
         shared_randomness: &[u8],
         associated_data: &Self::AssociatedData,
@@ -187,7 +186,7 @@ where
 
         match self {
             Self::Protocol1(err) => err.verify_messages_constitute_error(
-                deserializer,
+                format,
                 guilty_party,
                 shared_randomness,
                 &associated_data.protocol1,
@@ -196,7 +195,7 @@ where
                 combined_echos,
             ),
             Self::Protocol2(err) => err.verify_messages_constitute_error(
-                deserializer,
+                format,
                 guilty_party,
                 shared_randomness,
                 &associated_data.protocol2,
@@ -217,41 +216,41 @@ where
     type ProtocolError = ChainedProtocolError<Id, C>;
 
     fn verify_direct_message_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         round_id: &RoundId,
         message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         let (group, round_id) = round_id.split_group()?;
         if group == 1 {
-            C::Protocol1::verify_direct_message_is_invalid(deserializer, &round_id, message)
+            C::Protocol1::verify_direct_message_is_invalid(format, &round_id, message)
         } else {
-            C::Protocol2::verify_direct_message_is_invalid(deserializer, &round_id, message)
+            C::Protocol2::verify_direct_message_is_invalid(format, &round_id, message)
         }
     }
 
     fn verify_echo_broadcast_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         round_id: &RoundId,
         message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         let (group, round_id) = round_id.split_group()?;
         if group == 1 {
-            C::Protocol1::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+            C::Protocol1::verify_echo_broadcast_is_invalid(format, &round_id, message)
         } else {
-            C::Protocol2::verify_echo_broadcast_is_invalid(deserializer, &round_id, message)
+            C::Protocol2::verify_echo_broadcast_is_invalid(format, &round_id, message)
         }
     }
 
     fn verify_normal_broadcast_is_invalid(
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         round_id: &RoundId,
         message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
         let (group, round_id) = round_id.split_group()?;
         if group == 1 {
-            C::Protocol1::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+            C::Protocol1::verify_normal_broadcast_is_invalid(format, &round_id, message)
         } else {
-            C::Protocol2::verify_normal_broadcast_is_invalid(deserializer, &round_id, message)
+            C::Protocol2::verify_normal_broadcast_is_invalid(format, &round_id, message)
         }
     }
 }
@@ -299,7 +298,7 @@ where
 
     fn make_round(
         self,
-        rng: &mut impl CryptoRngCore,
+        rng: &mut dyn CryptoRngCore,
         shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -313,7 +312,7 @@ where
                 round,
             },
         };
-        Ok(BoxedRound::new_object_safe(chained_round))
+        Ok(BoxedRound::new_dynamic(chained_round))
     }
 }
 
@@ -341,7 +340,7 @@ where
     Protocol2(BoxedRound<Id, <T::Protocol as ChainedProtocol<Id>>::Protocol2>),
 }
 
-impl<Id, T> ObjectSafeRound<Id> for ChainedRound<Id, T>
+impl<Id, T> Round<Id> for ChainedRound<Id, T>
 where
     Id: PartyId,
     T: ChainedJoin<Id>,
@@ -372,60 +371,49 @@ where
     fn make_direct_message(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => {
-                round
-                    .as_ref()
-                    .make_direct_message(rng, serializer, deserializer, destination)
-            }
-            ChainState::Protocol2(round) => {
-                round
-                    .as_ref()
-                    .make_direct_message(rng, serializer, deserializer, destination)
-            }
+            ChainState::Protocol1 { round, .. } => round.as_ref().make_direct_message(rng, format, destination),
+            ChainState::Protocol2(round) => round.as_ref().make_direct_message(rng, format, destination),
         }
     }
 
     fn make_echo_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
     ) -> Result<EchoBroadcast, LocalError> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().make_echo_broadcast(rng, serializer, deserializer),
-            ChainState::Protocol2(round) => round.as_ref().make_echo_broadcast(rng, serializer, deserializer),
+            ChainState::Protocol1 { round, .. } => round.as_ref().make_echo_broadcast(rng, format),
+            ChainState::Protocol2(round) => round.as_ref().make_echo_broadcast(rng, format),
         }
     }
 
     fn make_normal_broadcast(
         &self,
         rng: &mut dyn CryptoRngCore,
-        serializer: &Serializer,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
     ) -> Result<NormalBroadcast, LocalError> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => round.as_ref().make_normal_broadcast(rng, serializer, deserializer),
-            ChainState::Protocol2(round) => round.as_ref().make_normal_broadcast(rng, serializer, deserializer),
+            ChainState::Protocol1 { round, .. } => round.as_ref().make_normal_broadcast(rng, format),
+            ChainState::Protocol2(round) => round.as_ref().make_normal_broadcast(rng, format),
         }
     }
 
     fn receive_message(
         &self,
-        deserializer: &Deserializer,
+        format: &BoxedFormat,
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
         match &self.state {
-            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(deserializer, from, message) {
+            ChainState::Protocol1 { round, .. } => match round.as_ref().receive_message(format, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol1)),
             },
-            ChainState::Protocol2(round) => match round.as_ref().receive_message(deserializer, from, message) {
+            ChainState::Protocol2(round) => match round.as_ref().receive_message(format, from, message) {
                 Ok(payload) => Ok(payload),
                 Err(err) => Err(err.map(ChainedProtocolError::from_protocol2)),
             },
@@ -446,34 +434,33 @@ where
                 shared_randomness,
             } => match round.into_boxed().finalize(rng, payloads, artifacts)? {
                 FinalizeOutcome::Result(result) => {
-                    let mut boxed_rng = BoxedRng(rng);
                     let entry_point2 = transition.make_entry_point2(result);
-                    let round = entry_point2.make_round(&mut boxed_rng, &shared_randomness, &id)?;
-
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
-                        ChainedRound::<Id, T> {
-                            state: ChainState::Protocol2(round),
-                        },
-                    )))
+                    let round = entry_point2.make_round(rng, &shared_randomness, &id)?;
+                    let chained_round = ChainedRound::<Id, T> {
+                        state: ChainState::Protocol2(round),
+                    };
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
                 }
-                FinalizeOutcome::AnotherRound(round) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
-                    ChainedRound::<Id, T> {
+                FinalizeOutcome::AnotherRound(round) => {
+                    let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol1 {
                             id,
                             shared_randomness,
                             round,
                             transition,
                         },
-                    },
-                ))),
+                    };
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
+                }
             },
             ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts)? {
                 FinalizeOutcome::Result(result) => Ok(FinalizeOutcome::Result(result)),
-                FinalizeOutcome::AnotherRound(round) => Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_object_safe(
-                    ChainedRound::<Id, T> {
+                FinalizeOutcome::AnotherRound(round) => {
+                    let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
-                    },
-                ))),
+                    };
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
+                }
             },
         }
     }

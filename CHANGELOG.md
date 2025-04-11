@@ -4,7 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.2.0] - in development
+## [0.2.0] - 2025-04-07
 
 ### Changed
 
@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `Send` bound on `ProtocolError`. ([#92])
 - Merged `Round::id()`, `possible_next_rounds()` and `may_produce_result()` into `transition_info()`. ([#93])
 - Merged `Round::message_destinations()`, `expecting_messages_from()` and `echo_round_participation()` into `communication_info()`. ([#93])
+- Renamed `Payload::try_to_typed()` and `Artifact::try_to_typed()` to `downcast()`. ([#94])
+- `Round` methods take `dyn CryptoRngCore` instead of `impl CryptoRngCore`. ([#94])
+- `Round` is now dyn-safe. `serializer` and `deserializer` arguments to `Round` and related traits are merged into `format`. `Round::finalize()` takes `self: Box<Self>`. ([#94])
 
 
 ### Added
@@ -41,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `From<SerializableMap<K, V>> for BTreeMap<K, V>` impl. ([#88])
 - `session::tokio` submodule containing functions for executing a session in an async `tokio` environment and supporting types. Gated behind the `tokio` feature. ([#91])
 - `dev::tokio` submoduloe containing functions for executing multiple sessions in an async `tokio` environment. Gated behind the `tokio` feature. ([#91])
+- `impl FromIterator` for `SerializableMap`. ([#97])
 
 
 ### Fixed
@@ -64,6 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#91]: https://github.com/entropyxyz/manul/pull/91
 [#92]: https://github.com/entropyxyz/manul/pull/92
 [#93]: https://github.com/entropyxyz/manul/pull/93
+[#94]: https://github.com/entropyxyz/manul/pull/94
+[#97]: https://github.com/entropyxyz/manul/pull/97
 
 
 ## [0.1.0] - 2024-11-19
@@ -138,3 +144,4 @@ Initial release.
 
 [0.0.1]: https://github.com/entropyxyz/manul/releases/tag/v0.0.1
 [0.1.0]: https://github.com/entropyxyz/manul/releases/tag/v0.1.0
+[0.2.0]: https://github.com/entropyxyz/manul/releases/tag/v0.2.0

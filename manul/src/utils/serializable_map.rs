@@ -32,6 +32,15 @@ impl<K, V> From<SerializableMap<K, V>> for BTreeMap<K, V> {
     }
 }
 
+impl<K, V> FromIterator<(K, V)> for SerializableMap<K, V>
+where
+    K: Ord,
+{
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self(BTreeMap::from_iter(iter))
+    }
+}
+
 impl<K, V> Deref for SerializableMap<K, V> {
     type Target = BTreeMap<K, V>;
 
@@ -189,5 +198,13 @@ mod tests {
             json_deserialize::<SerializableMap<u8, u8>>(&not_map_serialized).unwrap_err(),
             "invalid type: integer `1`, expected A map serialized as a list of pairs at line 1 column 1"
         );
+    }
+
+    #[test]
+    fn collect() {
+        let x = [(1u8, 2u8), (2, 3)];
+        let smap: SerializableMap<_, _> = x.into_iter().collect();
+        let map: BTreeMap<_, _> = x.into_iter().collect();
+        assert_eq!(smap, SerializableMap::from(map));
     }
 }
