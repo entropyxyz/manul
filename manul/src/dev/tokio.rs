@@ -6,6 +6,7 @@ use rand::Rng;
 use rand_core::CryptoRngCore;
 use signature::Keypair;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use super::run_sync::ExecutionResult;
 use crate::{
@@ -100,6 +101,7 @@ where
 
     let dispatcher_task = message_dispatcher(rng.clone(), tx_map, dispatcher_rx);
     let dispatcher = tokio::spawn(dispatcher_task);
+    let cancellation = CancellationToken::new();
 
     let handles = rxs
         .into_iter()
@@ -110,12 +112,13 @@ where
 
             let session = Session::<_, SP>::new(&mut rng, session_id.clone(), signer, entry_point)?;
             let id = session.verifier().clone();
+            let cancellation = cancellation.clone();
 
             let node_task = async move {
                 if offload_processing {
-                    par_run_session(&mut rng, &tx, &mut rx, session).await
+                    par_run_session(&mut rng, &tx, &mut rx, cancellation, session).await
                 } else {
-                    run_session(&mut rng, &tx, &mut rx, session).await
+                    run_session(&mut rng, &tx, &mut rx, cancellation, session).await
                 }
             };
             Ok((id, tokio::spawn(node_task)))
