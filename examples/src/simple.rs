@@ -200,7 +200,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
     }
 
     fn communication_info(&self) -> CommunicationInfo<Id> {
-        CommunicationInfo::regular(&self.context.other_ids)
+        CommunicationInfo::all_to_all(&self.context.other_ids)
     }
 
     fn make_normal_broadcast(
