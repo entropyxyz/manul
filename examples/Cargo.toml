@@ -9,13 +9,15 @@ repository = "https://github.com/entropyxyz/manul/examples"
 readme = "README.md"
 
 [dependencies]
-manul = { path = "../manul" }
+manul = { path = "../manul", features = ["dev"] }
 postcard = { version = "1", features = ["alloc"] }
 serde = "1"
 sha3 = "0.10"
 rand_core = "0.6"
 tracing = "0.1"
 displaydoc = "0.2"
+rand = { version = "0.8", features = ["std"] }
+tracing-subscriber = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
@@ -23,3 +25,7 @@ rand = "0.8"
 digest = "0.10"
 manul = { path = "../manul", features = ["dev", "tokio"] }
 test-log = { version = "0.2", features = ["trace", "color"] }
+
+[[bin]]
+name = "dining-cryptographers"
+path = "src/dining_cryptographers.rs"
