@@ -54,8 +54,8 @@ use manul::{
     digest,
     // TODO: this is lot of imports, perhaps we should have a "prelude" and have users do `use manul::prelude::*`?
     protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
-        FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol,
+        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol,
         ProtocolError, ProtocolMessage, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
         RequiredMessageParts, RequiredMessages, Round, RoundId, TransitionInfo,
     },
@@ -137,10 +137,58 @@ impl<Id> Protocol<Id> for DiningCryptographersProtocol {
     }
 }
 
-pub struct Round1<Id> {
-    id: Id,
+#[derive(Debug, Clone, Serialize)]
+pub struct Round1 {
+    id: Verifier,
 }
-// TODO: impl `Round` for `Round2`.
+// TODO: impl `Round` for `Round1`.
+
+impl Round<Verifier> for Round1 {
+    type Protocol = DiningCryptographersProtocol;
+
+    fn transition_info(&self) -> TransitionInfo {
+        let mut children = BTreeSet::new();
+        children.insert(RoundId::new(2));
+        TransitionInfo {
+            id: RoundId::new(1),
+            parents: BTreeSet::new(),
+            siblings: BTreeSet::new(),
+            children,
+            may_produce_result: false,
+        }
+    }
+
+    fn communication_info(&self) -> CommunicationInfo<Verifier> {
+        let mut message_destinations = BTreeSet::new();
+        let mut expecting_messages_from = BTreeSet::new();
+        message_destinations.insert(Verifier(self.id.0 + 1 % 3));
+        CommunicationInfo {
+            message_destinations,
+            expecting_messages_from,
+            echo_round_participation: EchoRoundParticipation::Default,
+        }
+    }
+
+    fn receive_message(
+        &self,
+        format: &BoxedFormat,
+        from: &Verifier,
+        message: ProtocolMessage,
+    ) -> Result<Payload, ReceiveError<Verifier, Self::Protocol>> {
+        // This is called when this diner receives a bit from their neighbour.
+        todo!("Round1 receive message")
+    }
+
+    fn finalize(
+        self: Box<Self>,
+        rng: &mut dyn CryptoRngCore,
+        payloads: BTreeMap<Verifier, Payload>,
+        artifacts: BTreeMap<Verifier, Artifact>,
+    ) -> Result<FinalizeOutcome<Verifier, Self::Protocol>, LocalError> {
+        // Prolly just a NOP in this protocol? Maybe its artifact are the two bits (one private, one shared)?
+        todo!("Round1 finalize")
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Round1Message {
@@ -158,29 +206,34 @@ pub struct Round2Message {
 }
 
 #[derive(Debug, Clone)]
-struct DiningEntryPoint<Id> {
-    diners: BTreeSet<Id>,
+struct DiningEntryPoint {
+    diners: BTreeSet<u8>,
 }
-impl<Id: PartyId> DiningEntryPoint<Id> {
-    pub fn new(diners: BTreeSet<Id>) -> Self {
+impl DiningEntryPoint {
+    pub fn new() -> Self {
+        let diners = [0, 1, 2u8].into_iter().collect::<BTreeSet<u8>>();
         Self { diners }
     }
 }
 
-impl<Id: PartyId> EntryPoint<Id> for DiningEntryPoint<Id> {
+impl EntryPoint<Verifier> for DiningEntryPoint {
     type Protocol = DiningCryptographersProtocol;
 
     fn entry_round_id() -> RoundId {
         1.into()
     }
 
+    // Called as part of the session initialization, specifically in [`Session::new`].
+    // Each `EntryPoint` creates one `Session`.
     fn make_round(
         self,
         _rng: &mut dyn CryptoRngCore,
         _shared_randomness: &[u8],
-        id: &Id,
-    ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        todo!()
+        id: &Verifier,
+    ) -> Result<BoxedRound<Verifier, Self::Protocol>, LocalError> {
+        let round = Round1 { id: id.clone() };
+        let round = BoxedRound::new_dynamic(round);
+        Ok(BoxedRound::new_dynamic(Round1 { id: id.clone() }))
     }
 }
 
@@ -257,7 +310,7 @@ fn main() {
 
     let entry_points = diners
         .into_iter()
-        .map(|diner| (diner, DiningEntryPoint::new(all_diners.clone())))
+        .map(|diner| (diner, DiningEntryPoint::new()))
         .collect::<Vec<_>>();
 
     let results = run_sync::<_, DiningSessionParams>(&mut OsRng, entry_points)
