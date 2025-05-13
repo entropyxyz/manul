@@ -313,7 +313,7 @@ impl Artifact {
 /// A round that initiates a protocol.
 ///
 /// This is a round that can be created directly;
-/// all the others are only reachable throud [`Round::finalize`] by the execution layer.
+/// all the others are only reachable through [`Round::finalize`] by the execution layer.
 pub trait EntryPoint<Id: PartyId> {
     /// The protocol implemented by the round this entry points returns.
     type Protocol: Protocol<Id>;
@@ -321,9 +321,10 @@ pub trait EntryPoint<Id: PartyId> {
     /// Returns the ID of the round returned by [`Self::make_round`].
     fn entry_round_id() -> RoundId;
 
-    /// Creates the round.
+    /// Creates the starting round.
     ///
-    /// `session_id` can be assumed to be the same for each node participating in a session.
+    /// `shared_randomness` can be assumed to be the same for each node participating in a session and can be thought of
+    /// as a "session id" bytestring.
     /// `id` is the ID of this node.
     fn make_round(
         self,
