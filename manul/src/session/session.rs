@@ -297,7 +297,7 @@ where
         // Quick preliminary checks, before we proceed with more expensive verification
         let key = self.verifier();
         if self.transcript.is_banned(from) || accum.is_banned(from) {
-            trace!("{key:?} Banned.");
+            trace!("[{key:?}] Banned.");
             return Ok(PreprocessOutcome::remote_error("The sender is banned"));
         }
 
@@ -306,7 +306,7 @@ where
             None => {
                 let err = "Mismatched metadata in bundled messages.";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
-                trace!("{key:?} {err}");
+                trace!("[{key:?}] {err}");
                 return Ok(PreprocessOutcome::remote_error(err));
             }
         };
@@ -315,7 +315,7 @@ where
         if checked_message.metadata().session_id() != &self.session_id {
             let err = "The received message has an incorrect session ID";
             accum.register_unprovable_error(from, RemoteError::new(err))?;
-            trace!("{key:?} {err}");
+            trace!("[{key:?}] {err}");
             return Ok(PreprocessOutcome::remote_error(err));
         }
 
@@ -332,22 +332,22 @@ where
             if accum.message_is_being_processed(from) {
                 let err = "Message from this party is already being processed";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
-                trace!("{key:?} {err}");
+                trace!("[{key:?}] {err}");
                 return Ok(PreprocessOutcome::remote_error(err));
             }
             MessageFor::ThisRound
         } else if acceptable_round_ids.contains(&message_round_id) {
             if accum.message_is_cached(from, &message_round_id) {
-                let err = format!("Message for {:?} is already cached", message_round_id);
+                let err = format!("Message for {message_round_id:?} is already cached");
                 accum.register_unprovable_error(from, RemoteError::new(&err))?;
-                trace!("{key:?} {err}");
+                trace!("[{key:?}] {err}");
                 return Ok(PreprocessOutcome::remote_error(err));
             }
             MessageFor::SimultaneousRound
         } else {
-            let err = format!("Unexpected message round ID: {:?}", message_round_id);
+            let err = format!("Unexpected message round ID: {message_round_id:?}");
             accum.register_unprovable_error(from, RemoteError::new(&err))?;
-            trace!("{key:?} {err}");
+            trace!("[{key:?}] {err}");
             return Ok(PreprocessOutcome::remote_error(err));
         };
 
@@ -364,12 +364,12 @@ where
             Err(MessageVerificationError::SignatureMismatch) => {
                 let err = "Message verification failed.";
                 accum.register_unprovable_error(from, RemoteError::new(err))?;
-                trace!("{key:?} {err}");
+                trace!("[{key:?}] {err}");
                 return Ok(PreprocessOutcome::remote_error(err));
             }
             Err(MessageVerificationError::Local(error)) => return Err(error),
         };
-        debug!("{key:?}: Received {message_round_id} message from {from:?}");
+        debug!("[{key:?}] Received {message_round_id} message from {from:?}");
 
         match message_for {
             MessageFor::ThisRound => {
@@ -377,7 +377,7 @@ where
                 Ok(PreprocessOutcome::ToProcess(Box::new(verified_message)))
             }
             MessageFor::SimultaneousRound => {
-                debug!("{key:?}: Caching message from {from:?} for {message_round_id}");
+                debug!("[{key:?}] Caching message from {from:?} for {message_round_id}");
                 accum.cache_message(verified_message)?;
                 Ok(PreprocessOutcome::Cached)
             }
@@ -677,7 +677,6 @@ where
                 from
             )));
         }
-
         let error = match processed.processed {
             Ok(payload) => {
                 // Note: only inserting the messages if they actually have a payload
