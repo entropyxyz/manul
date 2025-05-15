@@ -642,6 +642,9 @@ where
         }
     }
 
+    // Add a processed artifact to the accumulator.
+    // Returns an error if the artifact was already present.
+    // Called by [`Session::add_artifact`].
     fn add_artifact(&mut self, processed: ProcessedArtifact<SP>) -> Result<(), LocalError> {
         let artifact = match processed.artifact {
             Some(artifact) => artifact,
