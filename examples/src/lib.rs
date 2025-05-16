@@ -1,6 +1,5 @@
 extern crate alloc;
 
-pub mod dining_cryptographers;
 pub mod simple;
 pub mod simple_chain;
 
