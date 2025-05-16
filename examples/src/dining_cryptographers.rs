@@ -44,6 +44,10 @@
 //! 	Outcome: each diner has a set of bits, one for each diner.
 //! Post:
 //! 	Everyone XORs all bits together and interprets the result: 0 => NSA paid; 1 => one of the diners paid.
+//!
+//! ## Running the example
+//!
+//! Run the example with `RUST_LOG=trace cargo run dining-cryptographers`.
 
 #![allow(dead_code, unused, unused_imports)]
 use core::fmt::Debug;
