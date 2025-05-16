@@ -68,7 +68,7 @@ jobs:
           profile: minimal
           override: true
       - run: ${{ matrix.deps }}
-      - run: cargo test --workspace --all-features --target ${{ matrix.target }}
+      - run: cargo test --workspace --locked --all-features --target ${{ matrix.target }}
 
   clippy:
     runs-on: ubuntu-latest
