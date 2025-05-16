@@ -1,6 +1,10 @@
-# User's Guide: Building Protocols with `manul`
+# User's Guide: Getting started building protocols with `manul`
 
-This guide provides a step-by-step explanation of how to build protocols using `manul`, using the Dining Cryptographers example as a reference.
+This guide provides a step-by-step explanation of how to build protocols using `manul`. See the examples in this folder for concrete examples.
+
+Building a protocol with `manul` involves defining the protocol's overall structure, breaking it down into rounds with specific communication and logic, defining the messages exchanged, providing an entry point to initialize the protocol, configuring session parameters for cryptography and data handling, and finally using the provided utilities to execute the protocol (or write your own).
+
+Refer to the crate documentation for more details and advanced topics.
 
 ## 1. Define Your Protocol Structure (`Protocol`)
 
@@ -8,18 +12,19 @@ Start by defining a struct to represent your protocol. This struct will implemen
 
 ```rust,ignore
 #[derive(Debug)]
-pub struct DiningCryptographersProtocol;
+pub struct MyProtocol;
 
-impl<Id> Protocol<Id> for DiningCryptographersProtocol {
-    type Result = (bool, bool, bool);
+impl<Id> Protocol<Id> for MyProtocol {
+    type Result = SomeResultType;
+    type Error = SomeErrorType;
     // ... other required trait methods ...
 }
 ```
 
 Key aspects:
 
-- **`type Result`**: This associated type defines the final output of a successful protocol execution. In this case, it's a tuple of three booleans representing each cryptographer's perspective on the outcome.
-- **Error Handling (Advanced)**: In more complex protocols, the `Protocol` trait also handles error types and misbehavior reporting, which are simplified to `NoProtocolErrors` in this example.
+- **`type Result`**: This associated type defines the final output of a successful protocol execution. In the case of the Dining Cryptographers Problem, it's a thruple of bools representing each cryptographer's perspective on the outcome.
+- **Error Handling (Advanced)**: In more realistic protocols, the `Protocol` trait is where you would define error types and misbehavior reporting; when not needed, there's a `NoProtocolErrors` convenience type.
 - **Message Validation (Advanced)**: The methods `verify_direct_message_is_invalid`, `verify_echo_broadcast_is_invalid`, and `verify_normal_broadcast_is_invalid` are used for validating message contents during evidence verification in more complex scenarios.
 
 ## 2. Define Your Rounds (`Round`)
@@ -31,7 +36,7 @@ Protocols are broken down into a series of rounds. For each round, create a stru
 pub struct Round1 { /* ... */ }
 
 impl Round<DinerId> for Round1 {
-    type Protocol = DiningCryptographersProtocol;
+    type Protocol = MyProtocol;
     // ... required trait methods ...
 }
 ```
@@ -39,12 +44,12 @@ impl Round<DinerId> for Round1 {
 Key aspects of a `Round`:
 
 - **`type Protocol`**: This associated type links the round to the overall protocol it belongs to.
-- **State Management**: Rounds often need to maintain some state specific to their execution. This state is stored within the round struct itself (e.g., `diner_id`, `own_toss`, `paid` in `Round1`).
-- **`transition_info()`**: Crucially defines how this round connects to other rounds in the protocol flow. It specifies the possible predecessor rounds (`parents`), successor rounds (`children`), and whether this round can produce a final result (`may_produce_result`). For simple linear flows, `TransitionInfo::new_linear` and `TransitionInfo::new_linear_terminating` simplify this.
-- **`communication_info()`**: Defines who this round communicates with, including message destinations and expected senders. It also allows specifying participation in "echo rounds" for certain broadcast scenarios.
-- **Message Handling**: Rounds define how they create and process messages.
+- **State Management**: Rounds often need to maintain some state specific to their execution. This state is stored within the round struct itself.
+- **`transition_info()`**: Defines how this round connects to other rounds in the protocol flow. It specifies the possible predecessor rounds (`parents`), successor rounds (`children`), and whether this round can produce a final result (`may_produce_result`). For simple linear flows, `TransitionInfo::new_linear` and `TransitionInfo::new_linear_terminating` simplify the setup.
+- **`communication_info()`**: Defines who the participants in this round communicates with, including message destinations and expected senders. It also allows specifying participation in "echo rounds" for certain broadcast scenarios.
+- **Message Handling**: Rounds define how messages are created and processed. Users are expected to create their own message types, allowing maximum flexibility in how they are constructed, processed and serialized/deserialized.
   - **`make_direct_message()`**: Creates messages sent point-to-point to specific parties, optionally including an `Artifact` for storing associated data related to that message.
-  - **`make_echo_broadcast()`/`make_normal_broadcast()`**: Create broadcast messages. `make_echo_broadcast` is for messages that require confirmation of reception (echoes), while `make_normal_broadcast` is for fire-and-forget broadcasts.
+  - **`make_echo_broadcast()`/`make_normal_broadcast()`**: Create broadcast messages; `make_echo_broadcast` is for messages that require confirmation of reception (echoes), while `make_normal_broadcast` is for fire-and-forget broadcasts.
   - **`receive_message()`**: Processes incoming messages, deserializing the relevant part of the `ProtocolMessage` and extracting necessary information. It returns a `Payload`, which acts as a container for data passed to the `finalize` method.
 - **`finalize()`**: This is where the round concludes its logic. It has access to all `Payload`s received from other parties and any `Artifact`s created during message sending. It either returns the next round to execute (`FinalizeOutcome::AnotherRound`) or the final protocol result (`FinalizeOutcome::Result`).
 
@@ -55,20 +60,20 @@ Create structs to represent the data exchanged between parties. These structs sh
 ```rust
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Round1Message {
-    toss: bool,
+    cointoss: bool,
 }
 ```
 
 ## 4. Create an Entry Point (`EntryPoint`)
 
-The `EntryPoint` defines how a protocol execution begins:
+The `EntryPoint` defines how a protocol execution begins and is the only round that can be created outside the protocol flow. The `EntryPoint` can carry data, e.g. configuration or external initialization data.
 
 ```rust
 #[derive(Debug, Clone)]
-struct DiningEntryPoint { /* ... */ }
+struct MyEntryPoint { /* ... */ }
 
-impl EntryPoint<DinerId> for DiningEntryPoint {
-    type Protocol = DiningCryptographersProtocol;
+impl EntryPoint<DinerId> for MyEntryPoint {
+    type Protocol = MyProtocol;
     // ... required trait methods ...
 }
 ```
@@ -85,14 +90,14 @@ The `SessionParameters` trait defines crucial parameters for a protocol session,
 
 ```rust
 #[derive(Debug, Clone, Copy)]
-pub struct DiningSessionParams;
+pub struct MySessionParams;
 
-impl SessionParameters for DiningSessionParams {
-    type Signer = Diner;
-    type Verifier = DinerId;
-    type Signature = DinerSignature;
-    type Digest = TestHasher;
-    type WireFormat = BinaryFormat;
+impl SessionParameters for MySessionParams {
+    type Signer = MySigner;
+    type Verifier = MyId;
+    type Signature = MySignature;
+    type Digest = MyHasher;
+    type WireFormat = MyWireFormat;
 }
 ```
 
@@ -114,5 +119,3 @@ let results = run_sync::<_, DiningSessionParams>(&mut OsRng, entry_points)
 ```
 
 This function takes a vector of `(Signer, EntryPoint)` pairs (one for each participant) and session parameters, runs the protocol, and returns the final results.
-
-**In summary,** building a protocol with `manul` involves defining the protocol's overall structure, breaking it down into rounds with specific communication and logic, defining the messages exchanged, providing an entry point to initialize the protocol, configuring session parameters for cryptography and data handling, and finally using the provided utilities to execute the protocol.
