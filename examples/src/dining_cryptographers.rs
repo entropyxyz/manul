@@ -66,11 +66,19 @@ use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, trace};
 
+// The [`Protocol`] is used to group `Round` impls together and in serious protocols it plays a major role in setting up
+// error handling and misbehaviour reporting. Another important feature involving [`Protocol`] is when chaining and
+// combining sub-protocols together.
+// For this simple protocol it's mostly boiler plate, with the exception of the `Result` associated type: it defines
+// what the final outcome of a protocol run actually is.
 #[derive(Debug)]
 pub struct DiningCryptographersProtocol;
 
+// TODO: I guess the protocol is a place where one could store arbitrary state/context/config data as well? We don't do
+// that much in `synedrion` but would it be a good idea to do so?
 impl<Id> Protocol<Id> for DiningCryptographersProtocol {
-    // XOR/¬XOR of the two bits of the diners (one is their own cointoss, the other shared with their neighbour).
+    // XOR/¬XOR of the two bits of each of the three diners (one is their own cointoss, the other shared with their
+    // neighbour).
     type Result = (bool, bool, bool);
 
     type ProtocolError = NoProtocolErrors;
@@ -100,6 +108,10 @@ impl<Id> Protocol<Id> for DiningCryptographersProtocol {
     }
 }
 
+// HELP: Keeping state in the round like this is a bit weird. Is this the intended way to do it? It would have been
+// natural to use the `Diner` type to store state, but it's not clear how to access a `Diner` from inside the various
+// `manul` types/methods.
+// TODO: clearly document that the only data that hits the wire are the message types defined in the protocol.
 #[derive(Debug, Clone, Serialize)]
 pub struct Round1 {
     diner_id: DinerId,
@@ -179,25 +191,17 @@ impl Round<DinerId> for Round1 {
         Ok(payload)
     }
 
+    // At the end of round 1 we construct the next one, Round 2, and return a [`FinalizeOutcome::AnotherRound`].
     fn finalize(
         self: Box<Self>,
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<DinerId, Payload>,
         artifacts: BTreeMap<DinerId, Artifact>,
     ) -> Result<FinalizeOutcome<DinerId, Self::Protocol>, LocalError> {
-        trace!(
-            "[Round1, finalize] {:?}, payloads len: {}, artifacts len: {}",
-            self.diner_id,
-            payloads.len(),
-            artifacts.len()
-        );
-        let artifacts_d = downcast_artifacts::<bool>(artifacts)?;
-        let payloads_d = downcast_payloads::<bool>(payloads)?;
-        debug!(
-            "[Round1, finalize] {:?} has access to: \n\tpayloads: {payloads_d:?}\n\tartifacts: {artifacts_d:?}",
-            self.diner_id
-        );
-        let neighbour_toss = *payloads_d
+        let payloads = downcast_payloads::<bool>(payloads)?;
+        debug!("[Round1, finalize] {:?} sees payloads: {payloads:?}", self.diner_id);
+
+        let neighbour_toss = *payloads
             .first_key_value()
             .ok_or_else(|| return LocalError::new("No payloads found"))?
             .1;
@@ -206,6 +210,11 @@ impl Round<DinerId> for Round1 {
             "[Round1, finalize] {:?} is finalizing to Round 2. Own cointoss: {}, neighbour cointoss: {neighbour_toss}",
             self.diner_id, self.own_toss
         );
+        // TODO: The name `new_dynamic` throws me off track a bit. It suggests that there are alternative constructors,
+        // (e.g. `new_static`?). How about we rename it to just `new`?
+        // TODO: Given we must set up `TransitionInfo` for the `Round`, would it be possible to statically know that the
+        // argument to `AnotherRound` must be a `Round2`? For this protocol it's unambiguous, but more in general? Can
+        // we help users avoid having to think for themselves here?
         Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(Round2 {
             diner_id: self.diner_id,
             own_toss: self.own_toss,
@@ -218,10 +227,18 @@ impl Round<DinerId> for Round1 {
 impl Round<DinerId> for Round2 {
     type Protocol = DiningCryptographersProtocol;
 
+    // This round is the last in the protocol so we can terminate here.
     fn transition_info(&self) -> TransitionInfo {
+        // TODO: when coding this I was a bit confused by having to send in the round number of the current round here.
+        // It was not clear to me if it was the next round (or even the previous one). Is there a way to make this less
+        // error-prone by passing in a ref to the round perhaps? Should `Round` contain its own `RoundId` perhaps?
         TransitionInfo::new_linear_terminating(2.into())
     }
 
+    // In round 2 each participant broadcasts one bit, so we set up the destinations as "everyone" and expect to receive
+    // messages from "everyone". This method is only concerned with who this participant sends to and receives from. The
+    // fact that the round is going to make a broadcast (as opposed to direct messages, like in Round 1) is expressed by
+    // choosing which message constructing methods to implement.
     fn communication_info(&self) -> CommunicationInfo<DinerId> {
         let everyone_else = [0, 1, 2]
             .iter()
@@ -241,10 +258,11 @@ impl Round<DinerId> for Round2 {
         }
     }
 
+    // Implementing this method means that Round 2 will make a broadcast (without echoes).
     fn make_normal_broadcast(
         &self,
-        #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
-        #[allow(unused_variables)] format: &BoxedFormat,
+        _rng: &mut dyn CryptoRngCore,
+        format: &BoxedFormat,
     ) -> Result<NormalBroadcast, LocalError> {
         debug!(
             "[Round2, make_normal_broadcast] {:?} broadcasts to everyone else",
@@ -261,8 +279,9 @@ impl Round<DinerId> for Round2 {
         Ok(bcast)
     }
 
-    // This is called from `Session::process_message` as part of the message delivery loop. If we get here, it means
-    // that message pre-processing was successful.
+    // Called once for each diner as messages are delivered to it. Here we deserialize the message using the configured
+    // [`SessionParameters::WireFormat`] and construct the [`Payload`] that we want to make available to the `finalize`
+    // method below.
     fn receive_message(
         &self,
         format: &BoxedFormat,
@@ -277,27 +296,25 @@ impl Round<DinerId> for Round2 {
         Ok(payload)
     }
 
+    // The `finalize` method has access to all the [`Payload`]s that were sent to this diner. This protocol does not use
+    // [`Artifact`]s, but when used, they are also available here.
+    // This is the last round in the protocol, so we return a [`FinalizeOutcome::Result`] with the result of the
+    // protocol from this participant's point of view.
     fn finalize(
         self: Box<Self>,
         rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<DinerId, Payload>,
-        artifacts: BTreeMap<DinerId, Artifact>,
+        _artifacts: BTreeMap<DinerId, Artifact>,
     ) -> Result<FinalizeOutcome<DinerId, Self::Protocol>, LocalError> {
-        let artifacts_d = downcast_artifacts::<bool>(artifacts)?;
-        let payloads_d = downcast_payloads::<bool>(payloads)?;
-        debug!(
-            "[Round2, finalize] {:?}\n\tpayloads: {payloads_d:?}\n\tartifacts: {artifacts_d:?}",
-            self.diner_id
-        );
-        let bits = payloads_d.values().cloned().collect::<Vec<_>>();
+        // XOR/¬XOR the two bits of this diner, depending on whether they paid or not.
         let mut own_reveal = self.own_toss ^ self.neighbour_toss;
         if self.paid {
             own_reveal = !own_reveal;
         }
-        assert!(
-            bits.len() + 1 == 3,
-            "Expected 3 diners and 3 bits, instead got {bits:?}"
-        );
+        // Extract the payloads from the other participants so we can produce a [`Protocol::Result`]. In this case it is
+        // a tuple of 3 booleans.
+        let payloads_d = downcast_payloads::<bool>(payloads)?;
+        let bits = payloads_d.values().cloned().collect::<Vec<_>>();
         Ok(FinalizeOutcome::Result((bits[0], bits[1], own_reveal)))
     }
 }
@@ -406,11 +423,7 @@ impl signature::Keypair for Diner {
 // TODO: this feels like boilerplate.
 impl<D: digest::Digest> signature::DigestVerifier<D, DinerSignature> for DinerId {
     fn verify_digest(&self, _digest: D, signature: &DinerSignature) -> Result<(), signature::Error> {
-        if self.0 == signature.signed_by {
-            Ok(())
-        } else {
-            Err(signature::Error::new())
-        }
+        Ok(())
     }
 }
 #[derive(Debug, Clone, Copy)]
@@ -430,34 +443,32 @@ fn downcast_payloads<T: 'static>(map: BTreeMap<DinerId, Payload>) -> Result<BTre
         .map(|(id, payload)| payload.downcast::<T>().map(|p| (id, p)))
         .collect()
 }
-fn downcast_artifacts<T: 'static>(map: BTreeMap<DinerId, Artifact>) -> Result<BTreeMap<DinerId, T>, LocalError> {
-    map.into_iter()
-        .map(|(id, artifact)| artifact.downcast::<T>().map(|p| (id, p)))
-        .collect()
-}
 
 fn main() {
     tracing_subscriber::fmt::init();
     info!("Dining Cryptographers Protocol Example");
+
+    // Set up participants. This protocol only works for 3 participants!
     let diners = (0..=2).map(|id| Diner::new(id)).collect::<Vec<_>>();
 
-    let all_diners = diners
-        .iter()
-        .map(|diner| diner.verifying_key())
-        .collect::<BTreeSet<_>>();
-
+    // Each diner crates an `EntryPoint` for themselves. This constitutes the starting point for the protocol.
+    // In a production setting where each diner runs the protocol on their own computer, they'd each create their own
+    // `EntryPoint` and run the protocol independently.
     let entry_points = diners
         .into_iter()
         .map(|diner| (diner, DiningEntryPoint::new()))
         .collect::<Vec<_>>();
 
-    assert!(entry_points.len() == 3);
+    // Run the protocol as configured by the `DiningEntryPoint` and `DiningSessionParams`. Calling
+    // [`ExecutionResult::results`] collects the [`SessionOutcome`]s for all sessions in a map keyed by the diner ID (aka
+    // "verifier").
     let results = run_sync::<_, DiningSessionParams>(&mut OsRng, entry_points)
-        .unwrap()
+        .expect("Failed to run the protocol")
         .results()
-        .unwrap();
+        .expect("The protocol executed but failed to produce results");
 
-    // `results` contains 3 booleans, which, when XORed together, make `true` if one of the diners paid, or `false` if the NSA paid.
+    // `results` contains 3 booleans, which, when XORed together, make `true` if one of the diners paid, or `false` if
+    // the NSA paid. All participants should reach the same conclusion.
     for (id, result) in results {
         let who_paid = if result.0 ^ result.1 ^ result.2 {
             "one of the diners"
