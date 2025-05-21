@@ -4,6 +4,7 @@ use alloc::{format, sync::Arc, vec::Vec};
 
 use rand_core::CryptoRngCore;
 use tokio::{sync::mpsc, task::JoinHandle};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace};
 
 use super::{
@@ -50,6 +51,7 @@ pub async fn run_session<P, SP>(
     rng: &mut impl CryptoRngCore,
     tx: &mpsc::Sender<MessageOut<SP>>,
     rx: &mut mpsc::Receiver<MessageIn<SP>>,
+    cancellation: CancellationToken,
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
@@ -135,10 +137,14 @@ where
             }
 
             debug!("{my_id}: Waiting for a message");
-            let message_in = rx
-                .recv()
-                .await
-                .ok_or_else(|| LocalError::new("Failed to receive a message"))?;
+            let message_in = tokio::select! {
+                message_in = rx.recv() => {
+                    message_in.ok_or_else(|| LocalError::new("The incoming message channel was closed unexpectedly"))?
+                },
+                _ = cancellation.cancelled() => {
+                    return session.terminate_due_to_errors(accum);
+                }
+            };
 
             // Perform quick checks before proceeding with the verification.
             match session
@@ -184,6 +190,7 @@ pub async fn par_run_session<P, SP>(
     rng: &mut (impl 'static + Clone + CryptoRngCore + Send),
     tx: &mpsc::Sender<MessageOut<SP>>,
     rx: &mut mpsc::Receiver<MessageIn<SP>>,
+    cancellation: CancellationToken,
     session: Session<P, SP>,
 ) -> Result<SessionReport<P, SP>, LocalError>
 where
@@ -280,49 +287,50 @@ where
 
             tokio::select! {
                 processed = processed_rx.recv() => {
-                    if let Some(processed) = processed {
-                        session.add_processed_message(&mut accum, processed)?;
-                    }
+                    let processed = processed.ok_or_else(|| LocalError::new("The processed message channel was closed unexpectedly"))?;
+                    session.add_processed_message(&mut accum, processed)?;
                 }
                 outgoing = outgoing_rx.recv() => {
-                    if let Some((message_out, artifact)) = outgoing {
-                        let from = message_out.from.clone();
-                        let to = message_out.to.clone();
-                        tx.send(message_out)
-                        .await
-                        .map_err(|err| {
-                            LocalError::new(format!(
-                                "Failed to send a message from {from:?} to {to:?}: {err}",
-                            ))
-                        })?;
+                    let (message_out, artifact) = outgoing.ok_or_else(|| LocalError::new("The outgoing message channel was closed unexpectedly"))?;
 
-                        session.add_artifact(&mut accum, artifact)?;
-                    }
+                    let from = message_out.from.clone();
+                    let to = message_out.to.clone();
+                    tx.send(message_out)
+                    .await
+                    .map_err(|err| {
+                        LocalError::new(format!(
+                            "Failed to send a message from {from:?} to {to:?}: {err}",
+                        ))
+                    })?;
+
+                    session.add_artifact(&mut accum, artifact)?;
                 }
                 message_in = rx.recv() => {
-                    if let Some(message_in) = message_in {
-                        match session
-                            .preprocess_message(&mut accum, &message_in.from, message_in.message)?
-                            .ok()
-                        {
-                            Some(preprocessed) => {
-                                let session = session.clone();
-                                let processed_tx = processed_tx.clone();
-                                let my_id = my_id.clone();
-                                let message_processing = tokio::task::spawn_blocking(move || {
-                                    debug!("{my_id}: Applying a message from {:?}", message_in.from);
-                                    let processed = session.process_message(preprocessed);
-                                    processed_tx.blocking_send(processed).map_err(|_err| {
-                                        LocalError::new("Failed to send a processed message")
-                                    })
-                                });
-                                message_processing_tasks.push(message_processing);
-                            }
-                            None => {
-                                trace!("{my_id} Pre-processing complete. Current state: {accum:?}")
-                            }
+                    let message_in = message_in.ok_or_else(|| LocalError::new("The incoming message channel was closed unexpectedly"))?;
+                    match session
+                        .preprocess_message(&mut accum, &message_in.from, message_in.message)?
+                        .ok()
+                    {
+                        Some(preprocessed) => {
+                            let session = session.clone();
+                            let processed_tx = processed_tx.clone();
+                            let my_id = my_id.clone();
+                            let message_processing = tokio::task::spawn_blocking(move || {
+                                debug!("{my_id}: Applying a message from {:?}", message_in.from);
+                                let processed = session.process_message(preprocessed);
+                                processed_tx.blocking_send(processed).map_err(|_err| {
+                                    LocalError::new("Failed to send a processed message")
+                                })
+                            });
+                            message_processing_tasks.push(message_processing);
+                        }
+                        None => {
+                            trace!("{my_id} Pre-processing complete. Current state: {accum:?}")
                         }
                     }
+                },
+                _ = cancellation.cancelled() => {
+                    break false;
                 }
             }
         };
