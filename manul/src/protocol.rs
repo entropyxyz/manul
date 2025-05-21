@@ -26,8 +26,8 @@ pub use errors::{
 };
 pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart};
 pub use round::{
-    Artifact, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoProtocolErrors, PartyId,
-    Payload, Protocol, ProtocolError, RequiredMessageParts, RequiredMessages, Round,
+    Artifact, CommunicationInfo, EntryPoint, FinalizeOutcome, IdSet, NoProtocolErrors,
+    PartyId, Payload, Protocol, ProtocolError, RequiredMessageParts, RequiredMessages, Round, RoundCommunicationInfo,
 };
 pub use round_id::{RoundId, TransitionInfo};
 

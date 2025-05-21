@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-    EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart,
-    ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
+    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast,
+    EntryPoint, FinalizeOutcome, IdSet, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage,
+    ProtocolMessagePart, ReceiveError, ReceiveErrorType, RoundCommunicationInfo, RoundId, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -97,13 +97,6 @@ impl AsRef<[u8]> for SessionId {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct EchoRoundInfo<Verifier> {
-    pub(crate) message_destinations: BTreeSet<Verifier>,
-    pub(crate) expecting_messages_from: BTreeSet<Verifier>,
-    pub(crate) expected_echos: BTreeSet<Verifier>,
-}
-
 /// An object encapsulating the currently active round, transport protocol,
 /// and the database of messages and errors from the previous rounds.
 #[derive(Debug)]
@@ -113,8 +106,10 @@ pub struct Session<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     verifier: SP::Verifier,
     format: BoxedFormat,
     round: BoxedRound<SP::Verifier, P>,
-    communication_info: CommunicationInfo<SP::Verifier>,
-    echo_round_info: Option<EchoRoundInfo<SP::Verifier>>,
+    message_destinations: BTreeSet<SP::Verifier>,
+    main_round_cinfo: RoundCommunicationInfo<SP::Verifier>,
+    echo_round_cinfo: RoundCommunicationInfo<SP::Verifier>,
+    expected_echos: IdSet<SP::Verifier>,
     echo_broadcast: SignedMessagePart<EchoBroadcast>,
     normal_broadcast: SignedMessagePart<NormalBroadcast>,
     transition_info: TransitionInfo,
@@ -173,31 +168,20 @@ where
         let normal = round.as_ref().make_normal_broadcast(rng, &format)?;
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
 
-        let communication_info = round.as_ref().communication_info();
+        let CommunicationInfo {
+            main_round: main_round_cinfo,
+            echo_round: echo_round_cinfo,
+            expected_echos,
+        } = round.as_ref().communication_info();
 
-        let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
-        let echo_round_info = match &communication_info.echo_round_participation {
-            EchoRoundParticipation::Default => {
-                if round_sends_echo_broadcast {
-                    // Add our own echo message to the expected list because we expect it to be sent back from other nodes.
-                    let mut expected_echos = communication_info.expecting_messages_from.clone();
-                    expected_echos.insert(verifier.clone());
-                    Some(EchoRoundInfo {
-                        message_destinations: communication_info.message_destinations.clone(),
-                        expecting_messages_from: communication_info.message_destinations.clone(),
-                        expected_echos,
-                    })
-                } else {
-                    None
-                }
-            }
-            EchoRoundParticipation::Send => None,
-            EchoRoundParticipation::Receive { echo_targets } => Some(EchoRoundInfo {
-                message_destinations: echo_targets.clone(),
-                expecting_messages_from: echo_targets.clone(),
-                expected_echos: communication_info.expecting_messages_from.clone(),
-            }),
-        };
+        let echo_round_cinfo = echo_round_cinfo.unwrap_or(main_round_cinfo.clone());
+        let expected_echos = expected_echos.unwrap_or(echo_round_cinfo.expecting_messages_from.clone());
+
+        let message_destinations = main_round_cinfo
+            .message_destinations
+            .difference(&transcript.banned_ids())
+            .cloned()
+            .collect::<BTreeSet<_>>();
 
         Ok(Self {
             session_id,
@@ -208,8 +192,10 @@ where
             echo_broadcast,
             normal_broadcast,
             transition_info,
-            communication_info,
-            echo_round_info,
+            message_destinations,
+            main_round_cinfo,
+            echo_round_cinfo,
+            expected_echos,
             transcript,
         })
     }
@@ -226,7 +212,7 @@ where
 
     /// Returns the set of message destinations for the current round.
     pub fn message_destinations(&self) -> &BTreeSet<SP::Verifier> {
-        &self.communication_info.message_destinations
+        &self.message_destinations
     }
 
     /// Creates the message to be sent to the given destination.
@@ -237,6 +223,12 @@ where
         rng: &mut impl CryptoRngCore,
         destination: &SP::Verifier,
     ) -> Result<(Message<SP::Verifier>, ProcessedArtifact<SP>), LocalError> {
+        if !self.message_destinations.contains(destination) {
+            return Err(LocalError::new(
+                "Destination {destination} is not in the set of message destinations for this round",
+            ));
+        }
+
         let (direct_message, artifact) = self
             .round
             .as_ref()
@@ -296,7 +288,7 @@ where
     ) -> Result<PreprocessOutcome<SP::Verifier>, LocalError> {
         // Quick preliminary checks, before we proceed with more expensive verification
         let key = self.verifier();
-        if self.transcript.is_banned(from) || accum.is_banned(from) {
+        if accum.is_banned(from) {
             trace!("{key:?} Banned.");
             return Ok(PreprocessOutcome::remote_error("The sender is banned"));
         }
@@ -326,7 +318,7 @@ where
 
         let acceptable_round_ids = self
             .transition_info
-            .simultaneous_rounds(self.echo_round_info.is_some())?;
+            .simultaneous_rounds(self.echo_round_cinfo.is_some())?;
 
         let message_for = if message_round_id == self.round_id() {
             if accum.message_is_being_processed(from) {
@@ -413,7 +405,10 @@ where
 
     /// Makes an accumulator for a new round.
     pub fn make_accumulator(&self) -> RoundAccumulator<P, SP> {
-        RoundAccumulator::new(&self.communication_info.expecting_messages_from)
+        RoundAccumulator::new(
+            &self.main_round_cinfo.expecting_messages_from,
+            self.transcript.banned_ids(),
+        )
     }
 
     fn terminate_inner(
@@ -464,6 +459,8 @@ where
         let verifier = self.verifier().clone();
         let round_id = self.round_id();
 
+        let echo_round = !self.echo_broadcast.payload().is_none();
+
         let transcript = self.transcript.update(
             &round_id,
             (verifier.clone(), self.echo_broadcast),
@@ -475,11 +472,13 @@ where
             accum.still_have_not_sent_messages,
         )?;
 
-        if let Some(echo_round_info) = self.echo_round_info {
+        if echo_round {
             let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
                 verifier,
                 transcript.echo_broadcasts(&round_id)?,
-                echo_round_info,
+                self.echo_round_cinfo,
+                self.expected_echos,
+                transcript.banned_ids().clone(),
                 self.round,
                 accum.payloads,
                 accum.artifacts,
@@ -545,8 +544,9 @@ pub enum CanFinalize {
 /// A mutable accumulator for collecting the results and errors from processing messages for a single round.
 #[derive_where::derive_where(Debug)]
 pub struct RoundAccumulator<P: Protocol<SP::Verifier>, SP: SessionParameters> {
+    banned_ids: BTreeSet<SP::Verifier>,
     still_have_not_sent_messages: BTreeSet<SP::Verifier>,
-    expecting_messages_from: BTreeSet<SP::Verifier>,
+    expecting_messages_from: IdSet<SP::Verifier>,
     processing: BTreeSet<SP::Verifier>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
@@ -563,9 +563,10 @@ where
     P: Protocol<SP::Verifier>,
     SP: SessionParameters,
 {
-    fn new(expecting_messages_from: &BTreeSet<SP::Verifier>) -> Self {
+    fn new(expecting_messages_from: &IdSet<SP::Verifier>, banned_ids: BTreeSet<SP::Verifier>) -> Self {
         Self {
-            still_have_not_sent_messages: expecting_messages_from.clone(),
+            banned_ids,
+            still_have_not_sent_messages: expecting_messages_from.all().clone(),
             expecting_messages_from: expecting_messages_from.clone(),
             processing: BTreeSet::new(),
             payloads: BTreeMap::new(),
@@ -582,11 +583,10 @@ where
     fn can_finalize(&self) -> CanFinalize {
         if self
             .expecting_messages_from
-            .iter()
-            .all(|key| self.payloads.contains_key(key))
+            .is_quorum(&self.payloads.keys().cloned().collect::<BTreeSet<_>>())
         {
             CanFinalize::Yes
-        } else if !self.still_have_not_sent_messages.is_empty() {
+        } else if self.expecting_messages_from.is_quorum_possible(&self.banned_ids) {
             CanFinalize::NotYet
         } else {
             CanFinalize::Never
@@ -594,7 +594,7 @@ where
     }
 
     fn is_banned(&self, from: &SP::Verifier) -> bool {
-        self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
+        self.banned_ids.contains(from)
     }
 
     fn message_is_being_processed(&self, from: &SP::Verifier) -> bool {
@@ -616,6 +616,7 @@ where
                 from
             )))
         } else {
+            self.banned_ids.insert(from.clone());
             Ok(())
         }
     }
@@ -627,6 +628,7 @@ where
                 from
             )))
         } else {
+            self.banned_ids.insert(from.clone());
             Ok(())
         }
     }
@@ -725,13 +727,10 @@ where
                 )?;
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::Unprovable(error) => {
-                self.unprovable_errors.insert(from.clone(), error);
-                Ok(())
-            }
+            ReceiveErrorType::Unprovable(error) => self.register_unprovable_error(&from, error),
             ReceiveErrorType::Echo(error) => {
                 let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
-                let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, *error)?;
+                let evidence = Evidence::new_echo_round_error(normal_broadcast, *error)?;
                 self.register_provable_error(&from, evidence)
             }
             ReceiveErrorType::Local(error) => Err(error),

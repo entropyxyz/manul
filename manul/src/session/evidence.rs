@@ -164,18 +164,20 @@ where
     }
 
     pub(crate) fn new_echo_round_error(
-        verifier: &SP::Verifier,
         normal_broadcast: SignedMessagePart<NormalBroadcast>,
         error: EchoRoundError<SP::Verifier>,
     ) -> Result<Self, LocalError> {
         let description = format!("Echo round error: {}", error.description());
         match error {
-            EchoRoundError::InvalidEcho(from) => Ok(Self {
-                guilty_party: verifier.clone(),
+            EchoRoundError::InvalidEcho {
+                guilty_party,
+                failed_for,
+            } => Ok(Self {
+                guilty_party,
                 description,
                 evidence: EvidenceEnum::InvalidEchoPack(InvalidEchoPackEvidence {
                     normal_broadcast,
-                    invalid_echo_sender: from,
+                    invalid_echo_sender: failed_for,
                 }),
             }),
             EchoRoundError::MismatchedBroadcasts {

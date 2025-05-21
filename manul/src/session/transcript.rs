@@ -163,6 +163,12 @@ where
             .ok_or_else(|| LocalError::new(format!("No direct messages registered for {from:?} in {round_id:?}")))
     }
 
+    pub fn banned_ids(&self) -> BTreeSet<SP::Verifier> {
+        let mut banned = self.provable_errors.keys().cloned().collect::<BTreeSet<_>>();
+        banned.extend(self.unprovable_errors.keys().cloned());
+        banned
+    }
+
     pub fn is_banned(&self, from: &SP::Verifier) -> bool {
         self.provable_errors.contains_key(from) || self.unprovable_errors.contains_key(from)
     }

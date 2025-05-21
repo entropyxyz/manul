@@ -13,12 +13,12 @@ use tracing::debug;
 
 use super::{
     message::{MessageVerificationError, SignedMessageHash, SignedMessagePart},
-    session::{EchoRoundInfo, SessionParameters},
+    session::{SessionParameters},
     LocalError,
 };
 use crate::{
-    protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
+    protocol::{RoundCommunicationInfo, IdSet,
+        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast,
         FinalizeOutcome, MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessage,
         ProtocolMessagePart, ReceiveError, Round, TransitionInfo,
     },
@@ -34,7 +34,12 @@ pub(crate) enum EchoRoundError<Id> {
     ///
     /// The attached identifier points out the sender for whom the echoed message was invalid,
     /// to speed up the verification process.
-    InvalidEcho(Id),
+    InvalidEcho {
+        // Even though this will be the same as the message sender, it is convenient to record it here
+        // because of the way this error will be processed.
+        guilty_party: Id,
+        failed_for: Id,
+    },
     /// The originally received message and the one received in the echo pack were both valid,
     /// but different.
     ///
@@ -49,7 +54,7 @@ pub(crate) enum EchoRoundError<Id> {
 impl<Id> EchoRoundError<Id> {
     pub(crate) fn description(&self) -> String {
         match self {
-            Self::InvalidEcho(_) => "Invalid message received among the ones echoed".into(),
+            Self::InvalidEcho { .. } => "Invalid message received among the ones echoed".into(),
             Self::MismatchedBroadcasts { .. } => {
                 "The echoed message is different from the originally received one".into()
             }
@@ -70,8 +75,9 @@ pub(crate) struct EchoRoundMessage<SP: SessionParameters> {
 pub struct EchoRound<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     verifier: SP::Verifier,
     echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
-    echo_round_info: EchoRoundInfo<SP::Verifier>,
     communication_info: CommunicationInfo<SP::Verifier>,
+    expected_echos: IdSet<SP::Verifier>,
+    banned_ids: BTreeSet<SP::Verifier>,
     main_round: BoxedRound<SP::Verifier, P>,
     payloads: BTreeMap<SP::Verifier, Payload>,
     artifacts: BTreeMap<SP::Verifier, Artifact>,
@@ -85,24 +91,25 @@ where
     pub fn new(
         verifier: SP::Verifier,
         echo_broadcasts: BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>,
-        echo_round_info: EchoRoundInfo<SP::Verifier>,
+        communication_info: RoundCommunicationInfo<SP::Verifier>,
+        expected_echos: IdSet<SP::Verifier>,
+        banned_ids: BTreeSet<SP::Verifier>,
         main_round: BoxedRound<SP::Verifier, P>,
         payloads: BTreeMap<SP::Verifier, Payload>,
         artifacts: BTreeMap<SP::Verifier, Artifact>,
     ) -> Self {
-        debug!("{:?}: initialized echo round with {:?}", verifier, echo_round_info);
-
+        debug!("{:?}: initialized echo round with {:?} {:?}", verifier, communication_info, expected_echos);
         let communication_info = CommunicationInfo {
-            message_destinations: echo_round_info.message_destinations.clone(),
-            expecting_messages_from: echo_round_info.expecting_messages_from.clone(),
-            echo_round_participation: EchoRoundParticipation::Default,
+            main_round: communication_info,
+            echo_round: None,
+            expected_echos: None,
         };
-
         Self {
             verifier,
             echo_broadcasts,
-            echo_round_info,
             communication_info,
+            expected_echos,
+            banned_ids,
             main_round,
             payloads,
             artifacts,
@@ -192,22 +199,15 @@ where
         let message = message.normal_broadcast.deserialize::<EchoRoundMessage<SP>>(format)?;
 
         // Check that the received message contains entries from `expected_echos`.
-        // It is an unprovable fault.
+        // Since we cannot guarantee the communication info for the echo round is in the associated data,
+        // we cannot construct an evidence for this fault.
 
-        let mut expected_keys = self.echo_round_info.expected_echos.clone();
+        let mut expected_keys = self.expected_echos.all().clone();
 
         // We don't expect the node to send its echo the second time.
         expected_keys.remove(from);
 
         let message_keys = message.message_hashes.keys().cloned().collect::<BTreeSet<_>>();
-
-        let missing_keys = expected_keys.difference(&message_keys).collect::<Vec<_>>();
-        if !missing_keys.is_empty() {
-            return Err(ReceiveError::unprovable(format!(
-                "Missing echoed messages from: {:?}",
-                missing_keys
-            )));
-        }
 
         let extra_keys = message_keys.difference(&expected_keys).collect::<Vec<_>>();
         if !extra_keys.is_empty() {
@@ -215,6 +215,14 @@ where
                 "Unexpected echoed messages from: {:?}",
                 extra_keys
             )));
+        }
+
+        // Check that the echos we received, minus the banned IDs, constitute a quorum.
+        // This is also unprovable since the information about the IDs we banned is not available to third parties.
+
+        let expected_keys = message_keys.difference(&self.banned_ids).cloned().collect::<BTreeSet<_>>();
+        if !self.expected_echos.is_quorum(&expected_keys) {
+            return Err(ReceiveError::unprovable("Not enough echos to constitute a quorum"));
         }
 
         // Check that every entry is equal to what we received previously (in the main round).
@@ -236,17 +244,29 @@ where
                 // This means `from` sent us an incorrectly signed message.
                 // Provable fault of `from`.
                 Err(MessageVerificationError::InvalidSignature) => {
-                    return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
+                    return Err(EchoRoundError::InvalidEcho {
+                        guilty_party: from.clone(),
+                        failed_for: sender.clone(),
+                    }
+                    .into())
                 }
                 Err(MessageVerificationError::SignatureMismatch) => {
-                    return Err(EchoRoundError::InvalidEcho(sender.clone()).into())
+                    return Err(EchoRoundError::InvalidEcho {
+                        guilty_party: from.clone(),
+                        failed_for: sender.clone(),
+                    }
+                    .into())
                 }
             };
 
             // `from` sent us a correctly signed message but from another round or another session.
             // Provable fault of `from`.
             if verified_echo.metadata() != previously_received_echo.metadata() {
-                return Err(EchoRoundError::InvalidEcho(sender.clone()).into());
+                return Err(EchoRoundError::InvalidEcho {
+                    guilty_party: from.clone(),
+                    failed_for: sender.clone(),
+                }
+                .into());
             }
 
             // `sender` sent us and `from` messages with different payloads,
