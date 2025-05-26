@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `session::tokio::run_session()` and `par_run_session()` take an additional `cancellation` argument to support external loop cancellation. ([#100])
-- rename `BoxedRound::new_dynamic` to `BoxedRound::new` ([#103])
+- rename `BoxedRound::new_dynamic` to `BoxedRound::new` ([#112])
 
 
 [#100]: https://github.com/entropyxyz/manul/pull/100
-[#103]: https://github.com/entropyxyz/manul/pull/103
+[#112]: https://github.com/entropyxyz/manul/pull/112
 
 
 ## [0.2.1] - 2025-05-05
