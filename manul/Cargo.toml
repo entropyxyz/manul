@@ -1,6 +1,6 @@
 [package]
 name = "manul"
-version = "0.2.0"
+version = "0.3.0-dev"
 edition = "2021"
 rust-version = "1.81"
 authors = ['Entropy Cryptography <engineering@entropy.xyz>']
@@ -28,6 +28,7 @@ serde-persistent-deserializer = { version = "0.3", optional = true }
 postcard = { version = "1", default-features = false, features = ["alloc"], optional = true }
 serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
 tokio = { version = "1", default-features = false, features = ["sync", "rt", "macros", "time"], optional = true }
+tokio-util = { version = "0.7", default-features = false, optional = true }
 
 [dev-dependencies]
 impls = "1"
@@ -44,7 +45,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [features]
 dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer"]
-tokio = ["dep:tokio"]
+tokio = ["dep:tokio", "tokio-util"]
 
 [package.metadata.docs.rs]
 all-features = true
