@@ -199,7 +199,7 @@ impl<M> VerifiedMessagePart<M> {
 }
 
 /// A signed message destined for another node.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Message<Verifier> {
     destination: Verifier,
     direct_message: SignedMessagePart<DirectMessage>,
