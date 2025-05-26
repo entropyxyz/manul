@@ -215,7 +215,7 @@ impl Round<DinerId> for Round1 {
             "[Round1, finalize] {:?} is finalizing to Round 2. Own cointoss: {}, neighbour cointoss: {neighbour_toss}",
             self.diner_id, self.own_toss
         );
-        Ok(FinalizeOutcome::AnotherRound(BoxedRound::new(Round2 {
+        Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(Round2 {
             diner_id: self.diner_id,
             own_toss: self.own_toss,
             neighbour_toss,
