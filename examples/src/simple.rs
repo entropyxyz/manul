@@ -182,7 +182,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
         let mut ids = self.all_ids;
         ids.remove(id);
 
-        Ok(BoxedRound::new_dynamic(Round1 {
+        Ok(BoxedRound::new(Round1 {
             context: Context {
                 id: id.clone(),
                 other_ids: ids,
@@ -288,7 +288,7 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         let sum = self.context.ids_to_positions[&self.context.id]
             + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
 
-        let round2 = BoxedRound::new_dynamic(Round2 {
+        let round2 = BoxedRound::new(Round2 {
             round1_sum: sum,
             context: self.context,
         });

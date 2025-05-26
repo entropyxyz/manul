@@ -95,7 +95,7 @@ impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_dynamic(EmptyRound {
+        Ok(BoxedRound::new(EmptyRound {
             round_counter: 1,
             inputs: self,
         }))
@@ -174,7 +174,7 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         if self.round_counter == self.inputs.rounds_num {
             Ok(FinalizeOutcome::Result(()))
         } else {
-            let round = BoxedRound::new_dynamic(EmptyRound {
+            let round = BoxedRound::new(EmptyRound {
                 round_counter: self.round_counter + 1,
                 inputs: self.inputs,
             });

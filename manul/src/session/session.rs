@@ -476,7 +476,7 @@ where
         )?;
 
         if let Some(echo_round_info) = self.echo_round_info {
-            let round = BoxedRound::new_dynamic(EchoRound::<P, SP>::new(
+            let round = BoxedRound::new(EchoRound::<P, SP>::new(
                 verifier,
                 transcript.echo_broadcasts(&round_id)?,
                 echo_round_info,
