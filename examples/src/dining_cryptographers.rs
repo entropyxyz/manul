@@ -56,7 +56,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use manul::{
     dev::{run_sync, BinaryFormat, TestHasher, TestVerifier},
     digest,
-    // TODO: this is lot of imports, perhaps we should have a "prelude" and have users do `use manul::prelude::*`?
     protocol::{
         Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
         EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
@@ -78,8 +77,9 @@ use tracing::{debug, info, trace};
 #[derive(Debug)]
 pub struct DiningCryptographersProtocol;
 
-// TODO: I guess the protocol is a place where one could store arbitrary state/context/config data as well? We don't do
-// that much in `synedrion` but would it be a good idea to do so?
+// TODO: I guess the protocol (e.g. `DiningCryptographersProtocol`) is a place where one could store arbitrary
+// state/context/config data that is local to one participant? We don't do that much in `synedrion` but would it be a
+// good idea to do so?
 impl<Id> Protocol<Id> for DiningCryptographersProtocol {
     // XOR/¬XOR of the two bits of each of the three diners (one is their own cointoss, the other shared with their
     // neighbour).
@@ -115,7 +115,8 @@ impl<Id> Protocol<Id> for DiningCryptographersProtocol {
 // HELP: Keeping state in the round like this is a bit weird. Is this the intended way to do it? It would have been
 // natural to use the `Diner` type to store state, but it's not clear how to access a `Diner` from inside the various
 // `manul` types/methods.
-// TODO: clearly document that the only data that hits the wire are the message types defined in the protocol.
+// TODO: clearly explain (where?) that the only data that hits the wire are the message types defined in the protocol:
+// types that impl `Round` (or are part of such types, e.g. a `Round15MessagePayload`).
 #[derive(Debug, Clone, Serialize)]
 pub struct Round1 {
     diner_id: DinerId,
@@ -214,12 +215,7 @@ impl Round<DinerId> for Round1 {
             "[Round1, finalize] {:?} is finalizing to Round 2. Own cointoss: {}, neighbour cointoss: {neighbour_toss}",
             self.diner_id, self.own_toss
         );
-        // TODO: The name `new_dynamic` throws me off track a bit. It suggests that there are alternative constructors,
-        // (e.g. `new_static`?). How about we rename it to just `new`?
-        // TODO: Given we must set up `TransitionInfo` for the `Round`, would it be possible to statically know that the
-        // argument to `AnotherRound` must be a `Round2`? For this protocol it's unambiguous, but more in general? Can
-        // we help users avoid having to think for themselves here?
-        Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(Round2 {
+        Ok(FinalizeOutcome::AnotherRound(BoxedRound::new(Round2 {
             diner_id: self.diner_id,
             own_toss: self.own_toss,
             neighbour_toss,
@@ -233,9 +229,6 @@ impl Round<DinerId> for Round2 {
 
     // This round is the last in the protocol so we can terminate here.
     fn transition_info(&self) -> TransitionInfo {
-        // TODO: when coding this I was a bit confused by having to send in the round number of the current round here.
-        // It was not clear to me if it was the next round (or even the previous one). Is there a way to make this less
-        // error-prone by passing in a ref to the round perhaps? Should `Round` contain its own `RoundId` perhaps?
         TransitionInfo::new_linear_terminating(2.into())
     }
 
@@ -356,7 +349,6 @@ impl EntryPoint<DinerId> for DiningEntryPoint {
 
     // Called as part of the session initialization, specifically in [`Session::new`].
     // Each `EntryPoint` creates one `Session`.
-    // TODO: Can this ever NOT create the first round? Would a rename to "make_first_round" be appropriate?
     fn make_round(
         self,
         rng: &mut dyn CryptoRngCore,
@@ -416,7 +408,7 @@ impl<D: digest::Digest> signature::RandomizedDigestSigner<D, DinerSignature> for
         })
     }
 }
-// TODO: this feels like boilerplate.
+
 impl signature::Keypair for Diner {
     type VerifyingKey = DinerId;
 
@@ -424,7 +416,7 @@ impl signature::Keypair for Diner {
         DinerId(self.id)
     }
 }
-// TODO: this feels like boilerplate.
+
 impl<D: digest::Digest> signature::DigestVerifier<D, DinerSignature> for DinerId {
     fn verify_digest(&self, _digest: D, signature: &DinerSignature) -> Result<(), signature::Error> {
         Ok(())
@@ -441,7 +433,6 @@ impl SessionParameters for DiningSessionParams {
     type WireFormat = BinaryFormat;
 }
 
-// TODO: would be nice to have `downcast_all` from `synedrion`.
 fn downcast_payloads<T: 'static>(map: BTreeMap<DinerId, Payload>) -> Result<BTreeMap<DinerId, T>, LocalError> {
     map.into_iter()
         .map(|(id, payload)| payload.downcast::<T>().map(|p| (id, p)))
