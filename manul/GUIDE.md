@@ -25,7 +25,7 @@ impl<Id> Protocol<Id> for MyProtocol {
 
 Key aspects:
 
-- **[`type Result`]**: This associated type defines the final output of a successful protocol execution. In the case of the Dining Cryptographers Problem, it's a thruple of bools representing each cryptographer's perspective on the outcome.
+- **[`type Result`]**: This associated type defines the final output of a successful protocol execution. In the case of the Dining Cryptographers Problem, it's a tuple of bools representing each cryptographer's perspective on the outcome.
 - **Error Handling (Advanced)**: In more realistic protocols, the [`Protocol`] trait is where you would define error types and misbehavior reporting; when not needed, there's a [`NoProtocolErrors`] convenience type.
 - **Message Validation (Advanced)**: The methods [`verify_direct_message_is_invalid`]
 , [`verify_echo_broadcast_is_invalid`], and [`verify_normal_broadcast_is_invalid`] are used for validating message contents during evidence verification in more complex scenarios.
