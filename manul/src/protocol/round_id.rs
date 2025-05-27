@@ -127,8 +127,8 @@ impl PartialEq<u8> for RoundId {
 pub struct TransitionInfo {
     /// The round ID.
     ///
-    /// **Note:** these should not repeat within the same protocol.
-    /// That is, the graph of transitions between rounds must be acyclic.
+    /// **Note:** these should not repeat within the same protocol, that is, the graph of
+    /// transitions between rounds must be acyclic.
     pub id: RoundId,
 
     /// Round IDs of the rounds that can finalize into this round.
@@ -194,7 +194,8 @@ impl TransitionInfo {
         })
     }
 
-    /// Creates a transition info for a non-terminating round in a linear sequence of rounds starting with 1.
+    /// Creates a [`TransitionInfo`] for a non-terminating round (`round_num`) in a linear sequence
+    /// of rounds starting with 1.
     ///
     /// That is, if there are rounds 1, 2, 3, ..., N, where the N-th one returns the result,
     /// this constructor can be used for rounds 1 to N-1.
@@ -212,7 +213,8 @@ impl TransitionInfo {
         }
     }
 
-    /// Creates a transition info for the result round in a linear sequence of rounds starting with 1.
+    /// Creates a [`TransitionInfo`] for the final round (`round_num`) in a linear sequence of
+    /// rounds starting with 1.
     ///
     /// That is, if there are rounds 1, 2, 3, ..., N, where the N-th one returns the result,
     /// this constructor can be used for round N.
@@ -230,7 +232,7 @@ impl TransitionInfo {
         }
     }
 
-    /// Returns a new transition info with `round_nums` added to the set of children.
+    /// Returns a new [`TransitionInfo`] with `round_nums` added to the set of children.
     pub fn with_children(self, round_nums: BTreeSet<u8>) -> Self {
         let mut children = self.children;
         children.extend(round_nums.iter().map(|num| RoundId::new(*num)));
@@ -243,7 +245,7 @@ impl TransitionInfo {
         }
     }
 
-    /// Returns a new transition info with `round_nums` added to the set of siblings.
+    /// Returns a new [`TransitionInfo`] with `round_nums` added to the set of siblings.
     pub fn with_siblings(self, round_nums: BTreeSet<u8>) -> Self {
         let mut siblings = self.siblings;
         siblings.extend(round_nums.iter().map(|num| RoundId::new(*num)));
