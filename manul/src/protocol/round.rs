@@ -258,7 +258,10 @@ impl<Id> ProtocolError<Id> for NoProtocolErrors {
 }
 
 /// Message payload created in [`Round::receive_message`].
-// TODO: Clarify the purpose of this type, in particular vis-a-vis [`Artifact`].
+///
+/// [`Payload`]s are created as the output of processing an incoming message. When a [`Round`] finalizes, all the
+/// `Payload`s received during the round are made available and can be used to decide what to do next (next round?
+/// return a final result?). Payloads are not sent to other nodes.
 #[derive(Debug)]
 pub struct Payload(pub Box<dyn Any + Send + Sync>);
 
@@ -291,11 +294,11 @@ impl Payload {
 }
 
 /// Associated data created alongside a message in [`Round::make_direct_message`].
-// TODO: Is the artifact sent to other participants (public) or is it private data, available only to the party that
-// produced it?
-// Seems like Artifacts are private, and never hit the wire. Artifacts are collected and "delivered"
-// in the `Round::finalize()` method in the form of a BTreeMap, where the key is the *destination* of the direct message.
-// Is the right primitive to store state in? No, I think not.
+///
+/// [`Artifact`]s are local to the participant that created it and are usually containers for intermediary secrets
+/// and/or dynamic parameters needed in subsequent stages of the protocol. Artifacts are never sent over the wire; they
+/// are made available to [`Round::finalize`] for the participant, delivered in the form of a `BTreeMap` where the key
+/// is the destination id of the participant to whom the direct message was sent.
 #[derive(Debug)]
 pub struct Artifact(pub Box<dyn Any + Send + Sync>);
 
