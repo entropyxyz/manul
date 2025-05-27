@@ -6,7 +6,7 @@ This guide provides a step-by-step explanation of how to build protocols using `
 
 Building a protocol with `manul` involves defining the protocol's overall structure, breaking it down into rounds with specific communication and logic, defining the messages exchanged, providing an entry point to initialize the protocol, configuring session parameters for cryptography and data handling, and finally using the provided utilities to execute the protocol (or write your own).
 
-Refer to the crate documentation for more details and advanced topics.
+Refer to the [crate documentation](https://docs.rs/manul) for more details and advanced topics.
 
 ## 1. Define Your Protocol Structure ([`Protocol`])
 
