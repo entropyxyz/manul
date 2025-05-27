@@ -157,7 +157,6 @@ where
                 break State::Finished(session.terminate_due_to_errors(accum)?);
             }
         }
-        // TODO: didn't we just make a bunch of calls to make_message and processed the artifact?
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
@@ -193,7 +192,6 @@ where
         let session = Session::<_, SP>::new(rng, session_id.clone(), signer, entry_point)?;
         let mut accum = session.make_accumulator();
 
-        // TODO: why are we doing this here AND inside `propagate`?
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
