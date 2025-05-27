@@ -165,3 +165,4 @@ Initial release.
 [0.0.1]: https://github.com/entropyxyz/manul/releases/tag/v0.0.1
 [0.1.0]: https://github.com/entropyxyz/manul/releases/tag/v0.1.0
 [0.2.0]: https://github.com/entropyxyz/manul/releases/tag/v0.2.0
+[0.2.1]: https://github.com/entropyxyz/manul/releases/tag/v0.2.1
