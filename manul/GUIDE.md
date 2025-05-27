@@ -60,7 +60,8 @@ Key aspects of a [`Round`]:
 
 Create structs to represent the data exchanged between parties. These structs should implement `Serialize` and `Deserialize` from the `serde` crate:
 
-```rust
+```rust,no_run
+# use serde::{Serialize, Deserialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Round1Message {
     cointoss: bool,
@@ -91,13 +92,21 @@ Key aspects:
 
 The [`SessionParameters`] trait defines crucial parameters for a protocol session, including:
 
-```rust
+```rust,no_run
+# use manul::session::SessionParameters;
+# use manul::dev;
+# type MySigner = dev::TestSigner;
+# type MyId = u8;
+# type MyVerifier = dev::TestVerifier;
+# type MySignature = dev::TestSignature;
+# type MyHasher = dev::TestHasher;
+# type MyWireFormat = dev::BinaryFormat;
 #[derive(Debug, Clone, Copy)]
 pub struct MySessionParams;
 
 impl SessionParameters for MySessionParams {
     type Signer = MySigner;
-    type Verifier = MyId;
+    type Verifier = MyVerifier;
     type Signature = MySignature;
     type Digest = MyHasher;
     type WireFormat = MyWireFormat;
@@ -114,7 +123,7 @@ Key types:
 
 Use the provided execution utilities (e.g., [`run_sync`] for synchronous execution) to execute your protocol:
 
-```rust
+```rust,ignore
 let results = run_sync::<_, DiningSessionParams>(&mut OsRng, entry_points)
     .expect("Failed to run the protocol")
     .results()
