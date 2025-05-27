@@ -34,16 +34,16 @@
 //! ## Implementation
 //!
 //! Prep:
-//! 	State is "I paid yes/no" and "ordered list of diners".
+//!     State is "I paid yes/no" and "ordered list of diners".
 //! Round 1:
-//! 	Each diner DMs their neighbour their cointoss.
-//!     Outcome: the state of each diner is their own cointoss and the bit they received as a DM, i.e. two bits, one
-//!     they sent to one neighbour and the other received by their other neighbour diner.
+//!    Each diner DMs their neighbour their cointoss.
+//!    Outcome: the state of each diner is their own cointoss and the bit they received as a DM, i.e. two bits, one
+//!    they sent to one neighbour and the other received by their other neighbour diner.
 //! Round 2:
-//! 	Each diner broadcasts one bit: the XOR (if they didn't pay) or ¬XOR (if they paid) of their two bits.
-//! 	Outcome: each diner has a set of bits, one for each diner.
+//!    Each diner broadcasts one bit: the XOR (if they didn't pay) or ¬XOR (if they paid) of their two bits.
+//!    Outcome: each diner has a set of bits, one for each diner.
 //! Post:
-//! 	Everyone XORs all bits together and interprets the result: 0 => NSA paid; 1 => one of the diners paid.
+//!    Everyone XORs all bits together and interprets the result: 0 => NSA paid; 1 => one of the diners paid.
 //!
 //! ## Running the example
 //!
@@ -133,7 +133,7 @@ impl Round<DinerId> for Round1 {
     // Used to define the possible paths to and from this round. This protocol is very simple, it's simply Round 1 ->
     // Round 2, so we can use the "linear" utility method to set this up.
     fn transition_info(&self) -> TransitionInfo {
-        TransitionInfo::new_linear(1.into())
+        TransitionInfo::new_linear(1)
     }
 
     // Where are we sending messages, and what messages are we expecting to receive?
@@ -203,7 +203,7 @@ impl Round<DinerId> for Round1 {
 
         let neighbour_toss = *payloads
             .first_key_value()
-            .ok_or_else(|| return LocalError::new("No payloads found"))?
+            .ok_or_else(|| LocalError::new("No payloads found"))?
             .1;
 
         info!(
@@ -224,7 +224,7 @@ impl Round<DinerId> for Round2 {
 
     // This round is the last in the protocol so we can terminate here.
     fn transition_info(&self) -> TransitionInfo {
-        TransitionInfo::new_linear_terminating(2.into())
+        TransitionInfo::new_linear_terminating(2)
     }
 
     // In round 2 each participant broadcasts one bit, so we set up the destinations as "everyone" and expect to receive
@@ -352,7 +352,7 @@ impl EntryPoint<DinerId> for DiningEntryPoint {
     ) -> Result<BoxedRound<DinerId, Self::Protocol>, LocalError> {
         let paid = id.0 == 0 && rng.next_u32() % 2 == 0;
         let round = Round1 {
-            diner_id: id.clone(),
+            diner_id: *id,
             own_toss: rng.next_u32() % 2 == 0,
             paid,
         };
@@ -437,7 +437,7 @@ fn main() {
     info!("Dining Cryptographers Protocol Example");
 
     // Set up participants. This protocol only works for 3 participants!
-    let diners = (0..=2).map(|id| Diner::new(id)).collect::<Vec<_>>();
+    let diners = (0..=2).map(Diner::new).collect::<Vec<_>>();
 
     // Each diner crates an `EntryPoint` for themselves. This constitutes the starting point for the protocol.
     // In a production setting where each diner runs the protocol on their own computer, they'd each create their own
