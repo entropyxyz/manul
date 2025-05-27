@@ -13,7 +13,7 @@ pub struct BoxedRound<Id: PartyId, P: Protocol<Id>>(Box<dyn Round<Id, Protocol =
 
 impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
     /// Wraps an object implementing the dynamic round trait ([`Round`](`crate::protocol::Round`)).
-    pub fn new_dynamic<R: Round<Id, Protocol = P>>(round: R) -> Self {
+    pub fn new<R: Round<Id, Protocol = P>>(round: R) -> Self {
         Self(Box::new(round))
     }
 
