@@ -1,4 +1,4 @@
-//! Dining Cryptographers Protocol, see https://en.wikipedia.org/wiki/Dining_cryptographers_problem
+//! Dining Cryptographers Protocol, see <https://en.wikipedia.org/wiki/Dining_cryptographers_problem>
 //!
 //! In cryptography, the dining cryptographers problem studies how to perform a secure multi-party computation of the
 //! boolean-XOR function. David Chaum first proposed this problem in the early 1980s and used it as an illustrative
