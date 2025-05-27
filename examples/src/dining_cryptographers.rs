@@ -77,9 +77,6 @@ use tracing::{debug, info, trace};
 #[derive(Debug)]
 pub struct DiningCryptographersProtocol;
 
-// TODO: I guess the protocol (e.g. `DiningCryptographersProtocol`) is a place where one could store arbitrary
-// state/context/config data that is local to one participant? We don't do that much in `synedrion` but would it be a
-// good idea to do so?
 impl<Id> Protocol<Id> for DiningCryptographersProtocol {
     // XOR/¬XOR of the two bits of each of the three diners (one is their own cointoss, the other shared with their
     // neighbour).
@@ -112,11 +109,9 @@ impl<Id> Protocol<Id> for DiningCryptographersProtocol {
     }
 }
 
-// HELP: Keeping state in the round like this is a bit weird. Is this the intended way to do it? It would have been
-// natural to use the `Diner` type to store state, but it's not clear how to access a `Diner` from inside the various
-// `manul` types/methods.
-// TODO: clearly explain (where?) that the only data that hits the wire are the message types defined in the protocol:
-// types that impl `Round` (or are part of such types, e.g. a `Round15MessagePayload`).
+// The two rounds of this protocol are instantiated as sensibly named arbitrary structs that each implement the
+// [`Round`] trait. In `manul` only explicitly created messages ever hit the wire so it's safe to store private state
+// inside a round like we do here.
 #[derive(Debug, Clone, Serialize)]
 pub struct Round1 {
     diner_id: DinerId,
@@ -370,10 +365,8 @@ impl EntryPoint<DinerId> for DiningEntryPoint {
     }
 }
 
+// A "diner" is just a stand-in for "participant" in this protocol.
 #[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-// TODO: this type is not used at all. It'd be the natural place for things like "paid for dinner" and other similar
-// state, but I don't see how to access a `Diner` from inside the protocol, without doing nasty stuff like having a
-// global "state" thingy (standing in for a database).
 pub struct Diner {
     id: u8,
 }
@@ -383,19 +376,18 @@ impl Diner {
     }
 }
 
-// TODO: I don't understand why there needs to be a Signer and a Verifier type.
-// Suspect it's a CGGMP "contamination" and that they are not needed at all for this protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct DinerId(u8);
 
-// TODO: same here, why do we need a signature type?
+// In a production protocol most message exhanges would require an authenticated transmission channel and/or message
+// payloads be cryptographically signed. The types and trait implementations that follow may seem like boilerplate for
+// this simple example, but in a realistic protocol this is where we'd set up the cryptographic primitives used.``
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct DinerSignature {
     signed_by: u8,
     randomness: u64,
 }
 
-// TODO: this feels like boilerplate.
 impl<D: digest::Digest> signature::RandomizedDigestSigner<D, DinerSignature> for Diner {
     fn try_sign_digest_with_rng(
         &self,
@@ -433,6 +425,7 @@ impl SessionParameters for DiningSessionParams {
     type WireFormat = BinaryFormat;
 }
 
+// Just a utility method to help us convert a [`Payload`] to for example a `bool`.
 fn downcast_payloads<T: 'static>(map: BTreeMap<DinerId, Payload>) -> Result<BTreeMap<DinerId, T>, LocalError> {
     map.into_iter()
         .map(|(id, payload)| payload.downcast::<T>().map(|p| (id, p)))
