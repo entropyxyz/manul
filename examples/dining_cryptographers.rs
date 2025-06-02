@@ -53,15 +53,13 @@ use core::fmt::Debug;
 use std::collections::{BTreeMap, BTreeSet};
 
 use manul::{
-    dev::{run_sync, BinaryFormat, TestHasher},
-    digest,
+    dev::{run_sync, BinaryFormat, TestHasher, TestSignature, TestSigner, TestVerifier},
     protocol::{
         Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
         EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, Payload,
         Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     session::SessionParameters,
-    signature,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -143,11 +141,11 @@ impl Round<DinerId> for Round1 {
         // diner 0 sends a message to diner 1 (0+1 mod 3 = 1)
         // diner 1 sends a message to diner 2 (1+1 mod 3 = 2)
         // diner 2 sends a message to diner 0 (2+1 mod 3 = 0)
-        message_destinations.insert(DinerId((self.diner_id.0 + 1) % 3));
+        message_destinations.insert(DinerId::new((self.diner_id.id() + 1) % 3));
         // diner 0 expects a bit from diner 2 (0+2 mod 3 = 2)
         // diner 1 expects a bit from diner 0 (1+2 mod 3 = 0)
         // diner 2 expects a bit from diner 1 (2+2 mod 3 = 1)
-        expecting_messages_from.insert(DinerId((self.diner_id.0 + 2) % 3));
+        expecting_messages_from.insert(DinerId::new((self.diner_id.id() + 2) % 3));
         CommunicationInfo {
             message_destinations,
             expecting_messages_from,
@@ -233,8 +231,8 @@ impl Round<DinerId> for Round2 {
         let everyone_else = [0, 1, 2]
             .iter()
             .filter_map(|id| {
-                if id != &self.diner_id.0 {
-                    Some(DinerId(*id))
+                if id != &self.diner_id.id() {
+                    Some(DinerId::new(*id))
                 } else {
                     None
                 }
@@ -343,7 +341,7 @@ impl EntryPoint<DinerId> for DiningEntryPoint {
         _shared_randomness: &[u8],
         id: &DinerId,
     ) -> Result<BoxedRound<DinerId, Self::Protocol>, LocalError> {
-        let paid = id.0 == 0 && rng.next_u32() % 2 == 0;
+        let paid = id.id() == 0 && rng.next_u32() % 2 == 0;
         let round = Round1 {
             diner_id: *id,
             own_toss: rng.next_u32() % 2 == 0,
@@ -358,55 +356,15 @@ impl EntryPoint<DinerId> for DiningEntryPoint {
     }
 }
 
-// A "diner" is just a stand-in for "participant" in this protocol.
-#[derive(Debug, Clone, Deserialize, Serialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Diner {
-    id: u8,
-}
-impl Diner {
-    fn new(id: u8) -> Self {
-        Self { id }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct DinerId(u8);
+// A "diner" is a stand-in for "participant" in this protocol.
+type Diner = TestSigner;
 
 // In a production protocol most message exhanges would require an authenticated transmission channel and/or message
-// payloads be cryptographically signed. The types and trait implementations that follow may seem like boilerplate for
-// this simple example, but in a realistic protocol this is where we'd set up the cryptographic primitives used.``
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct DinerSignature {
-    signed_by: u8,
-    randomness: u64,
-}
+// payloads to be cryptographically signed. The type aliases that follow are boilerplate for this simple example, but in
+// a realistic protocol this is where we'd set up the cryptographic primitives used.
+type DinerSignature = TestSignature;
+type DinerId = TestVerifier;
 
-impl<D: digest::Digest> signature::RandomizedDigestSigner<D, DinerSignature> for Diner {
-    fn try_sign_digest_with_rng(
-        &self,
-        rng: &mut impl CryptoRngCore,
-        _digest: D,
-    ) -> Result<DinerSignature, signature::Error> {
-        Ok(DinerSignature {
-            signed_by: self.id,
-            randomness: rng.next_u64(),
-        })
-    }
-}
-
-impl signature::Keypair for Diner {
-    type VerifyingKey = DinerId;
-
-    fn verifying_key(&self) -> Self::VerifyingKey {
-        DinerId(self.id)
-    }
-}
-
-impl<D: digest::Digest> signature::DigestVerifier<D, DinerSignature> for DinerId {
-    fn verify_digest(&self, _digest: D, _signature: &DinerSignature) -> Result<(), signature::Error> {
-        Ok(())
-    }
-}
 #[derive(Debug, Clone, Copy)]
 pub struct DiningSessionParams;
 
