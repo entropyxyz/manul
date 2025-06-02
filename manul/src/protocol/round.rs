@@ -324,7 +324,9 @@ impl Artifact {
 }
 
 /// A round that initiates a protocol and defines how execution begins. It is the only round that can be created outside
-/// the protocol flow. The `EntryPoint` can carry data, e.g. configuration or external initialization data. All the
+/// the protocol flow.
+///
+/// The `EntryPoint` can carry data, e.g. configuration or external initialization data. All the
 /// other rounds are only reachable by the execution layer through [`Round::finalize`].
 pub trait EntryPoint<Id: PartyId> {
     /// The protocol implemented by the round this entry points returns.
