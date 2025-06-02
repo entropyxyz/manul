@@ -321,16 +321,11 @@ pub struct Round2Message {
     reveal: bool,
 }
 
+// For this simple protocol this type is a mere placeholder but in a production setting the entry point is where we can
+// store arbitrary context data, e.g. for a threshold key refresh protocol it could contain the set of old key holders,
+// the new threshold etc.
 #[derive(Debug, Clone)]
-struct DiningEntryPoint {
-    diners: BTreeSet<u8>,
-}
-impl DiningEntryPoint {
-    pub fn new() -> Self {
-        let diners = [0, 1, 2u8].into_iter().collect::<BTreeSet<u8>>();
-        Self { diners }
-    }
-}
+struct DiningEntryPoint;
 
 impl EntryPoint<DinerId> for DiningEntryPoint {
     type Protocol = DiningCryptographersProtocol;
@@ -423,7 +418,7 @@ impl SessionParameters for DiningSessionParams {
     type WireFormat = BinaryFormat;
 }
 
-// Just a utility method to help us convert a [`Payload`] to for example a `bool`.
+// Just a utility method to help us convert a [`Payload`] to, for example, a `bool`.
 fn downcast_payloads<T: 'static>(map: BTreeMap<DinerId, Payload>) -> Result<BTreeMap<DinerId, T>, LocalError> {
     map.into_iter()
         .map(|(id, payload)| payload.downcast::<T>().map(|p| (id, p)))
@@ -437,12 +432,11 @@ fn main() {
     // Set up participants. This protocol only works for 3 participants!
     let diners = (0..=2).map(Diner::new).collect::<Vec<_>>();
 
-    // Each diner crates an `EntryPoint` for themselves. This constitutes the starting point for the protocol.
-    // In a production setting where each diner runs the protocol on their own computer, they'd each create their own
-    // `EntryPoint` and run the protocol independently.
+    // The `EntryPoint`, one for each participant, is the starting point for the protocol. Here we create them all at
+    // once, but in a production setting each participant create their own.
     let entry_points = diners
         .into_iter()
-        .map(|diner| (diner, DiningEntryPoint::new()))
+        .map(|diner| (diner, DiningEntryPoint {}))
         .collect::<Vec<_>>();
 
     // Run the protocol as configured by the `DiningEntryPoint` and `DiningSessionParams`. Calling
@@ -453,7 +447,7 @@ fn main() {
         .results()
         .expect("The protocol executed but failed to produce results");
 
-    // `results` contains 3 booleans, which, when XORed together, make `true` if one of the diners paid, or `false` if
+    // `results` now contains 3 booleans, which, when XORed together, make `true` if one of the diners paid, or `false` if
     // the NSA paid. All participants should reach the same conclusion.
     for (id, result) in results {
         let who_paid = if result.0 ^ result.1 ^ result.2 {
