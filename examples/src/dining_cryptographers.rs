@@ -49,21 +49,19 @@
 //!
 //! Run the example with `RUST_LOG=trace cargo run dining-cryptographers`.
 
-#![allow(dead_code, unused, unused_imports)]
 use core::fmt::Debug;
 use std::collections::{BTreeMap, BTreeSet};
 
 use manul::{
-    dev::{run_sync, BinaryFormat, TestHasher, TestVerifier},
+    dev::{run_sync, BinaryFormat, TestHasher},
     digest,
     protocol::{
         Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
-        Payload, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
-        RequiredMessageParts, RequiredMessages, Round, RoundId, TransitionInfo,
+        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, Payload,
+        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     session::SessionParameters,
-    signature::{self, Keypair},
+    signature,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -85,25 +83,25 @@ impl<Id> Protocol<Id> for DiningCryptographersProtocol {
     type ProtocolError = NoProtocolErrors;
 
     fn verify_direct_message_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &DirectMessage,
+        _format: &BoxedFormat,
+        _round_id: &RoundId,
+        _message: &DirectMessage,
     ) -> Result<(), MessageValidationError> {
         Ok(())
     }
 
     fn verify_echo_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &EchoBroadcast,
+        _format: &BoxedFormat,
+        _round_id: &RoundId,
+        _message: &EchoBroadcast,
     ) -> Result<(), MessageValidationError> {
         Ok(())
     }
 
     fn verify_normal_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &NormalBroadcast,
+        _format: &BoxedFormat,
+        _round_id: &RoundId,
+        _message: &NormalBroadcast,
     ) -> Result<(), MessageValidationError> {
         Ok(())
     }
@@ -161,7 +159,7 @@ impl Round<DinerId> for Round1 {
     // This is called when this diner prepares to share a random bit with their neighbour.
     fn make_direct_message(
         &self,
-        rng: &mut dyn CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         format: &BoxedFormat,
         destination: &DinerId,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
@@ -194,9 +192,9 @@ impl Round<DinerId> for Round1 {
     // At the end of round 1 we construct the next one, Round 2, and return a [`FinalizeOutcome::AnotherRound`].
     fn finalize(
         self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<DinerId, Payload>,
-        artifacts: BTreeMap<DinerId, Artifact>,
+        _artifacts: BTreeMap<DinerId, Artifact>,
     ) -> Result<FinalizeOutcome<DinerId, Self::Protocol>, LocalError> {
         let payloads = downcast_payloads::<bool>(payloads)?;
         debug!("[Round1, finalize] {:?} sees payloads: {payloads:?}", self.diner_id);
@@ -294,7 +292,7 @@ impl Round<DinerId> for Round2 {
     // protocol from this participant's point of view.
     fn finalize(
         self: Box<Self>,
-        rng: &mut dyn CryptoRngCore,
+        _rng: &mut dyn CryptoRngCore,
         payloads: BTreeMap<DinerId, Payload>,
         _artifacts: BTreeMap<DinerId, Artifact>,
     ) -> Result<FinalizeOutcome<DinerId, Self::Protocol>, LocalError> {
@@ -410,7 +408,7 @@ impl signature::Keypair for Diner {
 }
 
 impl<D: digest::Digest> signature::DigestVerifier<D, DinerSignature> for DinerId {
-    fn verify_digest(&self, _digest: D, signature: &DinerSignature) -> Result<(), signature::Error> {
+    fn verify_digest(&self, _digest: D, _signature: &DinerSignature) -> Result<(), signature::Error> {
         Ok(())
     }
 }
