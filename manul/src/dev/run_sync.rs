@@ -157,6 +157,7 @@ where
                 break State::Finished(session.terminate_due_to_errors(accum)?);
             }
         }
+
         let destinations = session.message_destinations();
         for destination in destinations {
             let (message, artifact) = session.make_message(rng, destination)?;
@@ -207,6 +208,7 @@ where
         messages.extend(new_messages);
         states.insert(verifier, state);
     }
+
     let messages_len = messages.len();
     loop {
         // Pick a random message and deliver it
@@ -259,6 +261,7 @@ where
         };
         reports.insert(verifier, report);
     }
+
     Ok(ExecutionResult { reports })
 }
 
