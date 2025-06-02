@@ -28,4 +28,4 @@ test-log = { version = "0.2", features = ["trace", "color"] }
 
 [[bin]]
 name = "dining-cryptographers"
-path = "src/dining_cryptographers.rs"
+path = "dining_cryptographers.rs"
