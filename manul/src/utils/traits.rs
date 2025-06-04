@@ -1,5 +1,7 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 
+use crate::protocol::EvidenceError;
+
 /// Implemented by collections allowing removal of a specific item.
 pub trait Without<T> {
     /// Returns `self` with `item` removed.
@@ -64,5 +66,18 @@ impl<K: Ord + Clone, OldV, NewV> MapValuesRef<OldV, NewV> for BTreeMap<K, OldV> 
         F: Fn(&OldV) -> NewV,
     {
         self.iter().map(|(key, value)| (key.clone(), f(value))).collect()
+    }
+}
+
+/// Returns an error if `condition` is false.
+///
+/// A shortcut to use in evidence checking logic.
+pub fn verify_that(condition: bool) -> Result<(), EvidenceError> {
+    if condition {
+        Ok(())
+    } else {
+        Err(EvidenceError::InvalidEvidence(
+            "the reported error cannot be reproduced".into(),
+        ))
     }
 }
