@@ -17,6 +17,7 @@ serde-encoded-bytes = { version = "0.2", default-features = false, features = ["
 digest = { version = "0.10", default-features = false }
 signature = { version = "2", default-features = false, features = ["digest", "rand_core"] }
 rand_core = { version = "0.6.4", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
 tracing = { version = "0.1", default-features = false }
 displaydoc = { version = "0.2", default-features = false }
 derive-where = "1"

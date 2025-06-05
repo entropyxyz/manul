@@ -2,7 +2,8 @@
 
 use alloc::{format, sync::Arc, vec::Vec};
 
-use rand_core::CryptoRngCore;
+use rand_chacha::ChaCha20Rng;
+use rand_core::{CryptoRngCore, SeedableRng};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, trace};
@@ -234,14 +235,13 @@ where
         let destinations = session.message_destinations();
         let mut message_creation_tasks = Vec::new();
         for destination in destinations {
-            let rng = rng.clone();
             let session = session.clone();
             let my_id = my_id.clone();
             let outgoing_tx = outgoing_tx.clone();
             let destination = destination.clone();
+            let mut task_rng = ChaCha20Rng::from_rng(rng.clone()).map_err(|_| LocalError::new("Can't fork the RNG"))?;
             let message_creation = tokio::task::spawn_blocking(move || {
-                let mut rng = rng;
-                let (message, artifact) = session.make_message(&mut rng, &destination)?;
+                let (message, artifact) = session.make_message(&mut task_rng, &destination)?;
                 debug!("{my_id}: Sending a message to {destination:?}",);
                 let message_out = MessageOut {
                     session_id: session.session_id().clone(),
