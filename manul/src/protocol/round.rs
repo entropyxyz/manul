@@ -258,6 +258,10 @@ impl<Id> ProtocolError<Id> for NoProtocolErrors {
 }
 
 /// Message payload created in [`Round::receive_message`].
+///
+/// [`Payload`]s are created as the output of processing an incoming message. When a [`Round`] finalizes, all the
+/// `Payload`s received during the round are made available and can be used to decide what to do next (next round?
+/// return a final result?). Payloads are not sent to other nodes.
 #[derive(Debug)]
 pub struct Payload(pub Box<dyn Any + Send + Sync>);
 
@@ -280,14 +284,21 @@ impl Payload {
     ///
     /// Would be normally called in [`Round::finalize`].
     pub fn downcast<T: 'static>(self) -> Result<T, LocalError> {
-        Ok(*(self
-            .0
-            .downcast::<T>()
-            .map_err(|_| LocalError::new(format!("Failed to downcast into {}", core::any::type_name::<T>())))?))
+        Ok(*(self.0.downcast::<T>().map_err(|_| {
+            LocalError::new(format!(
+                "Failed to downcast Payload into {}",
+                core::any::type_name::<T>()
+            ))
+        })?))
     }
 }
 
 /// Associated data created alongside a message in [`Round::make_direct_message`].
+///
+/// [`Artifact`]s are local to the participant that created it and are usually containers for intermediary secrets
+/// and/or dynamic parameters needed in subsequent stages of the protocol. Artifacts are never sent over the wire; they
+/// are made available to [`Round::finalize`] for the participant, delivered in the form of a `BTreeMap` where the key
+/// is the destination id of the participant to whom the direct message was sent.
 #[derive(Debug)]
 pub struct Artifact(pub Box<dyn Any + Send + Sync>);
 
@@ -303,17 +314,20 @@ impl Artifact {
     ///
     /// Would be normally called in [`Round::finalize`].
     pub fn downcast<T: 'static>(self) -> Result<T, LocalError> {
-        Ok(*(self
-            .0
-            .downcast::<T>()
-            .map_err(|_| LocalError::new(format!("Failed to downcast into {}", core::any::type_name::<T>())))?))
+        Ok(*(self.0.downcast::<T>().map_err(|_| {
+            LocalError::new(format!(
+                "Failed to downcast Artifact into {}",
+                core::any::type_name::<T>()
+            ))
+        })?))
     }
 }
 
-/// A round that initiates a protocol.
+/// A round that initiates a protocol and defines how execution begins. It is the only round that can be created outside
+/// the protocol flow.
 ///
-/// This is a round that can be created directly;
-/// all the others are only reachable throud [`Round::finalize`] by the execution layer.
+/// The `EntryPoint` can carry data, e.g. configuration or external initialization data. All the
+/// other rounds are only reachable by the execution layer through [`Round::finalize`].
 pub trait EntryPoint<Id: PartyId> {
     /// The protocol implemented by the round this entry points returns.
     type Protocol: Protocol<Id>;
@@ -321,9 +335,10 @@ pub trait EntryPoint<Id: PartyId> {
     /// Returns the ID of the round returned by [`Self::make_round`].
     fn entry_round_id() -> RoundId;
 
-    /// Creates the round.
+    /// Creates the starting round.
     ///
-    /// `session_id` can be assumed to be the same for each node participating in a session.
+    /// `shared_randomness` can be assumed to be the same for each node participating in a session and can be thought of
+    /// as a "session id" bytestring.
     /// `id` is the ID of this node.
     fn make_round(
         self,
@@ -415,9 +430,9 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
     /// Return [`EchoBroadcast::none`] if this round does not send echo-broadcast messages.
     /// This is also the blanket implementation.
     ///
-    /// The execution layer will guarantee that all the destinations are sure they all received the same broadcast.
-    /// This also means that a message with the broadcasts from all nodes signed by each node is available
-    /// if an evidence of malicious behavior has to be constructed.
+    /// The execution layer will guarantee that all the destinations are sure they all received the same broadcast. This
+    /// also means that a message containing the broadcasts from all nodes and signed by each node is available. This is
+    /// used as part of the evidence of malicious behavior when producing provable offence reports.
     fn make_echo_broadcast(
         &self,
         #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
@@ -431,8 +446,8 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
     /// Return [`NormalBroadcast::none`] if this round does not send normal broadcast messages.
     /// This is also the blanket implementation.
     ///
-    /// Unlike the echo broadcasts, these will be just sent to every node defined in [`Self::communication_info`]
-    /// without any confirmation required.
+    /// Unlike echo broadcasts, normal broadcasts are "send and forget" and delivered to every node defined in
+    /// [`Self::communication_info`] without any confirmation required by the receiving node.
     fn make_normal_broadcast(
         &self,
         #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
@@ -441,7 +456,9 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
         Ok(NormalBroadcast::none())
     }
 
-    /// Processes the received message and generates the payload that will be used in [`finalize`](`Self::finalize`).
+    /// Processes a received message and generates the payload that will be used in [`finalize`](`Self::finalize`). The
+    /// message content can be arbitrarily checked and processed to build the exact payload needed to finalize the
+    /// round.
     ///
     /// Note that there is no need to authenticate the message at this point;
     /// it has already been done by the execution layer.
@@ -454,9 +471,8 @@ pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
 
     /// Attempts to finalize the round, producing the next round or the result.
     ///
-    /// `payloads` here are the ones previously generated by [`receive_message`](`Self::receive_message`),
-    /// and `artifacts` are the ones previously generated by
-    /// [`make_direct_message`](`Self::make_direct_message`).
+    /// `payloads` here are the ones previously generated by [`receive_message`](`Self::receive_message`), and
+    /// `artifacts` are the ones previously generated by [`make_direct_message`](`Self::make_direct_message`).
     fn finalize(
         self: Box<Self>,
         rng: &mut dyn CryptoRngCore,

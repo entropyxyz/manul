@@ -3,7 +3,7 @@ use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
 use rand::Rng;
 use rand_core::CryptoRngCore;
 use signature::Keypair;
-use tracing::debug;
+use tracing::{debug, trace, warn};
 
 use crate::{
     protocol::{EntryPoint, Protocol},
@@ -92,6 +92,13 @@ where
             Self::Unordered(v) => v.is_empty(),
         }
     }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Ordered(m) => m.len(),
+            Self::Unordered(v) => v.len(),
+        }
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -134,8 +141,21 @@ where
                     }
                 }
             }
-            CanFinalize::NotYet => break State::InProgress { session, accum },
-            CanFinalize::Never => break State::Finished(session.terminate_due_to_errors(accum)?),
+            CanFinalize::NotYet => {
+                trace!(
+                    "[{:?}] Still in progress. Cannot finalize round {}",
+                    session.verifier(),
+                    session.round_id()
+                );
+                break State::InProgress { session, accum };
+            }
+            CanFinalize::Never => {
+                trace!(
+                    "[{:?}] Can't ever finalize. Terminating session due to errors",
+                    session.verifier()
+                );
+                break State::Finished(session.terminate_due_to_errors(accum)?);
+            }
         }
 
         let destinations = session.message_destinations();
@@ -189,15 +209,27 @@ where
         states.insert(verifier, state);
     }
 
+    let messages_len = messages.len();
     loop {
         // Pick a random message and deliver it
         let message = messages.pop(rng);
 
-        debug!("Delivering message from {:?} to {:?}", message.from, message.to);
-
-        let state = states
-            .remove(&message.to)
-            .expect("the message destination is one of the sessions");
+        debug!(
+            "Delivering message from {:?} to {:?} ({}/{})",
+            message.from,
+            message.to,
+            messages_len - messages.len(),
+            messages_len
+        );
+        let state = states.remove(&message.to);
+        if state.is_none() {
+            warn!(
+                "Expected the message destination {:?} to be one of the sessions",
+                message.to
+            );
+            panic!("Expected the message destination to be one of the sessions",);
+        }
+        let state = state.expect("Checked above");
         let new_state = if let State::InProgress { session, accum } = state {
             let mut accum = accum;
             let preprocessed = session.preprocess_message(&mut accum, &message.from, message.message)?;
@@ -216,6 +248,7 @@ where
         states.insert(message.to.clone(), new_state);
 
         if messages.is_empty() {
+            trace!("All messages delivered, exiting loop");
             break;
         }
     }

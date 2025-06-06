@@ -11,6 +11,17 @@ pub struct TestSigner(u8);
 /// A verifier corresponding to [`TestSigner`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TestVerifier(u8);
+impl TestVerifier {
+    /// Creates a new verifier for testing purposes.
+    pub fn new(id: u8) -> Self {
+        Self(id)
+    }
+
+    /// Access inner `u8`
+    pub fn id(&self) -> u8 {
+        self.0
+    }
+}
 
 /// A signature produced by [`TestSigner`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
