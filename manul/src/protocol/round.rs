@@ -384,7 +384,7 @@ mod sealed {
     impl<T: 'static> DynTypeId for T {}
 }
 
-use sealed::DynTypeId;
+pub(crate) use sealed::DynTypeId;
 
 /**
 A type representing a single round of a protocol.

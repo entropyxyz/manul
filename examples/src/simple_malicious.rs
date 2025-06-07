@@ -39,7 +39,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
             match behavior {
                 Behavior::SerializedGarbage => DirectMessage::new(format, [99u8])?,
                 Behavior::AttributableFailure => {
-                    let round1 = round.downcast_ref::<Round1<Id>>()?;
+                    let round1 = round.downcast_static_ref::<Round1<Id>>()?;
                     let message = Round1Message {
                         my_position: round1.context.ids_to_positions[&round1.context.id],
                         your_position: round1.context.ids_to_positions[&round1.context.id],
@@ -51,7 +51,7 @@ impl<Id: PartyId> Misbehaving<Id, Behavior> for MaliciousLogic {
         } else if round.id() == 2 {
             match behavior {
                 Behavior::AttributableFailureRound2 => {
-                    let round2 = round.downcast_ref::<Round2<Id>>()?;
+                    let round2 = round.downcast_static_ref::<Round2<Id>>()?;
                     let message = Round2Message {
                         my_position: round2.context.ids_to_positions[&round2.context.id],
                         your_position: round2.context.ids_to_positions[&round2.context.id],
