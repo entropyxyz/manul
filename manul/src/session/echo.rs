@@ -22,7 +22,7 @@ use crate::{
         FinalizeOutcome, MessageValidationError, NormalBroadcast, Payload, Protocol, ProtocolMessage,
         ProtocolMessagePart, ReceiveError, Round, TransitionInfo,
     },
-    utils::SerializableMap,
+    utils::{MapValues, SerializableMap},
 };
 
 /// An error that can occur on receiving a message during an echo round.
@@ -169,9 +169,7 @@ where
         }
 
         let message_hashes = echo_broadcasts
-            .iter()
-            .map(|(id, echo_broadcast)| (id.clone(), echo_broadcast.to_signed_hash::<SP>()))
-            .collect::<BTreeMap<_, _>>()
+            .map_values(|echo_broadcast| echo_broadcast.to_signed_hash::<SP>())
             .into();
 
         let message = EchoRoundMessage::<SP> { message_hashes };

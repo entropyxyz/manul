@@ -12,6 +12,7 @@ use manul::{
         Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     signature::Keypair,
+    utils::Without,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -190,13 +191,11 @@ fn bench_empty_rounds(c: &mut Criterion) {
         .iter()
         .cloned()
         .map(|signer| {
-            let mut other_ids = all_ids.clone();
-            other_ids.remove(&signer.verifying_key());
             (
                 signer,
                 Inputs {
                     rounds_num,
-                    other_ids,
+                    other_ids: all_ids.clone().without(&signer.verifying_key()),
                     echo: false,
                 },
             )
@@ -218,13 +217,11 @@ fn bench_empty_rounds(c: &mut Criterion) {
         .iter()
         .cloned()
         .map(|signer| {
-            let mut other_ids = all_ids.clone();
-            other_ids.remove(&signer.verifying_key());
             (
                 signer,
                 Inputs {
                     rounds_num,
-                    other_ids,
+                    other_ids: all_ids.clone().without(&signer.verifying_key()),
                     echo: true,
                 },
             )

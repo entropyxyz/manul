@@ -1,11 +1,14 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
-use manul::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
-    LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
-    ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, Round, RoundId,
-    TransitionInfo,
+use manul::{
+    protocol::{
+        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
+        FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol,
+        ProtocolError, ProtocolMessage, ProtocolMessagePart, ProtocolValidationError, ReceiveError,
+        RequiredMessageParts, RequiredMessages, Round, RoundId, TransitionInfo,
+    },
+    utils::{GetRound, MapDeserialize, MapDowncast, Without},
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -23,7 +26,10 @@ pub enum SimpleProtocolError {
     Round2InvalidPosition,
 }
 
-impl<Id> ProtocolError<Id> for SimpleProtocolError {
+impl<Id> ProtocolError<Id> for SimpleProtocolError
+where
+    Id: PartyId,
+{
     type AssociatedData = ();
 
     fn required_messages(&self) -> RequiredMessages {
@@ -55,15 +61,10 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
             }
             SimpleProtocolError::Round2InvalidPosition => {
                 let _r1_message = message.direct_message.deserialize::<Round1Message>(format)?;
-                let r1_echos_serialized = combined_echos
-                    .get(&1.into())
-                    .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
+                let r1_echos_serialized = combined_echos.get_round(1)?;
 
                 // Deserialize the echos
-                let _r1_echos = r1_echos_serialized
-                    .iter()
-                    .map(|(_id, echo)| echo.deserialize::<Round1Echo>(format))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let _r1_echos = r1_echos_serialized.map_deserialize::<Round1Echo>(format)?;
 
                 // Message contents would be checked here
                 Ok(())
@@ -72,7 +73,10 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
     }
 }
 
-impl<Id> Protocol<Id> for SimpleProtocol {
+impl<Id> Protocol<Id> for SimpleProtocol
+where
+    Id: PartyId,
+{
     type Result = u8;
     type ProtocolError = SimpleProtocolError;
 
@@ -179,13 +183,10 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
             .map(|(idx, id)| (id.clone(), idx as u8))
             .collect::<BTreeMap<_, _>>();
 
-        let mut ids = self.all_ids;
-        ids.remove(id);
-
         Ok(BoxedRound::new_dynamic(Round1 {
             context: Context {
                 id: id.clone(),
-                other_ids: ids,
+                other_ids: self.all_ids.clone().without(id),
                 ids_to_positions,
             },
         }))
@@ -281,12 +282,9 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
             payloads.keys().cloned().collect::<Vec<_>>()
         );
 
-        let typed_payloads = payloads
-            .into_values()
-            .map(|payload| payload.downcast::<Round1Payload>())
-            .collect::<Result<Vec<_>, _>>()?;
+        let typed_payloads = payloads.try_map_downcast::<Round1Payload>()?;
         let sum = self.context.ids_to_positions[&self.context.id]
-            + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
+            + typed_payloads.values().map(|payload| payload.x).sum::<u8>();
 
         let round2 = BoxedRound::new_dynamic(Round2 {
             round1_sum: sum,
@@ -369,12 +367,9 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
             payloads.keys().cloned().collect::<Vec<_>>()
         );
 
-        let typed_payloads = payloads
-            .into_values()
-            .map(|payload| payload.downcast::<Round1Payload>())
-            .collect::<Result<Vec<_>, _>>()?;
+        let typed_payloads = payloads.try_map_downcast::<Round1Payload>()?;
         let sum = self.context.ids_to_positions[&self.context.id]
-            + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
+            + typed_payloads.values().map(|payload| payload.x).sum::<u8>();
 
         Ok(FinalizeOutcome::Result(sum + self.round1_sum))
     }
