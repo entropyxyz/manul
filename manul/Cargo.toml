@@ -17,6 +17,7 @@ serde-encoded-bytes = { version = "0.2", default-features = false, features = ["
 digest = { version = "0.10", default-features = false }
 signature = { version = "2", default-features = false, features = ["digest", "rand_core"] }
 rand_core = { version = "0.6.4", default-features = false }
+
 tracing = { version = "0.1", default-features = false }
 displaydoc = { version = "0.2", default-features = false }
 derive-where = "1"
@@ -29,6 +30,7 @@ postcard = { version = "1", default-features = false, features = ["alloc"], opti
 serde_json = { version = "1", default-features = false, features = ["alloc"], optional = true }
 tokio = { version = "1", default-features = false, features = ["sync", "rt", "macros", "time"], optional = true }
 tokio-util = { version = "0.7", default-features = false, optional = true }
+rand_chacha = { version = "0.3", default-features = false, optional = true }
 
 [dev-dependencies]
 impls = "1"
@@ -45,7 +47,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [features]
 dev = ["rand", "postcard", "serde_json", "tracing/std", "serde-persistent-deserializer"]
-tokio = ["dep:tokio", "tokio-util"]
+tokio = ["dep:tokio", "tokio-util", "rand_chacha"]
 
 [package.metadata.docs.rs]
 all-features = true
