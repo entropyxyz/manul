@@ -82,7 +82,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_dynamic(Round1 { inputs: self }))
+        Ok(BoxedRound::new(Round1 { inputs: self }))
     }
 }
 

@@ -181,7 +181,7 @@ where
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
         let round = self.entry_point.make_round(rng, shared_randomness, id)?;
-        Ok(BoxedRound::new_dynamic(MisbehavingRound::<Id, B, M> {
+        Ok(BoxedRound::new(MisbehavingRound::<Id, B, M> {
             round,
             behavior: self.behavior,
         }))
@@ -213,7 +213,7 @@ where
         match outcome {
             FinalizeOutcome::Result(result) => FinalizeOutcome::Result(result),
             FinalizeOutcome::AnotherRound(round) => {
-                FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(Self { round, behavior }))
+                FinalizeOutcome::AnotherRound(BoxedRound::new(Self { round, behavior }))
             }
         }
     }

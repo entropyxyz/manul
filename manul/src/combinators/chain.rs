@@ -312,7 +312,7 @@ where
                 round,
             },
         };
-        Ok(BoxedRound::new_dynamic(chained_round))
+        Ok(BoxedRound::new(chained_round))
     }
 }
 
@@ -439,7 +439,7 @@ where
                     let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
                     };
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new(chained_round)))
                 }
                 FinalizeOutcome::AnotherRound(round) => {
                     let chained_round = ChainedRound::<Id, T> {
@@ -450,7 +450,7 @@ where
                             transition,
                         },
                     };
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new(chained_round)))
                 }
             },
             ChainState::Protocol2(round) => match round.into_boxed().finalize(rng, payloads, artifacts)? {
@@ -459,7 +459,7 @@ where
                     let chained_round = ChainedRound::<Id, T> {
                         state: ChainState::Protocol2(round),
                     };
-                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(chained_round)))
+                    Ok(FinalizeOutcome::AnotherRound(BoxedRound::new(chained_round)))
                 }
             },
         }
