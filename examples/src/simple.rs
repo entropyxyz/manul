@@ -195,7 +195,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
 impl<Id: PartyId> StaticRound<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
-    fn transition_info(&self) -> TransitionInfo {
+    fn transition_info() -> TransitionInfo {
         TransitionInfo::new_linear(1)
     }
 
@@ -290,7 +290,7 @@ pub(crate) struct Round2Message {
 impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
 
-    fn transition_info(&self) -> TransitionInfo {
+    fn transition_info() -> TransitionInfo {
         TransitionInfo::new_linear_terminating(2)
     }
 

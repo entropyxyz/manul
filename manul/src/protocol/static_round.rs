@@ -46,7 +46,7 @@ pub trait StaticRound<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
     /// Returns the information about the position of this round in the state transition graph.
     ///
     /// See [`TransitionInfo`] documentation for more details.
-    fn transition_info(&self) -> TransitionInfo;
+    fn transition_info() -> TransitionInfo;
 
     /// Returns the information about the communication this rounds engages in with other nodes.
     ///
@@ -165,7 +165,7 @@ where
     type Protocol = <R as StaticRound<Id>>::Protocol;
 
     fn transition_info(&self) -> TransitionInfo {
-        self.round.transition_info()
+        R::transition_info()
     }
 
     fn communication_info(&self) -> CommunicationInfo<Id> {
