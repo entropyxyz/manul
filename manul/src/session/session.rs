@@ -611,24 +611,34 @@ where
 
     fn register_unprovable_error(&mut self, from: &SP::Verifier, error: RemoteError) -> Result<(), LocalError> {
         if self.unprovable_errors.insert(from.clone(), error).is_some() {
-            Err(LocalError::new(format!(
+            return Err(LocalError::new(format!(
                 "An unprovable error for {:?} is already registered",
                 from
-            )))
-        } else {
-            Ok(())
+            )));
         }
+        if !self.still_have_not_sent_messages.remove(from) {
+            return Err(LocalError::new(format!(
+                "{:?} was expected to be present in `still_have_not_sent_messages`",
+                from
+            )));
+        }
+        Ok(())
     }
 
     fn register_provable_error(&mut self, from: &SP::Verifier, evidence: Evidence<P, SP>) -> Result<(), LocalError> {
         if self.provable_errors.insert(from.clone(), evidence).is_some() {
-            Err(LocalError::new(format!(
+            return Err(LocalError::new(format!(
                 "A provable error for {:?} is already registered",
                 from
-            )))
-        } else {
-            Ok(())
+            )));
         }
+        if !self.still_have_not_sent_messages.remove(from) {
+            return Err(LocalError::new(format!(
+                "{:?} was expected to be present in `still_have_not_sent_messages`",
+                from
+            )));
+        }
+        Ok(())
     }
 
     fn mark_processing(&mut self, message: &VerifiedMessage<SP::Verifier>) -> Result<(), LocalError> {
