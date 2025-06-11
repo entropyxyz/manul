@@ -17,18 +17,20 @@ use super::{
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct NoMessage;
 
-fn is_no_message<T: 'static>() -> bool {
-    TypeId::of::<T>() == TypeId::of::<NoMessage>()
-}
+impl NoMessage {
+    pub(crate) fn equals<T: 'static>() -> bool {
+        TypeId::of::<T>() == TypeId::of::<NoMessage>()
+    }
 
-fn make_no_message<T: 'static>() -> Option<T> {
-    if TypeId::of::<T>() == TypeId::of::<NoMessage>() {
-        let boxed = Box::new(NoMessage);
-        // SAFETY: can cast since we checked that T == NoMessage
-        let boxed_downcast = unsafe { Box::<T>::from_raw(Box::into_raw(boxed) as *mut T) };
-        Some(*boxed_downcast)
-    } else {
-        None
+    fn new<T: 'static>() -> Option<T> {
+        if Self::equals::<T>() {
+            let boxed = Box::new(NoMessage);
+            // SAFETY: can cast since we checked that T == NoMessage
+            let boxed_downcast = unsafe { Box::<T>::from_raw(Box::into_raw(boxed) as *mut T) };
+            Some(*boxed_downcast)
+        } else {
+            None
+        }
     }
 }
 
@@ -72,7 +74,7 @@ pub trait StaticRound<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
         #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
         #[allow(unused_variables)] destination: &Id,
     ) -> Result<(Self::DirectMessage, Option<Self::Artifact>), LocalError> {
-        let direct_message = make_no_message::<Self::DirectMessage>().ok_or_else(|| {
+        let direct_message = NoMessage::new::<Self::DirectMessage>().ok_or_else(|| {
             LocalError::new("If `DirectMessage` is not `NoMessage`, `make_direct_message()` must be implemented.")
         })?;
         Ok((direct_message, None))
@@ -90,7 +92,7 @@ pub trait StaticRound<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
         &self,
         #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
     ) -> Result<Self::EchoBroadcast, LocalError> {
-        let echo_broadcast = make_no_message::<Self::EchoBroadcast>().ok_or_else(|| {
+        let echo_broadcast = NoMessage::new::<Self::EchoBroadcast>().ok_or_else(|| {
             LocalError::new("If `EchoBroadcast` is not `NoMessage`, `make_echo_broadcast()` must be implemented.")
         })?;
         Ok(echo_broadcast)
@@ -107,7 +109,7 @@ pub trait StaticRound<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
         &self,
         #[allow(unused_variables)] rng: &mut dyn CryptoRngCore,
     ) -> Result<Self::NormalBroadcast, LocalError> {
-        let normal_broadcast = make_no_message::<Self::NormalBroadcast>().ok_or_else(|| {
+        let normal_broadcast = NoMessage::new::<Self::NormalBroadcast>().ok_or_else(|| {
             LocalError::new("If `NormalBroadcast` is not `NoMessage`, `make_normal_broadcast()` must be implemented.")
         })?;
         Ok(normal_broadcast)
@@ -178,7 +180,7 @@ where
         format: &BoxedFormat,
         destination: &Id,
     ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        Ok(if is_no_message::<R::DirectMessage>() {
+        Ok(if NoMessage::equals::<R::DirectMessage>() {
             (DirectMessage::none(), None)
         } else {
             let (direct_message, artifact) = self.round.make_direct_message(rng, destination)?;
@@ -191,7 +193,7 @@ where
         rng: &mut dyn CryptoRngCore,
         format: &BoxedFormat,
     ) -> Result<EchoBroadcast, LocalError> {
-        Ok(if is_no_message::<R::EchoBroadcast>() {
+        Ok(if NoMessage::equals::<R::EchoBroadcast>() {
             EchoBroadcast::none()
         } else {
             let echo_broadcast = self.round.make_echo_broadcast(rng)?;
@@ -204,7 +206,7 @@ where
         rng: &mut dyn CryptoRngCore,
         format: &BoxedFormat,
     ) -> Result<NormalBroadcast, LocalError> {
-        Ok(if is_no_message::<R::NormalBroadcast>() {
+        Ok(if NoMessage::equals::<R::NormalBroadcast>() {
             NormalBroadcast::none()
         } else {
             let normal_broadcast = self.round.make_normal_broadcast(rng)?;
@@ -218,7 +220,7 @@ where
         from: &Id,
         message: ProtocolMessage,
     ) -> Result<Payload, ReceiveError<Id, <Self as Round<Id>>::Protocol>> {
-        let direct_message = if is_no_message::<R::DirectMessage>() {
+        let direct_message = if NoMessage::equals::<R::DirectMessage>() {
             message.direct_message.assert_is_none()?;
             &DirectMessage::new(format, NoMessage)?
         } else {
@@ -226,7 +228,7 @@ where
         };
         let direct_message = direct_message.deserialize::<R::DirectMessage>(format)?;
 
-        let echo_broadcast = if is_no_message::<R::EchoBroadcast>() {
+        let echo_broadcast = if NoMessage::equals::<R::EchoBroadcast>() {
             message.echo_broadcast.assert_is_none()?;
             &EchoBroadcast::new(format, NoMessage)?
         } else {
@@ -234,7 +236,7 @@ where
         };
         let echo_broadcast = echo_broadcast.deserialize::<R::EchoBroadcast>(format)?;
 
-        let normal_broadcast = if is_no_message::<R::NormalBroadcast>() {
+        let normal_broadcast = if NoMessage::equals::<R::NormalBroadcast>() {
             message.normal_broadcast.assert_is_none()?;
             &NormalBroadcast::new(format, NoMessage)?
         } else {

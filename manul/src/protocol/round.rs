@@ -2,6 +2,7 @@ use alloc::{
     boxed::Box,
     collections::{BTreeMap, BTreeSet},
     format,
+    vec::Vec,
 };
 use core::{
     any::Any,
@@ -17,6 +18,7 @@ use super::{
     errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     round_id::{RoundId, TransitionInfo},
+    round_info::BoxedRoundInfo,
 };
 
 /// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
@@ -73,6 +75,9 @@ pub trait Protocol<Id>: 'static {
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
     type ProtocolError: ProtocolError<Id>;
 
+    fn rounds() -> Vec<BoxedRoundInfo<Id>>;
+
+    // TODO: move out of `Protocol`. To `evidence.rs`, perhaps?
     /// Returns `Ok(())` if the given direct message cannot be deserialized
     /// assuming it is a direct message from the round `round_id`.
     ///
@@ -82,7 +87,17 @@ pub trait Protocol<Id>: 'static {
         format: &BoxedFormat,
         round_id: &RoundId,
         message: &DirectMessage,
-    ) -> Result<(), MessageValidationError>;
+    ) -> Result<(), MessageValidationError> {
+        let rounds = Self::rounds()
+            .into_iter()
+            .map(|r| {
+                let rid = r.transition_info().id;
+                (rid, r)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let round = rounds.get(round_id).unwrap();
+        round.verify_direct_message_is_invalid(format, message)
+    }
 
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
@@ -93,7 +108,17 @@ pub trait Protocol<Id>: 'static {
         format: &BoxedFormat,
         round_id: &RoundId,
         message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError>;
+    ) -> Result<(), MessageValidationError> {
+        let rounds = Self::rounds()
+            .into_iter()
+            .map(|r| {
+                let rid = r.transition_info().id;
+                (rid, r)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let round = rounds.get(round_id).unwrap();
+        round.verify_echo_broadcast_is_invalid(format, message)
+    }
 
     /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
     /// assuming it is an echo broadcast from the round `round_id`.
@@ -104,7 +129,17 @@ pub trait Protocol<Id>: 'static {
         format: &BoxedFormat,
         round_id: &RoundId,
         message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError>;
+    ) -> Result<(), MessageValidationError> {
+        let rounds = Self::rounds()
+            .into_iter()
+            .map(|r| {
+                let rid = r.transition_info().id;
+                (rid, r)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let round = rounds.get(round_id).unwrap();
+        round.verify_normal_broadcast_is_invalid(format, message)
+    }
 }
 
 /// Declares which parts of the message from a round have to be stored to serve as the evidence of malicious behavior.
