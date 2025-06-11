@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
-        Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
+        Artifact, BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, DirectMessage, EchoBroadcast,
+        EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors,
+        NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round,
+        RoundId, StaticRound, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -26,28 +27,8 @@ impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type Result = ();
     type ProtocolError = NoProtocolErrors;
 
-    fn verify_direct_message_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
+    fn rounds() -> Vec<BoxedRoundInfo<Id>> {
+        [BoxedRoundInfo::new::<Round1<Id>>()].into()
     }
 }
 
@@ -82,11 +63,11 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_dynamic(Round1 { inputs: self }))
+        Ok(BoxedRound::new_static(Round1 { inputs: self }))
     }
 }
 
-impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<Id> {
+impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> StaticRound<Id> for Round1<Id> {
     type Protocol = PartialEchoProtocol<Id>;
 
     fn transition_info(&self) -> TransitionInfo {
