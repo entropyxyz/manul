@@ -58,7 +58,7 @@ impl<Id: PartyId> CommunicationInfo<Id> {
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
-pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
+pub enum FinalizeOutcome<Id, P: Protocol<Id>> {
     /// Transition to a new round.
     AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
@@ -395,7 +395,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
+pub trait Round<Id>: 'static + Debug + Send + Sync + DynTypeId {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 

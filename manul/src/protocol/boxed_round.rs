@@ -9,7 +9,7 @@ use super::{
 /// A wrapped new round that may be returned by [`Round::finalize`]
 /// or [`EntryPoint::make_round`](`crate::protocol::EntryPoint::make_round`).
 #[derive_where::derive_where(Debug)]
-pub struct BoxedRound<Id: PartyId, P: Protocol<Id>>(Box<dyn Round<Id, Protocol = P>>);
+pub struct BoxedRound<Id, P: Protocol<Id>>(Box<dyn Round<Id, Protocol = P>>);
 
 impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
     /// Wraps an object implementing the dynamic round trait ([`Round`](`crate::protocol::Round`)).
