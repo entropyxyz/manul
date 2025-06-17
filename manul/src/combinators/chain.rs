@@ -53,7 +53,6 @@ use alloc::{boxed::Box, collections::BTreeMap};
 use core::fmt::{self, Debug};
 
 use rand_core::CryptoRngCore;
-use serde::{Deserialize, Serialize};
 
 use crate::protocol::{
     Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
@@ -74,16 +73,7 @@ pub trait ChainedProtocol<Id>: 'static + Debug {
 }
 
 /// The protocol error type for the chained protocol.
-#[derive_where::derive_where(Debug, Clone)]
-#[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "
-    <C::Protocol1 as Protocol<Id>>::ProtocolError: Serialize,
-    <C::Protocol2 as Protocol<Id>>::ProtocolError: Serialize,
-"))]
-#[serde(bound(deserialize = "
-    <C::Protocol1 as Protocol<Id>>::ProtocolError: for<'x> Deserialize<'x>,
-    <C::Protocol2 as Protocol<Id>>::ProtocolError: for<'x> Deserialize<'x>,
-"))]
+#[derive_where::derive_where(Debug, Clone, Serialize, Deserialize)]
 pub enum ChainedProtocolError<Id, C>
 where
     C: ChainedProtocol<Id>,
