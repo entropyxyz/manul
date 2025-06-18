@@ -15,7 +15,7 @@ pub struct DoubleSimpleProtocol;
 
 impl ChainedMarker for DoubleSimpleProtocol {}
 
-impl<Id> ChainedProtocol<Id> for DoubleSimpleProtocol {
+impl<Id: PartyId> ChainedProtocol<Id> for DoubleSimpleProtocol {
     type Protocol1 = SimpleProtocol;
     type Protocol2 = SimpleProtocol;
 }

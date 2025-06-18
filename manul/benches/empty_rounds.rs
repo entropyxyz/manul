@@ -7,9 +7,9 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
-        FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
-        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
+        Artifact, BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
+        FinalizeOutcome, LocalError, NoProtocolErrors, PartyId, Payload, Protocol, ProtocolMessage,
+        ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -22,28 +22,7 @@ pub struct EmptyProtocol;
 impl<Id> Protocol<Id> for EmptyProtocol {
     type Result = ();
     type ProtocolError = NoProtocolErrors;
-
-    fn verify_direct_message_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
+    fn round_info(_round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
         unimplemented!()
     }
 }

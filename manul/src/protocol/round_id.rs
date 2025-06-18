@@ -122,6 +122,12 @@ impl PartialEq<u8> for RoundId {
     }
 }
 
+impl PartialEq<u8> for &RoundId {
+    fn eq(&self, rhs: &u8) -> bool {
+        *self == &RoundId::new(*rhs)
+    }
+}
+
 /// Information about the position of the round in the state transition graph.
 #[derive(Debug, Clone)]
 pub struct TransitionInfo {

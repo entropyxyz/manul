@@ -14,9 +14,10 @@ use serde::{Deserialize, Serialize};
 use super::{
     boxed_format::BoxedFormat,
     boxed_round::BoxedRound,
-    errors::{LocalError, MessageValidationError, ProtocolValidationError, ReceiveError},
+    errors::{LocalError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     round_id::{RoundId, TransitionInfo},
+    round_info::BoxedRoundInfo,
 };
 
 /// Describes what other parties this rounds sends messages to, and what other parties it expects messages from.
@@ -58,7 +59,7 @@ impl<Id: PartyId> CommunicationInfo<Id> {
 
 /// Possible successful outcomes of [`Round::finalize`].
 #[derive(Debug)]
-pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
+pub enum FinalizeOutcome<Id, P: Protocol<Id>> {
     /// Transition to a new round.
     AnotherRound(BoxedRound<Id, P>),
     /// The protocol reached a result.
@@ -66,45 +67,15 @@ pub enum FinalizeOutcome<Id: PartyId, P: Protocol<Id>> {
 }
 
 /// A distributed protocol.
-pub trait Protocol<Id>: 'static {
+pub trait Protocol<Id>: 'static + Sized {
     /// The successful result of an execution of this protocol.
     type Result: Debug;
 
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
     type ProtocolError: ProtocolError<Id>;
 
-    /// Returns `Ok(())` if the given direct message cannot be deserialized
-    /// assuming it is a direct message from the round `round_id`.
-    ///
-    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
-    /// when implementing this.
-    fn verify_direct_message_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &DirectMessage,
-    ) -> Result<(), MessageValidationError>;
-
-    /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
-    /// assuming it is an echo broadcast from the round `round_id`.
-    ///
-    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
-    /// when implementing this.
-    fn verify_echo_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError>;
-
-    /// Returns `Ok(())` if the given echo broadcast cannot be deserialized
-    /// assuming it is an echo broadcast from the round `round_id`.
-    ///
-    /// Normally one would use [`ProtocolMessagePart::verify_is_not`] and [`ProtocolMessagePart::verify_is_some`]
-    /// when implementing this.
-    fn verify_normal_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError>;
+    /// Returns the wrapped round types for each round mapped to round IDs.
+    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>>;
 }
 
 /// Declares which parts of the message from a round have to be stored to serve as the evidence of malicious behavior.
@@ -384,7 +355,7 @@ mod sealed {
     impl<T: 'static> DynTypeId for T {}
 }
 
-use sealed::DynTypeId;
+pub(crate) use sealed::DynTypeId;
 
 /**
 A type representing a single round of a protocol.
@@ -395,7 +366,7 @@ The way a round will be used by an external caller:
 - process received messages from other nodes (by calling [`receive_message`](`Self::receive_message`));
 - attempt to finalize (by calling [`finalize`](`Self::finalize`)) to produce the next round, or return a result.
 */
-pub trait Round<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
+pub trait Round<Id>: 'static + Debug + Send + Sync + DynTypeId {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 
