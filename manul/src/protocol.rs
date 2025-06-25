@@ -33,7 +33,9 @@ pub use round::{
 };
 pub use round_id::{RoundId, TransitionInfo};
 pub use round_info::BoxedRoundInfo;
-pub use static_round::{NoMessage, StaticProtocolMessage, StaticRound};
+pub use static_round::{
+    EvidenceMessages, NoMessage, NoProvableErrors, ProvableError, StaticProtocolMessage, StaticRound,
+};
 
 pub(crate) use errors::ReceiveErrorType;
 pub(crate) use message::ProtocolMessagePartHashable;

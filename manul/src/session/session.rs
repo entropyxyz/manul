@@ -835,6 +835,7 @@ mod tests {
 
         impl Protocol<TestVerifier> for DummyProtocol {
             type Result = ();
+            type SharedData = ();
             type ProtocolError = NoProtocolErrors;
             fn round_info(_round_id: &RoundId) -> Option<BoxedRoundInfo<TestVerifier, Self>> {
                 unimplemented!()

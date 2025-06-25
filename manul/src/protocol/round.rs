@@ -71,6 +71,8 @@ pub trait Protocol<Id>: 'static + Sized {
     /// The successful result of an execution of this protocol.
     type Result: Debug;
 
+    type SharedData: Debug;
+
     /// An object of this type will be returned when a provable error happens during [`Round::receive_message`].
     type ProtocolError: ProtocolError<Id>;
 

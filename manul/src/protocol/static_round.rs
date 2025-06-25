@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     boxed_format::BoxedFormat,
-    errors::{LocalError, ReceiveError},
+    errors::{LocalError, ProtocolValidationError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
     round::{
-        Artifact, CommunicationInfo, DynTypeId, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round,
+        Artifact, CommunicationInfo, DynTypeId, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError,
+        RequiredMessages, Round,
     },
     round_id::{RoundId, TransitionInfo},
 };
@@ -47,6 +48,8 @@ pub struct StaticProtocolMessage<Id, R: StaticRound<Id> + ?Sized> {
 pub trait StaticRound<Id>: 'static + Debug + Send + Sync + DynTypeId {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
+
+    type ProvableError: ProvableError<Id, Round = Self>;
 
     /// Returns the information about the position of this round in the state transition graph.
     ///
@@ -293,5 +296,114 @@ where
             .collect::<Result<BTreeMap<_, _>, _>>()?;
 
         self.round.finalize(rng, payloads, artifacts)
+    }
+}
+
+/// Describes provable errors originating during protocol execution.
+///
+/// Provable here means that we can create an evidence object entirely of messages signed by some party,
+/// which, in combination, prove the party's malicious actions.
+pub trait ProvableError<Id>: Debug + Clone + Serialize + for<'de> Deserialize<'de> {
+    type Round: StaticRound<Id>;
+
+    /// Specifies the messages of the guilty party that need to be stored as the evidence
+    /// to prove its malicious behavior.
+    fn required_previous_messages(&self) -> RequiredMessages;
+
+    /// Returns `Ok(())` if the attached messages indeed prove that a malicious action happened.
+    ///
+    /// The signatures and metadata of the messages will be checked by the calling code,
+    /// the responsibility of this method is just to check the message contents.
+    ///
+    /// `message` contain the message parts that triggered the error
+    /// during [`Round::receive_message`].
+    ///
+    /// `previous_messages` are message parts from the previous rounds, as requested by
+    /// [`required_messages`](Self::required_messages).
+    ///
+    /// Note that if some message part was not requested by above methods, it will be set to an empty one
+    /// in the [`ProtocolMessage`], even if it was present originally.
+    ///
+    /// `combined_echos` are bundled echos from other parties from the previous rounds,
+    /// as requested by [`required_messages`](Self::required_messages).
+    fn verify_evidence(
+        &self,
+        from: &Id,
+        shared_randomness: &[u8],
+        shared_data: &<<Self::Round as StaticRound<Id>>::Protocol as Protocol<Id>>::SharedData,
+        messages: EvidenceMessages<Id, Self::Round>,
+    ) -> Result<(), ProtocolValidationError>;
+}
+
+#[derive(Debug)]
+pub struct EvidenceMessages<Id, R: StaticRound<Id>> {
+    message: ProtocolMessage,
+    previous_messages: BTreeMap<RoundId, ProtocolMessage>,
+    combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
+    format: BoxedFormat,
+    phantom: PhantomData<R>,
+}
+
+impl<Id, R: StaticRound<Id>> EvidenceMessages<Id, R> {
+    pub fn previous_echo_broadcast<PR: StaticRound<Id>>(
+        &self,
+        round_num: u8,
+    ) -> Result<PR::EchoBroadcast, ProtocolValidationError> {
+        Ok(self
+            .previous_messages
+            .get(&RoundId::new(round_num))
+            .unwrap()
+            .echo_broadcast
+            .deserialize::<PR::EchoBroadcast>(&self.format)
+            .unwrap())
+    }
+
+    pub fn combined_echos<PR: StaticRound<Id>>(
+        &self,
+        round_num: u8,
+    ) -> Result<BTreeMap<Id, PR::EchoBroadcast>, ProtocolValidationError> {
+        todo!()
+    }
+
+    pub fn direct_message(&self) -> Result<R::DirectMessage, ProtocolValidationError> {
+        todo!()
+    }
+
+    pub(crate) fn into_round<NR>(self) -> EvidenceMessages<Id, NR>
+    where
+        NR: StaticRound<
+            Id,
+            EchoBroadcast = R::EchoBroadcast,
+            NormalBroadcast = R::NormalBroadcast,
+            DirectMessage = R::DirectMessage,
+        >,
+    {
+        EvidenceMessages::<Id, NR> {
+            message: self.message,
+            previous_messages: self.previous_messages,
+            combined_echos: self.combined_echos,
+            format: self.format,
+            phantom: PhantomData,
+        }
+    }
+}
+
+#[derive_where::derive_where(Clone)]
+#[derive(Debug, Copy, Serialize, Deserialize)]
+pub struct NoProvableErrors<R>(PhantomData<R>);
+
+impl<Id: PartyId, R: StaticRound<Id>> ProvableError<Id> for NoProvableErrors<R> {
+    type Round = R;
+    fn required_previous_messages(&self) -> RequiredMessages {
+        unimplemented!()
+    }
+    fn verify_evidence(
+        &self,
+        from: &Id,
+        shared_randomness: &[u8],
+        shared_data: &<<Self::Round as StaticRound<Id>>::Protocol as Protocol<Id>>::SharedData,
+        messages: EvidenceMessages<Id, Self::Round>,
+    ) -> Result<(), ProtocolValidationError> {
+        unimplemented!()
     }
 }

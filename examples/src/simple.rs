@@ -2,9 +2,10 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
-    BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-    NoMessage, PartyId, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart, ProtocolValidationError,
-    ReceiveError, RequiredMessageParts, RequiredMessages, RoundId, StaticProtocolMessage, StaticRound, TransitionInfo,
+    BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoBroadcast, EntryPoint, EvidenceMessages,
+    FinalizeOutcome, LocalError, NoMessage, PartyId, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart,
+    ProtocolValidationError, ProvableError, ReceiveError, RequiredMessageParts, RequiredMessages, RoundId,
+    StaticProtocolMessage, StaticRound, TransitionInfo,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,53 @@ pub enum SimpleProtocolError {
     Round1InvalidPosition,
     /// Invalid position in Round 2.
     Round2InvalidPosition,
+}
+
+#[derive(displaydoc::Display, Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) struct Round1ProvableError;
+
+impl<Id: PartyId> ProvableError<Id> for Round1ProvableError {
+    type Round = Round1<Id>;
+    fn required_previous_messages(&self) -> RequiredMessages {
+        RequiredMessages::new(RequiredMessageParts::direct_message(), None, None)
+    }
+    fn verify_evidence(
+        &self,
+        _from: &Id,
+        _shared_randomness: &[u8],
+        _shared_data: &<<Self::Round as StaticRound<Id>>::Protocol as Protocol<Id>>::SharedData,
+        messages: EvidenceMessages<Id, Self::Round>,
+    ) -> std::result::Result<(), ProtocolValidationError> {
+        let _message: Round1Message = messages.direct_message()?;
+        // Message contents would be checked here
+        Ok(())
+    }
+}
+
+#[derive(displaydoc::Display, Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) struct Round2ProvableError;
+
+impl<Id: PartyId> ProvableError<Id> for Round2ProvableError {
+    type Round = Round2<Id>;
+    fn required_previous_messages(&self) -> RequiredMessages {
+        RequiredMessages::new(
+            RequiredMessageParts::direct_message(),
+            Some([(1.into(), RequiredMessageParts::direct_message())].into()),
+            Some([1.into()].into()),
+        )
+    }
+    fn verify_evidence(
+        &self,
+        _from: &Id,
+        _shared_randomness: &[u8],
+        _shared_data: &<<Self::Round as StaticRound<Id>>::Protocol as Protocol<Id>>::SharedData,
+        messages: EvidenceMessages<Id, Self::Round>,
+    ) -> std::result::Result<(), ProtocolValidationError> {
+        let _r2_message: Round2Message = messages.direct_message()?;
+        let _r1_echos: BTreeMap<Id, Round1Echo> = messages.combined_echos::<Round1<Id>>(1)?;
+        // Message contents would be checked here
+        Ok(())
+    }
 }
 
 impl<Id> ProtocolError<Id> for SimpleProtocolError {
@@ -73,6 +121,7 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
 
 impl<Id: PartyId> Protocol<Id> for SimpleProtocol {
     type Result = u8;
+    type SharedData = ();
     type ProtocolError = SimpleProtocolError;
     fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
         match round_id {
@@ -164,6 +213,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
 
 impl<Id: PartyId> StaticRound<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
+    type ProvableError = Round1ProvableError;
 
     fn transition_info(&self) -> TransitionInfo {
         TransitionInfo::new_linear(1)
@@ -259,6 +309,7 @@ pub(crate) struct Round2Message {
 
 impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
+    type ProvableError = Round2ProvableError;
 
     fn transition_info(&self) -> TransitionInfo {
         TransitionInfo::new_linear_terminating(2)

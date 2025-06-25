@@ -12,8 +12,8 @@ use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
         BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError,
-        NoMessage, NoProtocolErrors, PartyId, Protocol, ReceiveError, RoundId, StaticProtocolMessage, StaticRound,
-        TransitionInfo,
+        NoMessage, NoProtocolErrors, NoProvableErrors, PartyId, Protocol, ReceiveError, RoundId, StaticProtocolMessage,
+        StaticRound, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -23,6 +23,7 @@ struct PartialEchoProtocol<Id>(PhantomData<Id>);
 
 impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type Result = ();
+    type SharedData = ();
     type ProtocolError = NoProtocolErrors;
 
     fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
@@ -70,6 +71,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
 
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> StaticRound<Id> for Round1<Id> {
     type Protocol = PartialEchoProtocol<Id>;
+    type ProvableError = NoProvableErrors<Self>;
 
     type DirectMessage = NoMessage;
     type NormalBroadcast = NoMessage;

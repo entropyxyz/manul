@@ -56,8 +56,8 @@ use manul::{
     dev::{run_sync, BinaryFormat, TestHasher, TestSignature, TestSigner, TestVerifier},
     protocol::{
         BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError,
-        NoMessage, NoProtocolErrors, Protocol, ReceiveError, RoundId, StaticProtocolMessage, StaticRound,
-        TransitionInfo,
+        NoMessage, NoProtocolErrors, NoProvableErrors, Protocol, ReceiveError, RoundId, StaticProtocolMessage,
+        StaticRound, TransitionInfo,
     },
     session::SessionParameters,
 };
@@ -77,6 +77,7 @@ impl Protocol<DinerId> for DiningCryptographersProtocol {
     // XOR/¬XOR of the two bits of each of the three diners (one is their own cointoss, the other shared with their
     // neighbour).
     type Result = (bool, bool, bool);
+    type SharedData = ();
 
     type ProtocolError = NoProtocolErrors;
 
@@ -109,6 +110,7 @@ pub struct Round2 {
 
 impl StaticRound<DinerId> for Round1 {
     type Protocol = DiningCryptographersProtocol;
+    type ProvableError = NoProvableErrors<Self>;
 
     type DirectMessage = Round1Message;
     type EchoBroadcast = NoMessage;
@@ -201,6 +203,7 @@ impl StaticRound<DinerId> for Round1 {
 
 impl StaticRound<DinerId> for Round2 {
     type Protocol = DiningCryptographersProtocol;
+    type ProvableError = NoProvableErrors<Self>;
 
     type DirectMessage = NoMessage;
     type EchoBroadcast = NoMessage;
