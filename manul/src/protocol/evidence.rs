@@ -11,7 +11,7 @@ use super::{
     errors::LocalError,
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePart},
     round::{PartyId, Protocol, Round},
-    round_id::RoundId,
+    round_id::{GroupNum, RoundId, RoundNum},
     wire_format::BoxedFormat,
 };
 
@@ -93,7 +93,10 @@ where
     R: Round<Id>,
 {
     /// Returns a stored echo broadcast from a previous round.
-    pub fn previous_echo_broadcast<PR: Round<Id>>(&self, round_num: u8) -> Result<PR::EchoBroadcast, EvidenceError> {
+    pub fn previous_echo_broadcast<PR: Round<Id>>(
+        &self,
+        round_num: RoundNum,
+    ) -> Result<PR::EchoBroadcast, EvidenceError> {
         // TODO (#123): we can check here that the RoundInfo corresponding to `round_num` is of a correct type.
         let message_parts = self.previous_messages.get(&RoundId::new(round_num)).ok_or_else(|| {
             EvidenceError::InvalidEvidence(format!(
@@ -119,7 +122,7 @@ where
     /// Returns a stored normal broadcast from a previous round.
     pub fn previous_normal_broadcast<PR: Round<Id>>(
         &self,
-        round_num: u8,
+        round_num: RoundNum,
     ) -> Result<PR::NormalBroadcast, EvidenceError> {
         // TODO (#123): we can check here that the RoundInfo corresponding to `round_num` is of a correct type.
         let message_parts = self.previous_messages.get(&RoundId::new(round_num)).ok_or_else(|| {
@@ -144,7 +147,10 @@ where
     }
 
     /// Returns a stored direct message from a previous round.
-    pub fn previous_direct_message<PR: Round<Id>>(&self, round_num: u8) -> Result<PR::DirectMessage, EvidenceError> {
+    pub fn previous_direct_message<PR: Round<Id>>(
+        &self,
+        round_num: RoundNum,
+    ) -> Result<PR::DirectMessage, EvidenceError> {
         // TODO (#123): we can check here that the RoundInfo corresponding to `round_num` is of a correct type.
         let message_parts = self.previous_messages.get(&RoundId::new(round_num)).ok_or_else(|| {
             EvidenceError::InvalidEvidence(format!(
@@ -170,7 +176,7 @@ where
     /// Returns a map with echoed broadcasts from a previous round.
     pub fn combined_echos<PR: Round<Id>>(
         &self,
-        round_num: u8,
+        round_num: RoundNum,
     ) -> Result<BTreeMap<Id, PR::EchoBroadcast>, EvidenceError> {
         let combined_echos = self
             .combined_echos
@@ -351,7 +357,7 @@ impl RequiredMessages {
         }
     }
 
-    pub(crate) fn group_under(self, group_num: u8) -> Self {
+    pub(crate) fn group_under(self, group_num: GroupNum) -> Self {
         let previous_rounds = self.previous_rounds.map(|previous_rounds| {
             previous_rounds
                 .into_iter()

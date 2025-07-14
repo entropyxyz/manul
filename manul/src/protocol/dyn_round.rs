@@ -15,7 +15,7 @@ use super::{
     },
     rng::BoxedRng,
     round::{CommunicationInfo, FinalizeOutcome, NoMessage, NoType, PartyId, Protocol, ProtocolMessage, Round},
-    round_id::{RoundId, TransitionInfo},
+    round_id::{GroupNum, RoundId, TransitionInfo},
     wire_format::BoxedFormat,
 };
 use crate::{session::EchoRoundError, utils::DynTypeId};
@@ -355,7 +355,7 @@ impl<Id> BoxedReceiveError<Id> {
         }
     }
 
-    pub(crate) fn group_under(self, group_num: u8) -> Self {
+    pub(crate) fn group_under(self, group_num: GroupNum) -> Self {
         if let Self::Protocol(error) = self {
             Self::Protocol(error.group_under(group_num))
         } else {

@@ -8,7 +8,7 @@ use super::{
     errors::LocalError,
     evidence::{ProtocolError, RequiredMessages},
     round::Round,
-    round_id::RoundId,
+    round_id::{GroupNum, RoundId},
     wire_format::BoxedFormat,
 };
 use crate::session::DeserializationError;
@@ -51,9 +51,9 @@ impl<Id> BoxedProtocolError<Id> {
         self.error
     }
 
-    pub fn group_under(self, round_num: u8) -> Self {
+    pub fn group_under(self, group_num: GroupNum) -> Self {
         Self {
-            required_messages: self.required_messages.group_under(round_num),
+            required_messages: self.required_messages.group_under(group_num),
             error: self.error,
         }
     }

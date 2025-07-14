@@ -31,7 +31,7 @@ pub use round::{
     CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoArtifact, NoMessage, PartyId, Protocol,
     ProtocolMessage, Round,
 };
-pub use round_id::{RoundId, TransitionInfo};
+pub use round_id::{RoundId, RoundNum, TransitionInfo};
 pub use round_info::RoundInfo;
 
 pub(crate) use dyn_evidence::{BoxedProtocolError, SerializedProtocolError};
