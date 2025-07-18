@@ -43,5 +43,6 @@ pub(crate) use message::{
 };
 pub(crate) use rng::BoxedRng;
 pub(crate) use round::NoType;
+pub(crate) use round_id::GroupNum;
 pub(crate) use round_info::DynRoundInfo;
 pub(crate) use wire_format::BoxedFormat;

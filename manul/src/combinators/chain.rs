@@ -58,7 +58,7 @@ use rand_core::CryptoRngCore;
 use crate::protocol::{
     Artifact, BoxedFormat, BoxedReceiveError, BoxedRng, BoxedRound, CommunicationInfo, DirectMessage,
     DynProtocolMessage, DynRound, DynRoundInfo, EchoBroadcast, EntryPoint, EvidenceError, EvidenceProtocolMessage,
-    FinalizeOutcome, LocalError, NormalBroadcast, PartyId, Payload, Protocol, RoundId, RoundInfo,
+    FinalizeOutcome, GroupNum, LocalError, NormalBroadcast, PartyId, Payload, Protocol, RoundId, RoundInfo,
     SerializedProtocolError, TransitionInfo,
 };
 
@@ -84,6 +84,23 @@ where
     pub protocol1: <C::Protocol1 as Protocol<Id>>::SharedData,
     /// Associated data for the errors in the second protocol.
     pub protocol2: <C::Protocol2 as Protocol<Id>>::SharedData,
+}
+
+fn ungroup(expected_group: GroupNum, round_id: &RoundId) -> Result<RoundId, LocalError> {
+    let (group, round_id) = round_id.split_group()?;
+    if group != expected_group {
+        return Err(LocalError::new(format!(
+            "Expected round ID from group {expected_group}, got round {round_id} from a different group: {group}"
+        )));
+    }
+    Ok(round_id)
+}
+
+fn ungroup_map<T>(expected_group: GroupNum, grouped: BTreeMap<RoundId, T>) -> Result<BTreeMap<RoundId, T>, LocalError> {
+    grouped
+        .into_iter()
+        .map(|(round_id, value)| ungroup(expected_group, &round_id).map(|round_id| (round_id, value)))
+        .collect()
 }
 
 #[derive_where::derive_where(Debug)]
@@ -131,12 +148,9 @@ where
         previous_messages: BTreeMap<RoundId, EvidenceProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), EvidenceError> {
-        let (group, round_id) = round_id.split_group()?;
-        if group != 1 {
-            return Err(EvidenceError::Local(LocalError::new(format!(
-                "Expected round ID from group 1, got {round_id}"
-            ))));
-        }
+        let round_id = ungroup(1, round_id)?;
+        let previous_messages = ungroup_map(1, previous_messages)?;
+        let combined_echos = ungroup_map(1, combined_echos)?;
         self.0.as_ref().verify_evidence(
             &round_id,
             format,
@@ -196,12 +210,9 @@ where
         previous_messages: BTreeMap<RoundId, EvidenceProtocolMessage>,
         combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
     ) -> Result<(), EvidenceError> {
-        let (group, round_id) = round_id.split_group()?;
-        if group != 2 {
-            return Err(EvidenceError::Local(LocalError::new(format!(
-                "Expected round ID from group 1, got {round_id}"
-            ))));
-        }
+        let round_id = ungroup(2, round_id)?;
+        let previous_messages = ungroup_map(2, previous_messages)?;
+        let combined_echos = ungroup_map(2, combined_echos)?;
         self.0.as_ref().verify_evidence(
             &round_id,
             format,
