@@ -49,6 +49,8 @@ where
     ) -> Result<Self, LocalError> {
         let required_messages = error.required_messages();
 
+        let round_num = echo_broadcast.metadata().round_id().round_num();
+
         let echo_broadcast = if required_messages.this_round.echo_broadcast {
             Some(echo_broadcast)
         } else {
@@ -97,7 +99,7 @@ where
             }
         }
 
-        let description = format!("Protocol error: {}", error.as_ref().description());
+        let description = format!("Protocol error (Round {round_num}): {}", error.as_ref().description());
 
         Ok(Self {
             guilty_party: verifier.clone(),

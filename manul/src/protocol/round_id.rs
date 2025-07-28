@@ -43,6 +43,10 @@ impl RoundId {
         }
     }
 
+    pub(crate) fn round_num(&self) -> RoundNum {
+        self.round
+    }
+
     /// Prefixes this round ID (possibly already nested) with a group number.
     ///
     /// This is supposed to be used internally, e.g. in the chain combinator,
