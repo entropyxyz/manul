@@ -285,7 +285,7 @@ impl Round<DinerId> for Round2 {
         }
         // Extract the payloads from the other participants so we can produce a [`Protocol::Result`]. In this case it is
         // a tuple of 3 booleans.
-        let bits = payloads.values().cloned().collect::<Vec<_>>();
+        let bits = payloads.into_values().collect::<Vec<_>>();
         Ok(FinalizeOutcome::Result((bits[0], bits[1], own_reveal)))
     }
 }
