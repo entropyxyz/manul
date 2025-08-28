@@ -236,7 +236,7 @@ impl<Id: PartyId> InvalidEchoEvidence<Id> {
         let verified = self
             .normal_broadcast
             .clone()
-            .verify::<SP>(verifier)
+            .into_verified::<SP>(verifier)
             .map_err(MessageVerificationError::into_evidence_error)?;
         let deserialized = verified
             .payload()
@@ -271,7 +271,7 @@ impl InvalidDirectMessageEvidence {
         let verified_direct_message = self
             .0
             .clone()
-            .verify::<SP>(verifier)
+            .into_verified::<SP>(verifier)
             .map_err(MessageVerificationError::into_evidence_error)?;
         let payload = verified_direct_message.payload();
 
@@ -298,7 +298,7 @@ impl InvalidEchoBroadcastEvidence {
         let verified_echo_broadcast = self
             .0
             .clone()
-            .verify::<SP>(verifier)
+            .into_verified::<SP>(verifier)
             .map_err(MessageVerificationError::into_evidence_error)?;
         let payload = verified_echo_broadcast.payload();
 
@@ -325,7 +325,7 @@ impl InvalidNormalBroadcastEvidence {
         let verified_normal_broadcast = self
             .0
             .clone()
-            .verify::<SP>(verifier)
+            .into_verified::<SP>(verifier)
             .map_err(MessageVerificationError::into_evidence_error)?;
         let payload = verified_normal_broadcast.payload();
 
@@ -368,7 +368,7 @@ where
     for (round_id, message_part) in message_parts.iter() {
         let verified = message_part
             .clone()
-            .verify::<SP>(verifier)
+            .into_verified::<SP>(verifier)
             .map_err(MessageVerificationError::into_evidence_error)?;
         let metadata = verified.metadata();
         if metadata.session_id() != expected_session_id || metadata.round_id() != round_id {
@@ -401,7 +401,7 @@ where
         Some(
             message_part
                 .clone()
-                .verify::<SP>(verifier)
+                .into_verified::<SP>(verifier)
                 .map_err(MessageVerificationError::into_evidence_error)?
                 .into_payload(),
         )
@@ -467,7 +467,7 @@ where
 
             let verified_echo_hashes = echo_hashes
                 .clone()
-                .verify::<SP>(verifier)
+                .into_verified::<SP>(verifier)
                 .map_err(MessageVerificationError::into_evidence_error)?;
             let echo_round_payload = verified_echo_hashes
                 .payload()
@@ -490,7 +490,7 @@ where
 
                 let verified_echo_hash = echo_hash
                     .clone()
-                    .verify::<SP>(other_verifier)
+                    .into_verified::<SP>(other_verifier)
                     .map_err(MessageVerificationError::into_evidence_error)?;
 
                 let echo_broadcast = signed_echo_broadcasts.get(other_verifier).ok_or_else(|| {
@@ -510,7 +510,7 @@ where
 
                 let verified_echo_broadcast = echo_broadcast
                     .clone()
-                    .verify::<SP>(other_verifier)
+                    .into_verified::<SP>(other_verifier)
                     .map_err(MessageVerificationError::into_evidence_error)?;
 
                 echo_messages.insert(other_verifier.clone(), verified_echo_broadcast.into_payload());

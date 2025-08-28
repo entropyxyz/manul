@@ -362,7 +362,7 @@ where
 
         // Verify the signature now
 
-        let verified_message = match checked_message.verify::<SP>(from) {
+        let verified_message = match checked_message.into_verified::<SP>(from) {
             Ok(verified_message) => verified_message,
             Err(MessageVerificationError::InvalidSignature) => {
                 let err = "The signature could not be deserialized.";

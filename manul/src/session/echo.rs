@@ -64,7 +64,7 @@ impl<Id: PartyId> InvalidEchoError<Id> {
             ))
         })?;
 
-        let verified_echo = match invalid_echo.clone().verify::<SP>(&self.invalid_echo_sender) {
+        let verified_echo = match invalid_echo.clone().into_verified::<SP>(&self.invalid_echo_sender) {
             Ok(echo) => echo,
             Err(MessageVerificationError::Local(error)) => return Err(EvidenceError::Local(error)),
             // The message was indeed incorrectly signed - fault proven
@@ -104,12 +104,12 @@ impl<Id> MismatchedBroadcastsError<Id> {
         let we_received = self
             .we_received
             .clone()
-            .verify::<SP>(&self.guilty_party)
+            .into_verified::<SP>(&self.guilty_party)
             .map_err(MessageVerificationError::into_evidence_error)?;
         let echoed_to_us = self
             .echoed_to_us
             .clone()
-            .verify::<SP>(&self.guilty_party)
+            .into_verified::<SP>(&self.guilty_party)
             .map_err(MessageVerificationError::into_evidence_error)?;
 
         if we_received.metadata() == echoed_to_us.metadata() && !echoed_to_us.is_hash_of::<SP, _>(&self.we_received) {
@@ -322,7 +322,7 @@ where
                 .get(sender)
                 .expect("the key is present by construction");
 
-            let verified_echo = match echo.clone().verify::<SP>(sender) {
+            let verified_echo = match echo.clone().into_verified::<SP>(sender) {
                 Ok(echo) => echo,
                 Err(MessageVerificationError::Local(error)) => return Err(error.into()),
                 // This means `from` sent us an incorrectly signed message.

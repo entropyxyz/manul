@@ -175,7 +175,10 @@ where
         &self.message_with_metadata.message
     }
 
-    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessagePart<M>, MessageVerificationError>
+    pub(crate) fn into_verified<SP>(
+        self,
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessagePart<M>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
@@ -293,13 +296,16 @@ impl CheckedMessage {
         &self.metadata
     }
 
-    pub fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<SP::Verifier>, MessageVerificationError>
+    pub fn into_verified<SP>(
+        self,
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessage<SP::Verifier>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
-        let direct_message = self.direct_message.verify::<SP>(verifier)?;
-        let echo_broadcast = self.echo_broadcast.verify::<SP>(verifier)?;
-        let normal_broadcast = self.normal_broadcast.verify::<SP>(verifier)?;
+        let direct_message = self.direct_message.into_verified::<SP>(verifier)?;
+        let echo_broadcast = self.echo_broadcast.into_verified::<SP>(verifier)?;
+        let normal_broadcast = self.normal_broadcast.into_verified::<SP>(verifier)?;
 
         Ok(VerifiedMessage {
             from: verifier.clone(),
@@ -375,7 +381,10 @@ impl SignedMessageHash {
         &self.metadata
     }
 
-    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageHash, MessageVerificationError>
+    pub(crate) fn into_verified<SP>(
+        self,
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessageHash, MessageVerificationError>
     where
         SP: SessionParameters,
     {
