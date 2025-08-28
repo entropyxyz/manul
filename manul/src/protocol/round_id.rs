@@ -90,8 +90,6 @@ impl RoundId {
     ///
     /// Panics if `self` is already an echo round identifier.
     pub(crate) fn echo(&self) -> Result<Self, LocalError> {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
         if self.is_echo {
             Err(LocalError::new("This is already an echo round ID"))
         } else {
@@ -107,8 +105,6 @@ impl RoundId {
     ///
     /// Panics if `self` is already a non-echo round identifier.
     pub(crate) fn non_echo(&self) -> Result<Self, LocalError> {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
         if !self.is_echo {
             Err(LocalError::new("This is already an non-echo round ID"))
         } else {
