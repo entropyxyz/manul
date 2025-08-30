@@ -1,6 +1,10 @@
-use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    format,
+};
 
-use crate::protocol::EvidenceError;
+use crate::protocol::{EvidenceError, LocalError};
 
 /// Implemented by collections allowing removal of a specific item.
 pub trait Without<T> {
@@ -79,5 +83,31 @@ pub fn verify_that(condition: bool) -> Result<(), EvidenceError> {
         Err(EvidenceError::InvalidEvidence(
             "the reported error cannot be reproduced".into(),
         ))
+    }
+}
+
+/// A helper trait for map lookup in the context of protocol rounds.
+pub trait GetOrLocalError<K, V> {
+    /// Try to get the value by `key`; if not found, treat as a [`LocalError`].
+    fn get_or_local_error(&self, container: &str, key: &K) -> Result<&V, LocalError>;
+}
+
+impl<K: Ord + Debug, V> GetOrLocalError<K, V> for BTreeMap<K, V> {
+    fn get_or_local_error(&self, container: &str, key: &K) -> Result<&V, LocalError> {
+        self.get(key)
+            .ok_or_else(|| LocalError::new(format!("Key {key:?} not found in {container}")))
+    }
+}
+
+/// A helper trait for map lookup in the context of evidence verification.
+pub trait GetOrInvalidEvidence<K, V> {
+    /// Try to get the value by `key`; if not found, treat as an invalid evidence.
+    fn get_or_invalid_evidence(&self, container: &str, key: &K) -> Result<&V, EvidenceError>;
+}
+
+impl<K: Ord + Debug, V> GetOrInvalidEvidence<K, V> for BTreeMap<K, V> {
+    fn get_or_invalid_evidence(&self, container: &str, key: &K) -> Result<&V, EvidenceError> {
+        self.get(key)
+            .ok_or_else(|| EvidenceError::InvalidEvidence(format!("Key {key:?} not found in {container}")))
     }
 }
