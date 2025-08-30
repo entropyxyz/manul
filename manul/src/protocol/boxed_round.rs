@@ -31,6 +31,10 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
         self.0
     }
 
+    pub(crate) fn boxed_type_id(&self) -> core::any::TypeId {
+        self.0.get_type_id()
+    }
+
     fn boxed_type_is<T: 'static>(&self) -> bool {
         core::any::TypeId::of::<T>() == self.0.get_type_id()
     }
@@ -46,11 +50,27 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
         }
     }
 
+    pub fn try_downcast_static<T: StaticRound<Id>>(self) -> Result<T, Self> {
+        if self.boxed_type_is::<StaticRoundAdapter<T>>() {
+            // Safety: This is safe since we just checked that we are casting to the correct type.
+            let boxed_downcast =
+                unsafe { Box::<StaticRoundAdapter<T>>::from_raw(Box::into_raw(self.0) as *mut StaticRoundAdapter<T>) };
+            Ok((*boxed_downcast).into_inner())
+        } else {
+            Err(self)
+        }
+    }
+
     /// Attempts to extract an object of a concrete type.
     ///
     /// Fails if the wrapped type is not `T`.
     pub fn downcast<T: Round<Id>>(self) -> Result<T, LocalError> {
         self.try_downcast()
+            .map_err(|_| LocalError::new(format!("Failed to downcast into type {}", core::any::type_name::<T>())))
+    }
+
+    pub fn downcast_static<T: StaticRound<Id>>(self) -> Result<T, LocalError> {
+        self.try_downcast_static()
             .map_err(|_| LocalError::new(format!("Failed to downcast into type {}", core::any::type_name::<T>())))
     }
 

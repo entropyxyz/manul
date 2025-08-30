@@ -167,6 +167,10 @@ impl<R> StaticRoundAdapter<R> {
     pub fn as_inner(&self) -> &R {
         &self.round
     }
+
+    pub fn into_inner(self) -> R {
+        self.round
+    }
 }
 
 impl<R> Debug for StaticRoundAdapter<R> {
