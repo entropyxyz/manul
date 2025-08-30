@@ -8,10 +8,12 @@ use signature::{DigestVerifier, RandomizedDigestSigner};
 
 use super::{
     session::{SessionId, SessionParameters},
-    wire_format::WireFormat,
+    wire_format::{deserialize, WireFormat},
     LocalError,
 };
-use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePartHashable, RoundId};
+use crate::protocol::{
+    DirectMessage, EchoBroadcast, EvidenceError, NormalBroadcast, ProtocolMessagePartHashable, RoundId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
@@ -28,7 +30,7 @@ impl SerializedSignature {
     where
         SP: SessionParameters,
     {
-        SP::WireFormat::deserialize::<SP::Signature>(&self.0).map_err(|_| MessageVerificationError::InvalidSignature)
+        deserialize::<SP::WireFormat, SP::Signature>(&self.0).map_err(|_| MessageVerificationError::InvalidSignature)
     }
 }
 
@@ -39,6 +41,22 @@ pub(crate) enum MessageVerificationError {
     InvalidSignature,
     /// The signature does not match the signed payload.
     SignatureMismatch,
+}
+
+impl MessageVerificationError {
+    // This is not a `From` implementation since in other contexts (e.g. echo round) we need a different behavior,
+    // and `From` impl could be accidentally used there leading to errors.
+    pub fn into_evidence_error(self) -> EvidenceError {
+        match self {
+            MessageVerificationError::Local(error) => EvidenceError::Local(error),
+            MessageVerificationError::InvalidSignature => {
+                EvidenceError::InvalidEvidence("Invalid message signature".into())
+            }
+            MessageVerificationError::SignatureMismatch => {
+                EvidenceError::InvalidEvidence("The signature does not match the payload".into())
+            }
+        }
+    }
 }
 
 impl From<LocalError> for MessageVerificationError {
@@ -130,7 +148,7 @@ where
         let digest = message_with_metadata.digest::<SP>()?;
         let signature = signer
             .try_sign_digest_with_rng(rng, digest)
-            .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
+            .map_err(|err| LocalError::new(format!("Failed to sign: {err:?}")))?;
         Ok(Self {
             signature: SerializedSignature::new::<SP>(signature)?,
             message_with_metadata,

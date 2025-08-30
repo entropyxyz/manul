@@ -1,11 +1,20 @@
+//! The simple.rs protocol is a basic example demonstrating the manul framework. It's a two-round protocol:
+//!
+//!  1. Commit: Each participant generates a random 32-byte value and broadcasts its SHA256 hash.
+//!  2. Reveal: Each participant broadcasts their original random value.
+//!
+//! Finally, every participant verifies that the revealed values match the commitments from the first round.
+//! If all checks pass, the protocol succeeds and outputs the collected random values.
+//!
+//! This example showcases a commit-reveal scheme, a fundamental cryptographic pattern.
+
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
-    BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoBroadcast, EntryPoint, EvidenceMessages,
-    FinalizeOutcome, LocalError, NoMessage, PartyId, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart,
-    ProtocolValidationError, ProvableError, ReceiveError, RequiredMessageParts, RequiredMessages, RoundId,
-    StaticProtocolMessage, StaticRound, TransitionInfo,
+    BoxedRound, CommunicationInfo, EntryPoint, EvidenceError, EvidenceMessages, FinalizeOutcome, LocalError, NoMessage,
+    PartyId, Protocol, ProtocolError, ProtocolMessage, ReceiveError, RequiredMessageParts, RequiredMessages, Round,
+    RoundId, RoundInfo, TransitionInfo,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -14,42 +23,43 @@ use tracing::debug;
 #[derive(Debug)]
 pub struct SimpleProtocol;
 
-#[derive(displaydoc::Display, Debug, Clone, Serialize, Deserialize)]
-/// An example error.
-pub enum SimpleProtocolError {
-    /// Invalid position in Round 1.
-    Round1InvalidPosition,
-    /// Invalid position in Round 2.
-    Round2InvalidPosition,
-}
-
 #[derive(displaydoc::Display, Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct Round1ProvableError;
+pub(crate) struct Round1ProtocolError;
 
-impl<Id: PartyId> ProvableError<Id> for Round1ProvableError {
+impl<Id: PartyId> ProtocolError<Id> for Round1ProtocolError {
     type Round = Round1<Id>;
-    fn required_previous_messages(&self) -> RequiredMessages {
+    fn required_messages(&self, _round_id: &RoundId) -> RequiredMessages {
         RequiredMessages::new(RequiredMessageParts::direct_message(), None, None)
     }
     fn verify_evidence(
         &self,
+        _round_id: &RoundId,
         _from: &Id,
         _shared_randomness: &[u8],
-        _shared_data: &<<Self::Round as StaticRound<Id>>::Protocol as Protocol<Id>>::SharedData,
+        _shared_data: &<<Self::Round as Round<Id>>::Protocol as Protocol<Id>>::SharedData,
         messages: EvidenceMessages<Id, Self::Round>,
-    ) -> std::result::Result<(), ProtocolValidationError> {
+    ) -> Result<(), EvidenceError> {
         let _message: Round1Message = messages.direct_message()?;
-        // Message contents would be checked here
+        // This method should check that the message content is indeed erroneous in some way,
+        // according to the protocol rules. To do this, the method has access to the public shared
+        // data and the list of required messages sent by `_from` as returned by `required_messages()`.
+        //
+        // If the message does contain errors and constitutes valid evidence of some sort of misbehaviour
+        // (malicious or not), return `()`, otherwise the evidence is invalid, and the return value is a
+        //  variant of `EvidenceError`.
         Ok(())
+    }
+    fn description(&self) -> String {
+        "Invalid position".into()
     }
 }
 
 #[derive(displaydoc::Display, Debug, Clone, Copy, Serialize, Deserialize)]
-pub(crate) struct Round2ProvableError;
+pub(crate) struct Round2ProtocolError;
 
-impl<Id: PartyId> ProvableError<Id> for Round2ProvableError {
+impl<Id: PartyId> ProtocolError<Id> for Round2ProtocolError {
     type Round = Round2<Id>;
-    fn required_previous_messages(&self) -> RequiredMessages {
+    fn required_messages(&self, _round_id: &RoundId) -> RequiredMessages {
         RequiredMessages::new(
             RequiredMessageParts::direct_message(),
             Some([(1.into(), RequiredMessageParts::direct_message())].into()),
@@ -58,75 +68,29 @@ impl<Id: PartyId> ProvableError<Id> for Round2ProvableError {
     }
     fn verify_evidence(
         &self,
+        _round_id: &RoundId,
         _from: &Id,
         _shared_randomness: &[u8],
-        _shared_data: &<<Self::Round as StaticRound<Id>>::Protocol as Protocol<Id>>::SharedData,
+        _shared_data: &<<Self::Round as Round<Id>>::Protocol as Protocol<Id>>::SharedData,
         messages: EvidenceMessages<Id, Self::Round>,
-    ) -> std::result::Result<(), ProtocolValidationError> {
+    ) -> Result<(), EvidenceError> {
         let _r2_message: Round2Message = messages.direct_message()?;
         let _r1_echos: BTreeMap<Id, Round1Echo> = messages.combined_echos::<Round1<Id>>(1)?;
-        // Message contents would be checked here
+        // Test the message contents here. See the comment in `verify_evidence()` above.
         Ok(())
     }
-}
-
-impl<Id> ProtocolError<Id> for SimpleProtocolError {
-    type AssociatedData = ();
-
-    fn required_messages(&self) -> RequiredMessages {
-        match self {
-            Self::Round1InvalidPosition => RequiredMessages::new(RequiredMessageParts::direct_message(), None, None),
-            Self::Round2InvalidPosition => RequiredMessages::new(
-                RequiredMessageParts::direct_message(),
-                Some([(1.into(), RequiredMessageParts::direct_message())].into()),
-                Some([1.into()].into()),
-            ),
-        }
-    }
-
-    fn verify_messages_constitute_error(
-        &self,
-        format: &BoxedFormat,
-        _guilty_party: &Id,
-        _shared_randomness: &[u8],
-        _associated_data: &Self::AssociatedData,
-        message: ProtocolMessage,
-        _previous_messages: BTreeMap<RoundId, ProtocolMessage>,
-        combined_echos: BTreeMap<RoundId, BTreeMap<Id, EchoBroadcast>>,
-    ) -> Result<(), ProtocolValidationError> {
-        match self {
-            SimpleProtocolError::Round1InvalidPosition => {
-                let _message = message.direct_message.deserialize::<Round1Message>(format)?;
-                // Message contents would be checked here
-                Ok(())
-            }
-            SimpleProtocolError::Round2InvalidPosition => {
-                let _r1_message = message.direct_message.deserialize::<Round1Message>(format)?;
-                let r1_echos_serialized = combined_echos
-                    .get(&1.into())
-                    .ok_or_else(|| LocalError::new("Could not find combined echos for Round 1"))?;
-
-                // Deserialize the echos
-                let _r1_echos = r1_echos_serialized
-                    .iter()
-                    .map(|(_id, echo)| echo.deserialize::<Round1Echo>(format))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                // Message contents would be checked here
-                Ok(())
-            }
-        }
+    fn description(&self) -> String {
+        "Invalid position".into()
     }
 }
 
 impl<Id: PartyId> Protocol<Id> for SimpleProtocol {
     type Result = u8;
     type SharedData = ();
-    type ProtocolError = SimpleProtocolError;
-    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
+    fn round_info(round_id: &RoundId) -> Option<RoundInfo<Id, Self>> {
         match round_id {
-            _ if round_id == 1 => Some(BoxedRoundInfo::new::<Round1<Id>>()),
-            _ if round_id == 2 => Some(BoxedRoundInfo::new::<Round2<Id>>()),
+            _ if round_id == 1 => Some(RoundInfo::new::<Round1<Id>>()),
+            _ if round_id == 2 => Some(RoundInfo::new::<Round2<Id>>()),
             _ => None,
         }
     }
@@ -185,7 +149,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
 
     fn make_round(
         self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
         id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
@@ -201,7 +165,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
         let mut ids = self.all_ids;
         ids.remove(id);
 
-        Ok(BoxedRound::new_static(Round1 {
+        Ok(BoxedRound::new(Round1 {
             context: Context {
                 id: id.clone(),
                 other_ids: ids,
@@ -211,9 +175,9 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
     }
 }
 
-impl<Id: PartyId> StaticRound<Id> for Round1<Id> {
+impl<Id: PartyId> Round<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
-    type ProvableError = Round1ProvableError;
+    type ProtocolError = Round1ProtocolError;
 
     fn transition_info(&self) -> TransitionInfo {
         TransitionInfo::new_linear(1)
@@ -230,51 +194,51 @@ impl<Id: PartyId> StaticRound<Id> for Round1<Id> {
     type Payload = Round1Payload;
     type Artifact = ();
 
-    fn make_normal_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::NormalBroadcast>, LocalError> {
+    fn make_normal_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<Self::NormalBroadcast, LocalError> {
         debug!("{:?}: making normal broadcast", self.context.id);
-        Ok(Some(Round1Broadcast {
+        Ok(Round1Broadcast {
             x: 0,
             my_position: self.context.ids_to_positions[&self.context.id],
-        }))
+        })
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::EchoBroadcast>, LocalError> {
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<Self::EchoBroadcast, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
-        Ok(Some(Round1Echo {
+        Ok(Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
-        }))
+        })
     }
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         destination: &Id,
-    ) -> Result<Option<(Self::DirectMessage, Self::Artifact)>, LocalError> {
+    ) -> Result<(Self::DirectMessage, Self::Artifact), LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        Ok(Some((message, ())))
+        Ok((message, ()))
     }
 
     fn receive_message(
         &self,
         from: &Id,
-        message: StaticProtocolMessage<Id, Self>,
-    ) -> Result<Self::Payload, ReceiveError<Id, Self::Protocol>> {
+        message: ProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
         let message = message.direct_message;
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::protocol(SimpleProtocolError::Round1InvalidPosition));
+            return Err(ReceiveError::Protocol(Round1ProtocolError));
         }
         Ok(Round1Payload { x: message.my_position })
     }
 
     fn finalize(
         self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Self::Payload>,
         _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
@@ -287,7 +251,7 @@ impl<Id: PartyId> StaticRound<Id> for Round1<Id> {
         let sum =
             self.context.ids_to_positions[&self.context.id] + payloads.values().map(|payload| payload.x).sum::<u8>();
 
-        let round2 = BoxedRound::new_static(Round2 {
+        let round2 = BoxedRound::new(Round2 {
             round1_sum: sum,
             context: self.context,
         });
@@ -307,9 +271,9 @@ pub(crate) struct Round2Message {
     pub(crate) your_position: u8,
 }
 
-impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
+impl<Id: PartyId> Round<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
-    type ProvableError = Round2ProvableError;
+    type ProtocolError = Round2ProtocolError;
 
     fn transition_info(&self) -> TransitionInfo {
         TransitionInfo::new_linear_terminating(2)
@@ -328,23 +292,23 @@ impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         destination: &Id,
-    ) -> Result<Option<(Self::DirectMessage, Self::Artifact)>, LocalError> {
+    ) -> Result<(Self::DirectMessage, Self::Artifact), LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round2Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        Ok(Some((message, ())))
+        Ok((message, ()))
     }
 
     fn receive_message(
         &self,
         from: &Id,
-        message: StaticProtocolMessage<Id, Self>,
-    ) -> Result<Self::Payload, ReceiveError<Id, Self::Protocol>> {
+        message: ProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
         let message = message.direct_message;
@@ -352,7 +316,7 @@ impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
-            return Err(ReceiveError::protocol(SimpleProtocolError::Round2InvalidPosition));
+            return Err(ReceiveError::Protocol(Round2ProtocolError));
         }
 
         Ok(Round1Payload { x: message.my_position })
@@ -360,7 +324,7 @@ impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
 
     fn finalize(
         self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         payloads: BTreeMap<Id, Self::Payload>,
         _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {

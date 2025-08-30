@@ -18,13 +18,13 @@ mod wire_format;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
-pub use crate::protocol::{LocalError, RemoteError};
-pub use evidence::{Evidence, EvidenceError};
+pub use crate::protocol::{EvidenceError, LocalError, RemoteError};
+pub use evidence::Evidence;
 pub use message::{Message, VerifiedMessage};
 pub use session::{
     CanFinalize, PreprocessOutcome, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
 };
 pub use transcript::{SessionOutcome, SessionReport};
-pub use wire_format::WireFormat;
+pub use wire_format::{DeserializationError, WireFormat};
 
 pub(crate) use echo::EchoRoundError;

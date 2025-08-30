@@ -17,7 +17,7 @@ impl Display for RoundId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "Round ")?;
         for (i, round_num) in self.round_nums.iter().enumerate().rev() {
-            write!(f, "{}", round_num)?;
+            write!(f, "{round_num}")?;
             if i != 0 {
                 write!(f, "-")?;
             }

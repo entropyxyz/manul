@@ -3,7 +3,7 @@ use alloc::{
     vec,
     vec::Vec,
 };
-use core::{fmt::Debug, marker::PhantomData};
+use core::fmt::Debug;
 
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -11,24 +11,23 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError,
-        NoMessage, NoProtocolErrors, NoProvableErrors, PartyId, Protocol, ReceiveError, RoundId, StaticProtocolMessage,
-        StaticRound, TransitionInfo,
+        BoxedRound, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError, NoArtifact,
+        NoMessage, NoProtocolErrors, PartyId, Protocol, ProtocolMessage, ReceiveError, Round, RoundId, RoundInfo,
+        TransitionInfo,
     },
     signature::Keypair,
 };
 
 #[derive(Debug)]
-struct PartialEchoProtocol<Id>(PhantomData<Id>);
+struct PartialEchoProtocol;
 
-impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
+impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol {
     type Result = ();
     type SharedData = ();
-    type ProtocolError = NoProtocolErrors;
 
-    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
+    fn round_info(round_id: &RoundId) -> Option<RoundInfo<Id, Self>> {
         match round_id {
-            round_id if round_id == &RoundId::new(1) => Some(BoxedRoundInfo::new::<Round1<Id>>()),
+            round_id if round_id == &RoundId::new(1) => Some(RoundInfo::new::<Round1<Id>>()),
             _ => None,
         }
     }
@@ -53,7 +52,7 @@ struct Round1Echo<Id> {
 }
 
 impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inputs<Id> {
-    type Protocol = PartialEchoProtocol<Id>;
+    type Protocol = PartialEchoProtocol;
 
     fn entry_round_id() -> RoundId {
         1.into()
@@ -61,24 +60,24 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
 
     fn make_round(
         self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_static(Round1 { inputs: self }))
+        Ok(BoxedRound::new(Round1 { inputs: self }))
     }
 }
 
-impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> StaticRound<Id> for Round1<Id> {
-    type Protocol = PartialEchoProtocol<Id>;
-    type ProvableError = NoProvableErrors<Self>;
+impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<Id> {
+    type Protocol = PartialEchoProtocol;
+    type ProtocolError = NoProtocolErrors<Self>;
 
     type DirectMessage = NoMessage;
     type NormalBroadcast = NoMessage;
     type EchoBroadcast = Round1Echo<Id>;
 
     type Payload = ();
-    type Artifact = ();
+    type Artifact = NoArtifact;
 
     fn transition_info(&self) -> TransitionInfo {
         TransitionInfo::new_linear_terminating(1)
@@ -92,21 +91,24 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> StaticRound<Id> for Ro
         }
     }
 
-    fn make_echo_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::EchoBroadcast>, LocalError> {
-        Ok(if self.inputs.message_destinations.is_empty() {
-            None
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<Self::EchoBroadcast, LocalError> {
+        if self.inputs.message_destinations.is_empty() {
+            // TODO (#4): this branch is unreachable in the absense of bugs in the code
+            // (the method will not be called in the first place if the node does not send messages).
+            // Can it be eliminated using the type system?
+            unreachable!("This node does not send messages in this round")
         } else {
-            Some(Round1Echo {
+            Ok(Round1Echo {
                 sender: self.inputs.id.clone(),
             })
-        })
+        }
     }
 
     fn receive_message(
         &self,
         from: &Id,
-        message: StaticProtocolMessage<Id, Self>,
-    ) -> Result<Self::Payload, ReceiveError<Id, Self::Protocol>> {
+        message: ProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self>> {
         if self.inputs.expecting_messages_from.is_empty() {
             panic!("Message received when none was expected, this would be a provable offense");
         } else {
@@ -120,7 +122,7 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> StaticRound<Id> for Ro
 
     fn finalize(
         self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         _payloads: BTreeMap<Id, Self::Payload>,
         _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {

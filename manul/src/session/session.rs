@@ -23,9 +23,9 @@ use super::{
     LocalError, RemoteError,
 };
 use crate::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-    EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol, ProtocolMessage, ProtocolMessagePart,
-    ReceiveError, ReceiveErrorType, RoundId, TransitionInfo,
+    Artifact, BoxedFormat, BoxedReceiveError, BoxedRound, CommunicationInfo, DirectMessage, DynProtocolMessage,
+    EchoBroadcast, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NormalBroadcast, PartyId, Payload, Protocol,
+    ProtocolMessagePart, RoundId, TransitionInfo,
 };
 
 /// A set of types needed to execute a session.
@@ -129,7 +129,7 @@ pub enum RoundOutcome<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     /// Transitioned to another round.
     AnotherRound {
         /// The session object for the new round.
-        session: Session<P, SP>,
+        session: Box<Session<P, SP>>,
         /// The messages intended for the new round cached during the previous round.
         cached_messages: Vec<VerifiedMessage<SP::Verifier>>,
     },
@@ -166,14 +166,23 @@ where
         let verifier = signer.verifying_key();
 
         let transition_info = round.as_ref().transition_info();
+        let communication_info = round.as_ref().communication_info();
 
-        let echo = round.as_ref().make_echo_broadcast(rng, &format)?;
+        // TODO (#4): we reuse `EchoBroadcast::none()` (that means `NoMessage` in the typed round)
+        // to have a second meaning, the node not sending messages at all.
+        let echo = if communication_info.message_destinations.is_empty() {
+            EchoBroadcast::none()
+        } else {
+            round.as_ref().make_echo_broadcast(rng, &format)?
+        };
         let echo_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), echo)?;
 
-        let normal = round.as_ref().make_normal_broadcast(rng, &format)?;
+        let normal = if communication_info.message_destinations.is_empty() {
+            NormalBroadcast::none()
+        } else {
+            round.as_ref().make_normal_broadcast(rng, &format)?
+        };
         let normal_broadcast = SignedMessagePart::new::<SP>(rng, &signer, &session_id, &transition_info.id(), normal)?;
-
-        let communication_info = round.as_ref().communication_info();
 
         let round_sends_echo_broadcast = !echo_broadcast.payload().is_none();
         let echo_round_info = match &communication_info.echo_round_participation {
@@ -387,8 +396,8 @@ where
     /// Processes a verified message.
     ///
     /// This can be called in a spawned task if it is known to take a long time.
-    pub fn process_message(&self, message: VerifiedMessage<SP::Verifier>) -> ProcessedMessage<P, SP> {
-        let protocol_message = ProtocolMessage {
+    pub fn process_message(&self, message: VerifiedMessage<SP::Verifier>) -> ProcessedMessage<SP> {
+        let protocol_message = DynProtocolMessage {
             echo_broadcast: message.echo_broadcast().clone(),
             normal_broadcast: message.normal_broadcast().clone(),
             direct_message: message.direct_message().clone(),
@@ -406,9 +415,9 @@ where
     pub fn add_processed_message(
         &self,
         accum: &mut RoundAccumulator<P, SP>,
-        processed: ProcessedMessage<P, SP>,
+        processed: ProcessedMessage<SP>,
     ) -> Result<(), LocalError> {
-        accum.add_processed_message(&self.transcript, processed)
+        accum.add_processed_message(&self.format, &self.transcript, processed)
     }
 
     /// Makes an accumulator for a new round.
@@ -484,16 +493,16 @@ where
                 accum.payloads,
                 accum.artifacts,
             ));
-            let cached_messages = filter_messages(accum.cached, &round.id());
+            let cached_messages = filter_messages(accum.cached, &round.as_ref().transition_info().id);
             let session =
                 Session::new_for_next_round(rng, self.session_id, self.signer, self.format, round, transcript)?;
             return Ok(RoundOutcome::AnotherRound {
-                session,
+                session: session.into(),
                 cached_messages,
             });
         }
 
-        match self.round.into_boxed().finalize(rng, accum.payloads, accum.artifacts)? {
+        match self.round.into_inner().finalize(rng, accum.payloads, accum.artifacts)? {
             FinalizeOutcome::Result(result) => Ok(RoundOutcome::Finished(SessionReport::new(
                 SessionOutcome::Result(result),
                 transcript,
@@ -502,7 +511,7 @@ where
                 let round_id = round.as_ref().transition_info().id();
                 // Protecting against common bugs
                 if !self.transition_info.children.contains(&round_id) {
-                    return Err(LocalError::new(format!("Unexpected next round id: {:?}", round_id)));
+                    return Err(LocalError::new(format!("Unexpected next round id: {round_id:?}")));
                 }
 
                 // These messages could have been cached before
@@ -518,7 +527,7 @@ where
                     Session::new_for_next_round(rng, self.session_id, self.signer, self.format, round, transcript)?;
                 Ok(RoundOutcome::AnotherRound {
                     cached_messages,
-                    session,
+                    session: session.into(),
                 })
             }
         }
@@ -612,8 +621,7 @@ where
     fn register_unprovable_error(&mut self, from: &SP::Verifier, error: RemoteError) -> Result<(), LocalError> {
         if self.unprovable_errors.insert(from.clone(), error).is_some() {
             Err(LocalError::new(format!(
-                "An unprovable error for {:?} is already registered",
-                from
+                "An unprovable error for {from:?} is already registered",
             )))
         } else {
             Ok(())
@@ -623,8 +631,7 @@ where
     fn register_provable_error(&mut self, from: &SP::Verifier, evidence: Evidence<P, SP>) -> Result<(), LocalError> {
         if self.provable_errors.insert(from.clone(), evidence).is_some() {
             Err(LocalError::new(format!(
-                "A provable error for {:?} is already registered",
-                from
+                "A provable error for {from:?} is already registered",
             )))
         } else {
             Ok(())
@@ -645,12 +652,11 @@ where
     // Add a processed artifact to the accumulator.
     // Returns an error if the artifact was already present.
     fn add_artifact(&mut self, processed: ProcessedArtifact<SP>) -> Result<(), LocalError> {
-        let artifact = match processed.artifact {
-            Some(artifact) => artifact,
-            None => return Ok(()),
-        };
-
-        if self.artifacts.insert(processed.destination.clone(), artifact).is_some() {
+        if self
+            .artifacts
+            .insert(processed.destination.clone(), processed.artifact)
+            .is_some()
+        {
             return Err(LocalError::new(format!(
                 "Artifact for destination {:?} has already been recorded",
                 processed.destination
@@ -661,8 +667,9 @@ where
 
     fn add_processed_message(
         &mut self,
+        format: &BoxedFormat,
         transcript: &Transcript<P, SP>,
-        processed: ProcessedMessage<P, SP>,
+        processed: ProcessedMessage<SP>,
     ) -> Result<(), LocalError> {
         if self.payloads.contains_key(processed.message.from()) {
             return Err(LocalError::new(format!(
@@ -675,8 +682,7 @@ where
 
         if !self.still_have_not_sent_messages.remove(&from) {
             return Err(LocalError::new(format!(
-                "Expected {:?} to not be in the list of expected messages",
-                from
+                "Expected {from:?} to not be in the list of expected messages",
             )));
         }
         let error = match processed.processed {
@@ -698,44 +704,45 @@ where
             Err(error) => error,
         };
 
-        match error.0 {
-            ReceiveErrorType::InvalidDirectMessage(error) => {
+        match error {
+            BoxedReceiveError::InvalidDirectMessage(error) => {
                 let (_echo_broadcast, _normal_broadcast, direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_direct_message(&from, direct_message, error);
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::InvalidEchoBroadcast(error) => {
+            BoxedReceiveError::InvalidEchoBroadcast(error) => {
                 let (echo_broadcast, _normal_broadcast, _direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_echo_broadcast(&from, echo_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::InvalidNormalBroadcast(error) => {
+            BoxedReceiveError::InvalidNormalBroadcast(error) => {
                 let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_invalid_normal_broadcast(&from, normal_broadcast, error);
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::Protocol(error) => {
+            BoxedReceiveError::Protocol(boxed_error) => {
                 let (echo_broadcast, normal_broadcast, direct_message) = processed.message.into_parts();
-                let evidence = Evidence::new_protocol_error(
+                let evidence = Evidence::new_provable_error(
+                    format,
                     &from,
                     echo_broadcast,
                     normal_broadcast,
                     direct_message,
-                    error,
+                    boxed_error,
                     transcript,
                 )?;
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::Unprovable(error) => {
+            BoxedReceiveError::Unprovable(error) => {
                 self.unprovable_errors.insert(from.clone(), error);
                 Ok(())
             }
-            ReceiveErrorType::Echo(error) => {
+            BoxedReceiveError::Echo(error) => {
                 let (_echo_broadcast, normal_broadcast, _direct_message) = processed.message.into_parts();
                 let evidence = Evidence::new_echo_round_error(&from, normal_broadcast, *error)?;
                 self.register_provable_error(&from, evidence)
             }
-            ReceiveErrorType::Local(error) => Err(error),
+            BoxedReceiveError::Local(error) => Err(error),
         }
     }
 
@@ -745,8 +752,7 @@ where
         let cached = self.cached.entry(from.clone()).or_default();
         if cached.insert(round_id.clone(), message).is_some() {
             return Err(LocalError::new(format!(
-                "A message from for {:?} has already been cached",
-                round_id
+                "A message from for {round_id:?} has already been cached",
             )));
         }
         Ok(())
@@ -756,13 +762,13 @@ where
 #[derive(Debug)]
 pub struct ProcessedArtifact<SP: SessionParameters> {
     destination: SP::Verifier,
-    artifact: Option<Artifact>,
+    artifact: Artifact,
 }
 
 #[derive(Debug)]
-pub struct ProcessedMessage<P: Protocol<SP::Verifier>, SP: SessionParameters> {
+pub struct ProcessedMessage<SP: SessionParameters> {
     message: VerifiedMessage<SP::Verifier>,
-    processed: Result<Payload, ReceiveError<SP::Verifier, P>>,
+    processed: Result<Payload, BoxedReceiveError<SP::Verifier>>,
 }
 
 /// The result of preprocessing an incoming message.
@@ -816,7 +822,7 @@ mod tests {
     use super::{Message, ProcessedArtifact, ProcessedMessage, Session, VerifiedMessage};
     use crate::{
         dev::{BinaryFormat, TestSessionParams, TestVerifier},
-        protocol::{BoxedRoundInfo, NoProtocolErrors, Protocol, RoundId},
+        protocol::{Protocol, RoundId, RoundInfo},
     };
 
     #[test]
@@ -836,8 +842,7 @@ mod tests {
         impl Protocol<TestVerifier> for DummyProtocol {
             type Result = ();
             type SharedData = ();
-            type ProtocolError = NoProtocolErrors;
-            fn round_info(_round_id: &RoundId) -> Option<BoxedRoundInfo<TestVerifier, Self>> {
+            fn round_info(_round_id: &RoundId) -> Option<RoundInfo<TestVerifier, Self>> {
                 unimplemented!()
             }
         }
@@ -853,6 +858,6 @@ mod tests {
         assert!(impls!(Message<TestVerifier>: Send));
         assert!(impls!(ProcessedArtifact<SP>: Send));
         assert!(impls!(VerifiedMessage<TestVerifier>: Send));
-        assert!(impls!(ProcessedMessage<DummyProtocol, SP>: Send));
+        assert!(impls!(ProcessedMessage<SP>: Send));
     }
 }

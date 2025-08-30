@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `session::tokio::run_session()` and `par_run_session()` take an additional `cancellation` argument to support external loop cancellation. ([#100])
+- `Round` now uses associated types for messages, payloads, and artifacts instead of boxed types. ([#117])
+- Protocol errors and evidence verification are now defined for each round separately. `ProtocolError` is an associated type of `Round`. ([#117])
+- `misbehave` combinator is reworked ino `extend`. It now works by defining typed extensions for a specific `Round` type. ([#117])
 
 
 ### Fixed
@@ -17,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 [#100]: https://github.com/entropyxyz/manul/pull/100
+[#117]: https://github.com/entropyxyz/manul/pull/117
 [#119]: https://github.com/entropyxyz/manul/pull/119
 
 

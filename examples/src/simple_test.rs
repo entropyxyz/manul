@@ -1,9 +1,7 @@
 use alloc::collections::BTreeSet;
 
-use core::marker::PhantomData;
-
 use manul::{
-    dev::{run_sync, BinaryFormat, ExtendableEntryPoint, RoundExtension, TestSessionParams, TestSigner, TestVerifier},
+    dev::{run_sync, BinaryFormat, ExtendableEntryPoint, RoundExtension, TestSessionParams, TestSigner},
     protocol::{LocalError, PartyId},
     signature::Keypair,
 };
@@ -13,9 +11,9 @@ use test_log::test;
 use crate::simple::{Round1, Round1Message, Round2, Round2Message, SimpleProtocolEntryPoint};
 
 #[derive(Debug, Clone)]
-struct Round1InvalidDirectMessage<Id>(PhantomData<Id>);
+struct Round1InvalidDirectMessage;
 
-impl<Id> RoundExtension<Id> for Round1InvalidDirectMessage<Id>
+impl<Id> RoundExtension<Id> for Round1InvalidDirectMessage
 where
     Id: PartyId,
 {
@@ -23,17 +21,17 @@ where
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         round: &Self::Round,
         _destination: &Id,
-    ) -> Result<Option<(Round1Message, ())>, LocalError> {
-        Ok(Some((
+    ) -> Result<(Round1Message, ()), LocalError> {
+        Ok((
             Round1Message {
                 my_position: round.context.ids_to_positions[&round.context.id],
                 your_position: round.context.ids_to_positions[&round.context.id],
             },
             (),
-        )))
+        ))
     }
 }
 
@@ -52,7 +50,7 @@ fn round1_attributable_failure() {
             let entry_point = SimpleProtocolEntryPoint::new(all_ids.clone());
             let mut entry_point = ExtendableEntryPoint::new(entry_point);
             if idx == 0 {
-                entry_point.extend(Round1InvalidDirectMessage::<TestVerifier>(PhantomData));
+                entry_point.extend(Round1InvalidDirectMessage);
             }
 
             (*signer, entry_point)
@@ -76,9 +74,9 @@ fn round1_attributable_failure() {
 }
 
 #[derive(Debug, Clone)]
-struct Round2InvalidDirectMessage<Id>(PhantomData<Id>);
+struct Round2InvalidDirectMessage;
 
-impl<Id> RoundExtension<Id> for Round2InvalidDirectMessage<Id>
+impl<Id> RoundExtension<Id> for Round2InvalidDirectMessage
 where
     Id: PartyId,
 {
@@ -86,17 +84,17 @@ where
 
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         round: &Self::Round,
         _destination: &Id,
-    ) -> Result<Option<(Round2Message, ())>, LocalError> {
-        Ok(Some((
+    ) -> Result<(Round2Message, ()), LocalError> {
+        Ok((
             Round2Message {
                 my_position: round.context.ids_to_positions[&round.context.id],
                 your_position: round.context.ids_to_positions[&round.context.id],
             },
             (),
-        )))
+        ))
     }
 }
 
@@ -115,7 +113,7 @@ fn round2_attributable_failure() {
             let entry_point = SimpleProtocolEntryPoint::new(all_ids.clone());
             let mut entry_point = ExtendableEntryPoint::new(entry_point);
             if idx == 0 {
-                entry_point.extend(Round2InvalidDirectMessage::<TestVerifier>(PhantomData));
+                entry_point.extend(Round2InvalidDirectMessage);
             }
 
             (*signer, entry_point)

@@ -11,33 +11,37 @@ to be executed by a [`Session`](`crate::session::Session`).
 For more details, see the documentation of the mentioned traits.
 */
 
-mod boxed_format;
-mod boxed_round;
+mod dyn_evidence;
+mod dyn_round;
 mod errors;
+mod evidence;
 mod message;
+mod rng;
 mod round;
 mod round_id;
 mod round_info;
-mod static_round;
+mod wire_format;
 
-pub use boxed_format::BoxedFormat;
-pub use boxed_round::BoxedRound;
-pub use errors::{
-    DeserializationError, DirectMessageError, EchoBroadcastError, LocalError, MessageValidationError,
-    NormalBroadcastError, ProtocolValidationError, ReceiveError, RemoteError,
+pub use dyn_round::BoxedRound;
+pub use errors::{LocalError, ReceiveError, RemoteError};
+pub use evidence::{
+    EvidenceError, EvidenceMessages, NoProtocolErrors, ProtocolError, RequiredMessageParts, RequiredMessages,
 };
-pub use message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart};
 pub use round::{
-    Artifact, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoProtocolErrors, PartyId,
-    Payload, Protocol, ProtocolError, RequiredMessageParts, RequiredMessages, Round,
+    CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, NoArtifact, NoMessage, PartyId, Protocol,
+    ProtocolMessage, Round,
 };
 pub use round_id::{RoundId, TransitionInfo};
-pub use round_info::BoxedRoundInfo;
-pub use static_round::{
-    EvidenceMessages, NoMessage, NoProvableErrors, ProvableError, StaticProtocolMessage, StaticRound,
-};
+pub use round_info::RoundInfo;
 
-pub(crate) use errors::ReceiveErrorType;
-pub(crate) use message::ProtocolMessagePartHashable;
-pub(crate) use round_info::RoundInfo;
-pub(crate) use static_round::StaticRoundAdapter;
+pub(crate) use dyn_evidence::{BoxedProtocolError, SerializedProtocolError};
+pub(crate) use dyn_round::{Artifact, BoxedReceiveError, BoxedTypedRound, DynRound, Payload};
+pub(crate) use evidence::EvidenceProtocolMessage;
+pub(crate) use message::{
+    DirectMessage, DirectMessageError, DynProtocolMessage, EchoBroadcast, EchoBroadcastError, NormalBroadcast,
+    NormalBroadcastError, ProtocolMessagePart, ProtocolMessagePartHashable,
+};
+pub(crate) use rng::BoxedRng;
+pub(crate) use round::NoType;
+pub(crate) use round_info::DynRoundInfo;
+pub(crate) use wire_format::BoxedFormat;

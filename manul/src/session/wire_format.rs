@@ -1,9 +1,27 @@
-use alloc::{boxed::Box, format};
+use alloc::{boxed::Box, format, string::String};
 use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{DeserializationError, LocalError};
+use crate::protocol::LocalError;
+
+/// An error that can be returned during deserialization.
+#[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Error deserializing into {target_type}: {message}")]
+pub struct DeserializationError {
+    target_type: String,
+    message: String,
+}
+
+impl DeserializationError {
+    /// Creates a new deserialization error.
+    pub fn new<T>(message: impl Into<String>) -> Self {
+        Self {
+            target_type: core::any::type_name::<T>().into(),
+            message: message.into(),
+        }
+    }
+}
 
 /*
 Why the asymmetry between serialization and deserialization?
@@ -15,7 +33,7 @@ and it's tricky to write a similar persistent wrapper as we do for the deseriali
 (see https://github.com/fjarri/serde-persistent-deserializer/issues/2).
 
 So for serialization we have to instead type-erase the value itself and pass it somewhere
-where the serializer type is known (`ObjectSafeSerializer::serialize()` impl);
+where the serializer type is known (`DynSerializer::serialize()` impl);
 but for the deserialization we instead type-erase the deserializer and pass it somewhere
 the type of the target value is known (`Deserializer::deserialize()`).
 
@@ -36,10 +54,12 @@ pub trait WireFormat: 'static + Debug {
     fn deserializer(bytes: &[u8]) -> Self::Deserializer<'_>;
 
     // A helper method for use on the session level when both `WireFormat` and `T` are known at the same point.
+}
 
-    /// Deserializes the given bytestring into `T`.
-    fn deserialize<'de, T: Deserialize<'de>>(bytes: &'de [u8]) -> Result<T, DeserializationError> {
-        let deserializer = Self::deserializer(bytes);
-        T::deserialize(deserializer).map_err(|err| DeserializationError::new(format!("Deserialization error: {err:?}")))
-    }
+/// Deserializes the given bytestring into `T`.
+pub(crate) fn deserialize<'de, F: WireFormat, T: Deserialize<'de>>(
+    bytes: &'de [u8],
+) -> Result<T, DeserializationError> {
+    let deserializer = F::deserializer(bytes);
+    T::deserialize(deserializer).map_err(|err| DeserializationError::new::<T>(format!("{err:?}")))
 }
