@@ -49,15 +49,16 @@ Usage:
    when verifying evidence from the chained protocol.
 */
 
-use alloc::{boxed::Box, collections::BTreeMap};
+use alloc::{boxed::Box, collections::BTreeMap, format};
 use core::fmt::{self, Debug};
 
 use rand_core::CryptoRngCore;
 
 use crate::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
-    LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
-    ProtocolValidationError, ReceiveError, RequiredMessages, Round, RoundId, TransitionInfo,
+    Artifact, BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
+    FinalizeOutcome, LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError,
+    ProtocolMessage, ProtocolValidationError, ReceiveError, RequiredMessages, Round, RoundId, RoundInfo,
+    TransitionInfo,
 };
 
 /// A marker trait that is used to disambiguate blanket trait implementations for [`Protocol`] and [`EntryPoint`].
@@ -197,6 +198,134 @@ where
     }
 }
 
+#[derive_where::derive_where(Debug)]
+struct RoundInfoWrapper1<Id: 'static, P: ChainedProtocol<Id> + ChainedMarker>(BoxedRoundInfo<Id, P::Protocol1>);
+
+impl<Id, P> RoundInfo<Id> for RoundInfoWrapper1<Id, P>
+where
+    P: ChainedProtocol<Id> + ChainedMarker,
+{
+    type Protocol = P;
+
+    fn verify_direct_message_is_invalid(
+        &self,
+        round_id: &RoundId,
+        format: &BoxedFormat,
+        message: &DirectMessage,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group != 1 {
+            return Err(MessageValidationError::Local(LocalError::new(format!(
+                "Expected round ID from group 1, got {round_id}"
+            ))));
+        }
+        self.0
+            .as_ref()
+            .verify_direct_message_is_invalid(&round_id, format, message, &associated_data.protocol1)
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        &self,
+        round_id: &RoundId,
+        format: &BoxedFormat,
+        message: &EchoBroadcast,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group != 1 {
+            return Err(MessageValidationError::Local(LocalError::new(format!(
+                "Expected round ID from group 1, got {round_id}"
+            ))));
+        }
+        self.0
+            .as_ref()
+            .verify_echo_broadcast_is_invalid(&round_id, format, message, &associated_data.protocol1)
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        &self,
+        round_id: &RoundId,
+        format: &BoxedFormat,
+        message: &NormalBroadcast,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group != 1 {
+            return Err(MessageValidationError::Local(LocalError::new(format!(
+                "Expected round ID from group 1, got {round_id}"
+            ))));
+        }
+        self.0
+            .as_ref()
+            .verify_normal_broadcast_is_invalid(&round_id, format, message, &associated_data.protocol1)
+    }
+}
+
+#[derive_where::derive_where(Debug)]
+struct RoundInfoWrapper2<Id: 'static, P: ChainedProtocol<Id> + ChainedMarker>(BoxedRoundInfo<Id, P::Protocol2>);
+
+impl<Id, P> RoundInfo<Id> for RoundInfoWrapper2<Id, P>
+where
+    P: ChainedProtocol<Id> + ChainedMarker,
+{
+    type Protocol = P;
+
+    fn verify_direct_message_is_invalid(
+        &self,
+        round_id: &RoundId,
+        format: &BoxedFormat,
+        message: &DirectMessage,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group != 2 {
+            return Err(MessageValidationError::Local(LocalError::new(format!(
+                "Expected round ID from group 2, got {round_id}"
+            ))));
+        }
+        self.0
+            .as_ref()
+            .verify_direct_message_is_invalid(&round_id, format, message, &associated_data.protocol2)
+    }
+
+    fn verify_echo_broadcast_is_invalid(
+        &self,
+        round_id: &RoundId,
+        format: &BoxedFormat,
+        message: &EchoBroadcast,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group != 2 {
+            return Err(MessageValidationError::Local(LocalError::new(format!(
+                "Expected round ID from group 2, got {round_id}"
+            ))));
+        }
+        self.0
+            .as_ref()
+            .verify_echo_broadcast_is_invalid(&round_id, format, message, &associated_data.protocol2)
+    }
+
+    fn verify_normal_broadcast_is_invalid(
+        &self,
+        round_id: &RoundId,
+        format: &BoxedFormat,
+        message: &NormalBroadcast,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> Result<(), MessageValidationError> {
+        let (group, round_id) = round_id.split_group()?;
+        if group != 2 {
+            return Err(MessageValidationError::Local(LocalError::new(format!(
+                "Expected round ID from group 2, got {round_id}"
+            ))));
+        }
+        self.0
+            .as_ref()
+            .verify_normal_broadcast_is_invalid(&round_id, format, message, &associated_data.protocol2)
+    }
+}
+
 impl<Id, C> Protocol<Id> for C
 where
     Id: 'static,
@@ -205,42 +334,16 @@ where
     type Result = <C::Protocol2 as Protocol<Id>>::Result;
     type ProtocolError = ChainedProtocolError<Id, C>;
 
-    fn verify_direct_message_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        let (group, round_id) = round_id.split_group()?;
+    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
+        let (group, round_id) = round_id.split_group().ok()?;
         if group == 1 {
-            C::Protocol1::verify_direct_message_is_invalid(format, &round_id, message)
+            let round_info = C::Protocol1::round_info(&round_id)?;
+            Some(BoxedRoundInfo::new_obj(Box::new(RoundInfoWrapper1(round_info))))
+        } else if group == 2 {
+            let round_info = C::Protocol2::round_info(&round_id)?;
+            Some(BoxedRoundInfo::new_obj(Box::new(RoundInfoWrapper2(round_info))))
         } else {
-            C::Protocol2::verify_direct_message_is_invalid(format, &round_id, message)
-        }
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        let (group, round_id) = round_id.split_group()?;
-        if group == 1 {
-            C::Protocol1::verify_echo_broadcast_is_invalid(format, &round_id, message)
-        } else {
-            C::Protocol2::verify_echo_broadcast_is_invalid(format, &round_id, message)
-        }
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        let (group, round_id) = round_id.split_group()?;
-        if group == 1 {
-            C::Protocol1::verify_normal_broadcast_is_invalid(format, &round_id, message)
-        } else {
-            C::Protocol2::verify_normal_broadcast_is_invalid(format, &round_id, message)
+            None
         }
     }
 }

@@ -17,6 +17,7 @@ mod errors;
 mod message;
 mod round;
 mod round_id;
+mod round_info;
 mod static_round;
 
 pub use boxed_format::BoxedFormat;
@@ -31,7 +32,9 @@ pub use round::{
     Payload, Protocol, ProtocolError, RequiredMessageParts, RequiredMessages, Round,
 };
 pub use round_id::{RoundId, TransitionInfo};
+pub use round_info::BoxedRoundInfo;
 pub use static_round::{NoMessage, StaticProtocolMessage, StaticRound};
 
 pub(crate) use errors::ReceiveErrorType;
 pub(crate) use message::ProtocolMessagePartHashable;
+pub(crate) use round_info::RoundInfo;

@@ -55,9 +55,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use manul::{
     dev::{run_sync, BinaryFormat, TestHasher, TestSignature, TestSigner, TestVerifier},
     protocol::{
-        BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-        FinalizeOutcome, LocalError, MessageValidationError, NoMessage, NoProtocolErrors, NormalBroadcast, Protocol,
-        ReceiveError, RoundId, StaticProtocolMessage, StaticRound, TransitionInfo,
+        BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError,
+        NoMessage, NoProtocolErrors, Protocol, ReceiveError, RoundId, StaticProtocolMessage, StaticRound,
+        TransitionInfo,
     },
     session::SessionParameters,
 };
@@ -73,35 +73,19 @@ use tracing::{debug, info, trace};
 #[derive(Debug)]
 pub struct DiningCryptographersProtocol;
 
-impl<Id> Protocol<Id> for DiningCryptographersProtocol {
+impl Protocol<DinerId> for DiningCryptographersProtocol {
     // XOR/¬XOR of the two bits of each of the three diners (one is their own cointoss, the other shared with their
     // neighbour).
     type Result = (bool, bool, bool);
 
     type ProtocolError = NoProtocolErrors;
 
-    fn verify_direct_message_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        Ok(())
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        Ok(())
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        Ok(())
+    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<DinerId, Self>> {
+        match round_id {
+            _ if round_id == 1 => Some(BoxedRoundInfo::new::<Round1>()),
+            _ if round_id == 2 => Some(BoxedRoundInfo::new::<Round2>()),
+            _ => None,
+        }
     }
 }
 

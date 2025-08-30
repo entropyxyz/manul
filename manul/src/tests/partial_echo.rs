@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
-        FinalizeOutcome, LocalError, MessageValidationError, NoMessage, NoProtocolErrors, NormalBroadcast, PartyId,
-        Protocol, ReceiveError, RoundId, StaticProtocolMessage, StaticRound, TransitionInfo,
+        BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoRoundParticipation, EntryPoint, FinalizeOutcome, LocalError,
+        NoMessage, NoProtocolErrors, PartyId, Protocol, ReceiveError, RoundId, StaticProtocolMessage, StaticRound,
+        TransitionInfo,
     },
     signature::Keypair,
 };
@@ -25,28 +25,11 @@ impl<Id: PartyId> Protocol<Id> for PartialEchoProtocol<Id> {
     type Result = ();
     type ProtocolError = NoProtocolErrors;
 
-    fn verify_direct_message_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
+    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
+        match round_id {
+            round_id if round_id == &RoundId::new(1) => Some(BoxedRoundInfo::new::<Round1<Id>>()),
+            _ => None,
+        }
     }
 }
 

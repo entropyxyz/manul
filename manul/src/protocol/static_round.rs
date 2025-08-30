@@ -10,8 +10,10 @@ use super::{
     boxed_format::BoxedFormat,
     errors::{LocalError, ReceiveError},
     message::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessage, ProtocolMessagePart},
-    round::{Artifact, CommunicationInfo, DynTypeId, FinalizeOutcome, PartyId, Payload, Protocol, Round},
-    round_id::TransitionInfo,
+    round::{
+        Artifact, CommunicationInfo, DynTypeId, FinalizeOutcome, PartyId, Payload, Protocol, ProtocolError, Round,
+    },
+    round_id::{RoundId, TransitionInfo},
 };
 
 // PhantomData is here to make it un-constructable by an external user.
@@ -36,13 +38,13 @@ impl NoMessage {
 }
 
 #[derive(Debug)]
-pub struct StaticProtocolMessage<Id: PartyId, R: StaticRound<Id> + ?Sized> {
+pub struct StaticProtocolMessage<Id, R: StaticRound<Id> + ?Sized> {
     pub direct_message: R::DirectMessage,
     pub echo_broadcast: R::EchoBroadcast,
     pub normal_broadcast: R::NormalBroadcast,
 }
 
-pub trait StaticRound<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
+pub trait StaticRound<Id>: 'static + Debug + Send + Sync + DynTypeId {
     /// The protocol this round is a part of.
     type Protocol: Protocol<Id>;
 
@@ -56,12 +58,33 @@ pub trait StaticRound<Id: PartyId>: 'static + Debug + Send + Sync + DynTypeId {
     /// See [`CommunicationInfo`] documentation for more details.
     fn communication_info(&self) -> CommunicationInfo<Id>;
 
-    type DirectMessage: Serialize + for<'de> Deserialize<'de>;
-    type NormalBroadcast: Serialize + for<'de> Deserialize<'de>;
-    type EchoBroadcast: Serialize + for<'de> Deserialize<'de>;
+    type DirectMessage: 'static + Serialize + for<'de> Deserialize<'de>;
+    type NormalBroadcast: 'static + Serialize + for<'de> Deserialize<'de>;
+    type EchoBroadcast: 'static + Serialize + for<'de> Deserialize<'de>;
 
     type Payload: Send + Sync;
     type Artifact: Send + Sync;
+
+    fn expects_direct_message(
+        round_id: &RoundId,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> bool {
+        true
+    }
+
+    fn expects_normal_broadcast(
+        round_id: &RoundId,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> bool {
+        true
+    }
+
+    fn expects_echo_broadcast(
+        round_id: &RoundId,
+        associated_data: &<<Self::Protocol as Protocol<Id>>::ProtocolError as ProtocolError<Id>>::AssociatedData,
+    ) -> bool {
+        true
+    }
 
     /// Returns the direct message to the given destination and (maybe) an accompanying artifact.
     ///
@@ -217,14 +240,15 @@ where
     ) -> Result<Payload, ReceiveError<Id, <Self as Round<Id>>::Protocol>> {
         let direct_message = if NoMessage::equals::<R::DirectMessage>() {
             message.direct_message.assert_is_none()?;
-            NoMessage::new_if_equals::<R::DirectMessage>().unwrap()
+            // TODO: `expect()` can be eliminated here
+            NoMessage::new_if_equals::<R::DirectMessage>().expect("DirectMessage is NoMessage")
         } else {
             message.direct_message.deserialize::<R::DirectMessage>(format)?
         };
 
         let echo_broadcast = if NoMessage::equals::<R::EchoBroadcast>() {
             message.echo_broadcast.assert_is_none()?;
-            NoMessage::new_if_equals::<R::EchoBroadcast>().unwrap()
+            NoMessage::new_if_equals::<R::EchoBroadcast>().expect("EchoBroadcast is NoMessage")
         } else {
             message.echo_broadcast.deserialize::<R::EchoBroadcast>(format)?
         };
@@ -232,7 +256,7 @@ where
         let normal_broadcast = if NoMessage::equals::<R::NormalBroadcast>() {
             message.normal_broadcast.assert_is_none()?;
             // this is infallible
-            NoMessage::new_if_equals::<R::NormalBroadcast>().unwrap()
+            NoMessage::new_if_equals::<R::NormalBroadcast>().expect("NormalBroadcast is NoMessage")
         } else {
             message.normal_broadcast.deserialize::<R::NormalBroadcast>(format)?
         };

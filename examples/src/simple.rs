@@ -2,10 +2,9 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
-    BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
-    MessageValidationError, NoMessage, NormalBroadcast, PartyId, Protocol, ProtocolError, ProtocolMessage,
-    ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, RoundId,
-    StaticProtocolMessage, StaticRound, TransitionInfo,
+    BoxedFormat, BoxedRound, BoxedRoundInfo, CommunicationInfo, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
+    NoMessage, PartyId, Protocol, ProtocolError, ProtocolMessage, ProtocolMessagePart, ProtocolValidationError,
+    ReceiveError, RequiredMessageParts, RequiredMessages, RoundId, StaticProtocolMessage, StaticRound, TransitionInfo,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -72,43 +71,14 @@ impl<Id> ProtocolError<Id> for SimpleProtocolError {
     }
 }
 
-impl<Id> Protocol<Id> for SimpleProtocol {
+impl<Id: PartyId> Protocol<Id> for SimpleProtocol {
     type Result = u8;
     type ProtocolError = SimpleProtocolError;
-
-    fn verify_direct_message_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
+    fn round_info(round_id: &RoundId) -> Option<BoxedRoundInfo<Id, Self>> {
         match round_id {
-            r if r == &1 => message.verify_is_not::<Round1Message>(format),
-            r if r == &2 => message.verify_is_not::<Round2Message>(format),
-            _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
-        }
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        match round_id {
-            r if r == &1 => message.verify_is_not::<Round1Echo>(format),
-            r if r == &2 => message.verify_is_some(),
-            _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
-        }
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        format: &BoxedFormat,
-        round_id: &RoundId,
-        message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        match round_id {
-            r if r == &1 => message.verify_is_not::<Round1Broadcast>(format),
-            r if r == &2 => message.verify_is_some(),
-            _ => Err(MessageValidationError::InvalidEvidence("Invalid round number".into())),
+            _ if round_id == 1 => Some(BoxedRoundInfo::new::<Round1<Id>>()),
+            _ if round_id == 2 => Some(BoxedRoundInfo::new::<Round2<Id>>()),
+            _ => None,
         }
     }
 }
