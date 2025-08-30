@@ -2,10 +2,10 @@ use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
 use manul::protocol::{
-    Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome,
-    LocalError, MessageValidationError, NormalBroadcast, PartyId, Payload, Protocol, ProtocolError, ProtocolMessage,
-    ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, Round, RoundId,
-    TransitionInfo,
+    BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint, FinalizeOutcome, LocalError,
+    MessageValidationError, NoMessage, NormalBroadcast, PartyId, Protocol, ProtocolError, ProtocolMessage,
+    ProtocolMessagePart, ProtocolValidationError, ReceiveError, RequiredMessageParts, RequiredMessages, RoundId,
+    StaticProtocolMessage, StaticRound, TransitionInfo,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,7 @@ pub(crate) struct Context<Id> {
 }
 
 #[derive(Debug)]
-pub struct Round1<Id> {
+pub(crate) struct Round1<Id> {
     pub(crate) context: Context<Id>,
 }
 
@@ -132,17 +132,17 @@ pub(crate) struct Round1Message {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Round1Echo {
+pub(crate) struct Round1Echo {
     my_position: u8,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Round1Broadcast {
+pub(crate) struct Round1Broadcast {
     x: u8,
     my_position: u8,
 }
 
-struct Round1Payload {
+pub(crate) struct Round1Payload {
     x: u8,
 }
 
@@ -182,7 +182,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
         let mut ids = self.all_ids;
         ids.remove(id);
 
-        Ok(BoxedRound::new_dynamic(Round1 {
+        Ok(BoxedRound::new_static(Round1 {
             context: Context {
                 id: id.clone(),
                 other_ids: ids,
@@ -192,7 +192,7 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
     }
 }
 
-impl<Id: PartyId> Round<Id> for Round1<Id> {
+impl<Id: PartyId> StaticRound<Id> for Round1<Id> {
     type Protocol = SimpleProtocol;
 
     fn transition_info(&self) -> TransitionInfo {
@@ -203,77 +203,60 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
         CommunicationInfo::regular(&self.context.other_ids)
     }
 
-    fn make_normal_broadcast(
-        &self,
-        _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
-    ) -> Result<NormalBroadcast, LocalError> {
-        debug!("{:?}: making normal broadcast", self.context.id);
+    type NormalBroadcast = Round1Broadcast;
+    type EchoBroadcast = Round1Echo;
+    type DirectMessage = Round1Message;
 
-        let message = Round1Broadcast {
+    type Payload = Round1Payload;
+    type Artifact = ();
+
+    fn make_normal_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::NormalBroadcast>, LocalError> {
+        debug!("{:?}: making normal broadcast", self.context.id);
+        Ok(Some(Round1Broadcast {
             x: 0,
             my_position: self.context.ids_to_positions[&self.context.id],
-        };
-
-        NormalBroadcast::new(format, message)
+        }))
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
-    ) -> Result<EchoBroadcast, LocalError> {
+    fn make_echo_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::EchoBroadcast>, LocalError> {
         debug!("{:?}: making echo broadcast", self.context.id);
-
-        let message = Round1Echo {
+        Ok(Some(Round1Echo {
             my_position: self.context.ids_to_positions[&self.context.id],
-        };
-
-        EchoBroadcast::new(format, message)
+        }))
     }
 
     fn make_direct_message(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
         destination: &Id,
-    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+    ) -> Result<Option<(Self::DirectMessage, Self::Artifact)>, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
-
         let message = Round1Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = DirectMessage::new(format, message)?;
-        Ok((dm, None))
+        Ok(Some((message, ())))
     }
 
     fn receive_message(
         &self,
-        format: &BoxedFormat,
         from: &Id,
-        message: ProtocolMessage,
-    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
+        message: StaticProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
-
-        let _echo = message.echo_broadcast.deserialize::<Round1Echo>(format)?;
-        let _normal = message.normal_broadcast.deserialize::<Round1Broadcast>(format)?;
-        let message = message.direct_message.deserialize::<Round1Message>(format)?;
-
-        debug!("{:?}: received message: {:?}", self.context.id, message);
+        let message = message.direct_message;
 
         if self.context.ids_to_positions[&self.context.id] != message.your_position {
             return Err(ReceiveError::protocol(SimpleProtocolError::Round1InvalidPosition));
         }
-
-        Ok(Payload::new(Round1Payload { x: message.my_position }))
+        Ok(Round1Payload { x: message.my_position })
     }
 
     fn finalize(
-        self: Box<Self>,
+        self,
         _rng: &mut dyn CryptoRngCore,
-        payloads: BTreeMap<Id, Payload>,
-        _artifacts: BTreeMap<Id, Artifact>,
+        payloads: BTreeMap<Id, Self::Payload>,
+        _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
@@ -281,14 +264,10 @@ impl<Id: PartyId> Round<Id> for Round1<Id> {
             payloads.keys().cloned().collect::<Vec<_>>()
         );
 
-        let typed_payloads = payloads
-            .into_values()
-            .map(|payload| payload.downcast::<Round1Payload>())
-            .collect::<Result<Vec<_>, _>>()?;
-        let sum = self.context.ids_to_positions[&self.context.id]
-            + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
+        let sum =
+            self.context.ids_to_positions[&self.context.id] + payloads.values().map(|payload| payload.x).sum::<u8>();
 
-        let round2 = BoxedRound::new_dynamic(Round2 {
+        let round2 = BoxedRound::new_static(Round2 {
             round1_sum: sum,
             context: self.context,
         });
@@ -308,7 +287,7 @@ pub(crate) struct Round2Message {
     pub(crate) your_position: u8,
 }
 
-impl<Id: PartyId> Round<Id> for Round2<Id> {
+impl<Id: PartyId> StaticRound<Id> for Round2<Id> {
     type Protocol = SimpleProtocol;
 
     fn transition_info(&self) -> TransitionInfo {
@@ -319,34 +298,35 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
         CommunicationInfo::regular(&self.context.other_ids)
     }
 
+    type DirectMessage = Round2Message;
+    type EchoBroadcast = NoMessage;
+    type NormalBroadcast = NoMessage;
+
+    type Payload = Round1Payload;
+    type Artifact = ();
+
     fn make_direct_message(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
         destination: &Id,
-    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+    ) -> Result<Option<(Self::DirectMessage, Self::Artifact)>, LocalError> {
         debug!("{:?}: making direct message for {:?}", self.context.id, destination);
 
         let message = Round2Message {
             my_position: self.context.ids_to_positions[&self.context.id],
             your_position: self.context.ids_to_positions[destination],
         };
-        let dm = DirectMessage::new(format, message)?;
-        Ok((dm, None))
+        Ok(Some((message, ())))
     }
 
     fn receive_message(
         &self,
-        format: &BoxedFormat,
         from: &Id,
-        message: ProtocolMessage,
-    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
+        message: StaticProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self::Protocol>> {
         debug!("{:?}: receiving message from {:?}", self.context.id, from);
 
-        message.echo_broadcast.assert_is_none()?;
-        message.normal_broadcast.assert_is_none()?;
-
-        let message = message.direct_message.deserialize::<Round1Message>(format)?;
+        let message = message.direct_message;
 
         debug!("{:?}: received message: {:?}", self.context.id, message);
 
@@ -354,14 +334,14 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
             return Err(ReceiveError::protocol(SimpleProtocolError::Round2InvalidPosition));
         }
 
-        Ok(Payload::new(Round1Payload { x: message.my_position }))
+        Ok(Round1Payload { x: message.my_position })
     }
 
     fn finalize(
-        self: Box<Self>,
+        self,
         _rng: &mut dyn CryptoRngCore,
-        payloads: BTreeMap<Id, Payload>,
-        _artifacts: BTreeMap<Id, Artifact>,
+        payloads: BTreeMap<Id, Self::Payload>,
+        _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         debug!(
             "{:?}: finalizing with messages from {:?}",
@@ -369,12 +349,8 @@ impl<Id: PartyId> Round<Id> for Round2<Id> {
             payloads.keys().cloned().collect::<Vec<_>>()
         );
 
-        let typed_payloads = payloads
-            .into_values()
-            .map(|payload| payload.downcast::<Round1Payload>())
-            .collect::<Result<Vec<_>, _>>()?;
-        let sum = self.context.ids_to_positions[&self.context.id]
-            + typed_payloads.iter().map(|payload| payload.x).sum::<u8>();
+        let sum =
+            self.context.ids_to_positions[&self.context.id] + payloads.values().map(|payload| payload.x).sum::<u8>();
 
         Ok(FinalizeOutcome::Result(sum + self.round1_sum))
     }

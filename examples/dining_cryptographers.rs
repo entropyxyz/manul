@@ -55,9 +55,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use manul::{
     dev::{run_sync, BinaryFormat, TestHasher, TestSignature, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, Payload,
-        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
+        BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+        FinalizeOutcome, LocalError, MessageValidationError, NoMessage, NoProtocolErrors, NormalBroadcast, Protocol,
+        ReceiveError, RoundId, StaticProtocolMessage, StaticRound, TransitionInfo,
     },
     session::SessionParameters,
 };
@@ -123,8 +123,15 @@ pub struct Round2 {
     paid: bool,
 }
 
-impl Round<DinerId> for Round1 {
+impl StaticRound<DinerId> for Round1 {
     type Protocol = DiningCryptographersProtocol;
+
+    type DirectMessage = Round1Message;
+    type EchoBroadcast = NoMessage;
+    type NormalBroadcast = NoMessage;
+
+    type Payload = bool;
+    type Artifact = ();
 
     // Used to define the possible paths to and from this round. This protocol is very simple, it's simply Round 1 ->
     // Round 2, so we can use the "linear" utility method to set this up.
@@ -158,43 +165,36 @@ impl Round<DinerId> for Round1 {
     fn make_direct_message(
         &self,
         _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
         destination: &DinerId,
-    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
+    ) -> Result<Option<(Self::DirectMessage, Self::Artifact)>, LocalError> {
         info!(
             "[Round1, make_direct_message] from {:?} to {destination:?}",
             self.diner_id
         );
-        let msg = Round1Message { toss: self.own_toss };
-        let dm = DirectMessage::new(format, msg)?;
-
-        Ok((dm, None))
+        Ok(Some((Round1Message { toss: self.own_toss }, ())))
     }
 
     // This is called when this diner receives a bit from their neighbour.
     fn receive_message(
         &self,
-        format: &BoxedFormat,
         from: &DinerId,
-        message: ProtocolMessage,
-    ) -> Result<Payload, ReceiveError<DinerId, Self::Protocol>> {
-        let dm = message.direct_message.deserialize::<Round1Message>(format)?;
+        message: StaticProtocolMessage<DinerId, Self>,
+    ) -> Result<Self::Payload, ReceiveError<DinerId, Self::Protocol>> {
+        let dm = message.direct_message;
         debug!(
             "[Round1, receive_message] {:?} was dm'd by {from:?}: {dm:?}",
             self.diner_id
         );
-        let payload = Payload::new(dm.toss);
-        Ok(payload)
+        Ok(dm.toss)
     }
 
     // At the end of round 1 we construct the next one, Round 2, and return a [`FinalizeOutcome::AnotherRound`].
     fn finalize(
-        self: Box<Self>,
+        self,
         _rng: &mut dyn CryptoRngCore,
-        payloads: BTreeMap<DinerId, Payload>,
-        _artifacts: BTreeMap<DinerId, Artifact>,
+        payloads: BTreeMap<DinerId, Self::Payload>,
+        _artifacts: BTreeMap<DinerId, Self::Artifact>,
     ) -> Result<FinalizeOutcome<DinerId, Self::Protocol>, LocalError> {
-        let payloads = downcast_payloads::<bool>(payloads)?;
         debug!("[Round1, finalize] {:?} sees payloads: {payloads:?}", self.diner_id);
 
         let neighbour_toss = *payloads
@@ -206,7 +206,7 @@ impl Round<DinerId> for Round1 {
             "[Round1, finalize] {:?} is finalizing to Round 2. Own cointoss: {}, neighbour cointoss: {neighbour_toss}",
             self.diner_id, self.own_toss
         );
-        Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_dynamic(Round2 {
+        Ok(FinalizeOutcome::AnotherRound(BoxedRound::new_static(Round2 {
             diner_id: self.diner_id,
             own_toss: self.own_toss,
             neighbour_toss,
@@ -215,8 +215,15 @@ impl Round<DinerId> for Round1 {
     }
 }
 
-impl Round<DinerId> for Round2 {
+impl StaticRound<DinerId> for Round2 {
     type Protocol = DiningCryptographersProtocol;
+
+    type DirectMessage = NoMessage;
+    type EchoBroadcast = NoMessage;
+    type NormalBroadcast = Round2Message;
+
+    type Payload = bool;
+    type Artifact = ();
 
     // This round is the last in the protocol so we can terminate here.
     fn transition_info(&self) -> TransitionInfo {
@@ -247,11 +254,7 @@ impl Round<DinerId> for Round2 {
     }
 
     // Implementing this method means that Round 2 will make a broadcast (without echoes).
-    fn make_normal_broadcast(
-        &self,
-        _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
-    ) -> Result<NormalBroadcast, LocalError> {
+    fn make_normal_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::NormalBroadcast>, LocalError> {
         debug!(
             "[Round2, make_normal_broadcast] {:?} broadcasts to everyone else",
             self.diner_id
@@ -262,9 +265,7 @@ impl Round<DinerId> for Round2 {
         } else {
             self.own_toss ^ self.neighbour_toss
         };
-        let msg = Round2Message { reveal };
-        let bcast = NormalBroadcast::new(format, msg)?;
-        Ok(bcast)
+        Ok(Some(Round2Message { reveal }))
     }
 
     // Called once for each diner as messages are delivered to it. Here we deserialize the message using the configured
@@ -272,16 +273,14 @@ impl Round<DinerId> for Round2 {
     // method below.
     fn receive_message(
         &self,
-        format: &BoxedFormat,
         from: &DinerId,
-        message: ProtocolMessage,
-    ) -> Result<Payload, ReceiveError<DinerId, Self::Protocol>> {
+        message: StaticProtocolMessage<DinerId, Self>,
+    ) -> Result<Self::Payload, ReceiveError<DinerId, Self::Protocol>> {
         debug!("[Round2, receive_message] from {from:?} to {:?}", self.diner_id);
-        let bcast = message.normal_broadcast.deserialize::<Round2Message>(format)?;
+        let bcast = message.normal_broadcast;
         trace!("[Round2, receive_message] message (deserialized bcast): {:?}", bcast);
         // The payload is kept and delivered in the `finalize` method.
-        let payload = Payload::new(bcast.reveal);
-        Ok(payload)
+        Ok(bcast.reveal)
     }
 
     // The `finalize` method has access to all the [`Payload`]s that were sent to this diner. This protocol does not use
@@ -289,10 +288,10 @@ impl Round<DinerId> for Round2 {
     // This is the last round in the protocol, so we return a [`FinalizeOutcome::Result`] with the result of the
     // protocol from this participant's point of view.
     fn finalize(
-        self: Box<Self>,
+        self,
         _rng: &mut dyn CryptoRngCore,
-        payloads: BTreeMap<DinerId, Payload>,
-        _artifacts: BTreeMap<DinerId, Artifact>,
+        payloads: BTreeMap<DinerId, Self::Payload>,
+        _artifacts: BTreeMap<DinerId, Self::Artifact>,
     ) -> Result<FinalizeOutcome<DinerId, Self::Protocol>, LocalError> {
         // XOR/¬XOR the two bits of this diner, depending on whether they paid or not.
         let mut own_reveal = self.own_toss ^ self.neighbour_toss;
@@ -301,8 +300,7 @@ impl Round<DinerId> for Round2 {
         }
         // Extract the payloads from the other participants so we can produce a [`Protocol::Result`]. In this case it is
         // a tuple of 3 booleans.
-        let payloads_d = downcast_payloads::<bool>(payloads)?;
-        let bits = payloads_d.values().cloned().collect::<Vec<_>>();
+        let bits = payloads.values().cloned().collect::<Vec<_>>();
         Ok(FinalizeOutcome::Result((bits[0], bits[1], own_reveal)))
     }
 }
@@ -351,7 +349,7 @@ impl EntryPoint<DinerId> for DiningEntryPoint {
             "[DiningEntryPoint, make_round] diner {id:?} tossed: {:?} (paid? {paid})",
             round.own_toss
         );
-        let round = BoxedRound::new_dynamic(round);
+        let round = BoxedRound::new_static(round);
         Ok(round)
     }
 }
@@ -374,13 +372,6 @@ impl SessionParameters for DiningSessionParams {
     type Signature = DinerSignature;
     type Digest = TestHasher;
     type WireFormat = BinaryFormat;
-}
-
-// Just a utility method to help us convert a [`Payload`] to, for example, a `bool`.
-fn downcast_payloads<T: 'static>(map: BTreeMap<DinerId, Payload>) -> Result<BTreeMap<DinerId, T>, LocalError> {
-    map.into_iter()
-        .map(|(id, payload)| payload.downcast::<T>().map(|p| (id, p)))
-        .collect()
 }
 
 fn main() {

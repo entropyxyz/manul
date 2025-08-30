@@ -1,5 +1,4 @@
 use alloc::{
-    boxed::Box,
     collections::{BTreeMap, BTreeSet},
     vec,
     vec::Vec,
@@ -12,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner, TestVerifier},
     protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation,
-        EntryPoint, FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId,
-        Payload, Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
+        BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EchoRoundParticipation, EntryPoint,
+        FinalizeOutcome, LocalError, MessageValidationError, NoMessage, NoProtocolErrors, NormalBroadcast, PartyId,
+        Protocol, ReceiveError, RoundId, StaticProtocolMessage, StaticRound, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -82,12 +81,19 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> EntryPoint<Id> for Inp
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_dynamic(Round1 { inputs: self }))
+        Ok(BoxedRound::new_static(Round1 { inputs: self }))
     }
 }
 
-impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<Id> {
+impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> StaticRound<Id> for Round1<Id> {
     type Protocol = PartialEchoProtocol<Id>;
+
+    type DirectMessage = NoMessage;
+    type NormalBroadcast = NoMessage;
+    type EchoBroadcast = Round1Echo<Id>;
+
+    type Payload = ();
+    type Artifact = ();
 
     fn transition_info(&self) -> TransitionInfo {
         TransitionInfo::new_linear_terminating(1)
@@ -101,48 +107,37 @@ impl<Id: PartyId + Serialize + for<'de> Deserialize<'de>> Round<Id> for Round1<I
         }
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
-    ) -> Result<EchoBroadcast, LocalError> {
-        if self.inputs.message_destinations.is_empty() {
-            Ok(EchoBroadcast::none())
+    fn make_echo_broadcast(&self, _rng: &mut dyn CryptoRngCore) -> Result<Option<Self::EchoBroadcast>, LocalError> {
+        Ok(if self.inputs.message_destinations.is_empty() {
+            None
         } else {
-            EchoBroadcast::new(
-                format,
-                Round1Echo {
-                    sender: self.inputs.id.clone(),
-                },
-            )
-        }
+            Some(Round1Echo {
+                sender: self.inputs.id.clone(),
+            })
+        })
     }
 
     fn receive_message(
         &self,
-        format: &BoxedFormat,
         from: &Id,
-        message: ProtocolMessage,
-    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        message.normal_broadcast.assert_is_none()?;
-        message.direct_message.assert_is_none()?;
-
+        message: StaticProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self::Protocol>> {
         if self.inputs.expecting_messages_from.is_empty() {
-            message.echo_broadcast.assert_is_none()?;
+            panic!("Message received when none was expected, this would be a provable offense");
         } else {
-            let echo = message.echo_broadcast.deserialize::<Round1Echo<Id>>(format)?;
+            let echo = message.echo_broadcast;
             assert_eq!(&echo.sender, from);
             assert!(self.inputs.expecting_messages_from.contains(from));
         }
 
-        Ok(Payload::new(()))
+        Ok(())
     }
 
     fn finalize(
-        self: Box<Self>,
+        self,
         _rng: &mut dyn CryptoRngCore,
-        _payloads: BTreeMap<Id, Payload>,
-        _artifacts: BTreeMap<Id, Artifact>,
+        _payloads: BTreeMap<Id, Self::Payload>,
+        _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
         Ok(FinalizeOutcome::Result(()))
     }
