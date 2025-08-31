@@ -9,9 +9,8 @@ use super::{
     evidence::{ProtocolError, RequiredMessages},
     round::Round,
     round_id::{GroupNum, RoundId},
-    wire_format::BoxedFormat,
+    wire_format::{BoxedFormat, DeserializationError},
 };
-use crate::session::DeserializationError;
 
 pub(crate) trait DynProtocolError<Id>: Debug {
     fn description(&self) -> String;

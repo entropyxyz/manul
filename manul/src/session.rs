@@ -25,6 +25,6 @@ pub use session::{
     CanFinalize, PreprocessOutcome, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,
 };
 pub use transcript::{SessionOutcome, SessionReport};
-pub use wire_format::{DeserializationError, WireFormat};
+pub use wire_format::WireFormat;
 
 pub(crate) use echo::EchoRoundError;

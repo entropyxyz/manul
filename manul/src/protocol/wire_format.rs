@@ -1,12 +1,27 @@
-use alloc::{boxed::Box, format};
+use alloc::{boxed::Box, format, string::String};
 use core::{fmt::Debug, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    protocol::LocalError,
-    session::{DeserializationError, WireFormat},
-};
+use crate::{protocol::LocalError, session::WireFormat};
+
+/// An error that can be returned during deserialization.
+#[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Error deserializing into {target_type}: {message}")]
+pub(crate) struct DeserializationError {
+    target_type: String,
+    message: String,
+}
+
+impl DeserializationError {
+    /// Creates a new deserialization error.
+    pub fn new<T>(message: impl Into<String>) -> Self {
+        Self {
+            target_type: core::any::type_name::<T>().into(),
+            message: message.into(),
+        }
+    }
+}
 
 trait DynSerializer: Debug {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError>;

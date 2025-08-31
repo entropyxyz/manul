@@ -8,7 +8,7 @@ use signature::{DigestVerifier, RandomizedDigestSigner};
 
 use super::{
     session::{SessionId, SessionParameters},
-    wire_format::{deserialize, WireFormat},
+    wire_format::WireFormat,
     LocalError,
 };
 use crate::protocol::{
@@ -30,7 +30,8 @@ impl SerializedSignature {
     where
         SP: SessionParameters,
     {
-        deserialize::<SP::WireFormat, SP::Signature>(&self.0).map_err(|_| MessageVerificationError::InvalidSignature)
+        let deserializer = SP::WireFormat::deserializer(&self.0);
+        SP::Signature::deserialize(deserializer).map_err(|_| MessageVerificationError::InvalidSignature)
     }
 }
 

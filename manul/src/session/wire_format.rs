@@ -1,27 +1,9 @@
-use alloc::{boxed::Box, format, string::String};
+use alloc::boxed::Box;
 use core::fmt::Debug;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::protocol::LocalError;
-
-/// An error that can be returned during deserialization.
-#[derive(displaydoc::Display, Debug, Clone)]
-#[displaydoc("Error deserializing into {target_type}: {message}")]
-pub struct DeserializationError {
-    target_type: String,
-    message: String,
-}
-
-impl DeserializationError {
-    /// Creates a new deserialization error.
-    pub fn new<T>(message: impl Into<String>) -> Self {
-        Self {
-            target_type: core::any::type_name::<T>().into(),
-            message: message.into(),
-        }
-    }
-}
 
 /*
 Why the asymmetry between serialization and deserialization?
@@ -54,12 +36,4 @@ pub trait WireFormat: 'static + Debug {
     fn deserializer(bytes: &[u8]) -> Self::Deserializer<'_>;
 
     // A helper method for use on the session level when both `WireFormat` and `T` are known at the same point.
-}
-
-/// Deserializes the given bytestring into `T`.
-pub(crate) fn deserialize<'de, F: WireFormat, T: Deserialize<'de>>(
-    bytes: &'de [u8],
-) -> Result<T, DeserializationError> {
-    let deserializer = F::deserializer(bytes);
-    T::deserialize(deserializer).map_err(|err| DeserializationError::new::<T>(format!("{err:?}")))
 }
