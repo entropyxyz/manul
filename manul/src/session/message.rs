@@ -11,7 +11,9 @@ use super::{
     wire_format::WireFormat,
     LocalError,
 };
-use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, ProtocolMessagePartHashable, RoundId};
+use crate::protocol::{
+    DirectMessage, EchoBroadcast, EvidenceError, NormalBroadcast, ProtocolMessagePartHashable, RoundId,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct SerializedSignature(#[serde(with = "SliceLike::<Hex>")] Box<[u8]>);
@@ -28,7 +30,8 @@ impl SerializedSignature {
     where
         SP: SessionParameters,
     {
-        SP::WireFormat::deserialize::<SP::Signature>(&self.0).map_err(|_| MessageVerificationError::InvalidSignature)
+        let deserializer = SP::WireFormat::deserializer(&self.0);
+        SP::Signature::deserialize(deserializer).map_err(|_| MessageVerificationError::InvalidSignature)
     }
 }
 
@@ -39,6 +42,22 @@ pub(crate) enum MessageVerificationError {
     InvalidSignature,
     /// The signature does not match the signed payload.
     SignatureMismatch,
+}
+
+impl MessageVerificationError {
+    // This is not a `From` implementation since in other contexts (e.g. echo round) we need a different behavior,
+    // and `From` impl could be accidentally used there leading to errors.
+    pub fn into_evidence_error(self) -> EvidenceError {
+        match self {
+            MessageVerificationError::Local(error) => EvidenceError::Local(error),
+            MessageVerificationError::InvalidSignature => {
+                EvidenceError::InvalidEvidence("Invalid message signature".into())
+            }
+            MessageVerificationError::SignatureMismatch => {
+                EvidenceError::InvalidEvidence("The signature does not match the payload".into())
+            }
+        }
+    }
 }
 
 impl From<LocalError> for MessageVerificationError {
@@ -130,7 +149,7 @@ where
         let digest = message_with_metadata.digest::<SP>()?;
         let signature = signer
             .try_sign_digest_with_rng(rng, digest)
-            .map_err(|err| LocalError::new(format!("Failed to sign: {:?}", err)))?;
+            .map_err(|err| LocalError::new(format!("Failed to sign: {err:?}")))?;
         Ok(Self {
             signature: SerializedSignature::new::<SP>(signature)?,
             message_with_metadata,
@@ -157,7 +176,10 @@ where
         &self.message_with_metadata.message
     }
 
-    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessagePart<M>, MessageVerificationError>
+    pub(crate) fn into_verified<SP>(
+        self,
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessagePart<M>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
@@ -275,13 +297,16 @@ impl CheckedMessage {
         &self.metadata
     }
 
-    pub fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessage<SP::Verifier>, MessageVerificationError>
+    pub fn into_verified<SP>(
+        self,
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessage<SP::Verifier>, MessageVerificationError>
     where
         SP: SessionParameters,
     {
-        let direct_message = self.direct_message.verify::<SP>(verifier)?;
-        let echo_broadcast = self.echo_broadcast.verify::<SP>(verifier)?;
-        let normal_broadcast = self.normal_broadcast.verify::<SP>(verifier)?;
+        let direct_message = self.direct_message.into_verified::<SP>(verifier)?;
+        let echo_broadcast = self.echo_broadcast.into_verified::<SP>(verifier)?;
+        let normal_broadcast = self.normal_broadcast.into_verified::<SP>(verifier)?;
 
         Ok(VerifiedMessage {
             from: verifier.clone(),
@@ -357,7 +382,10 @@ impl SignedMessageHash {
         &self.metadata
     }
 
-    pub(crate) fn verify<SP>(self, verifier: &SP::Verifier) -> Result<VerifiedMessageHash, MessageVerificationError>
+    pub(crate) fn into_verified<SP>(
+        self,
+        verifier: &SP::Verifier,
+    ) -> Result<VerifiedMessageHash, MessageVerificationError>
     where
         SP: SessionParameters,
     {

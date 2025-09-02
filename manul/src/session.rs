@@ -18,8 +18,8 @@ mod wire_format;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 
-pub use crate::protocol::{LocalError, RemoteError};
-pub use evidence::{Evidence, EvidenceError};
+pub use crate::protocol::{EvidenceError, LocalError, RemoteError};
+pub use evidence::Evidence;
 pub use message::{Message, VerifiedMessage};
 pub use session::{
     CanFinalize, PreprocessOutcome, RoundAccumulator, RoundOutcome, Session, SessionId, SessionParameters,

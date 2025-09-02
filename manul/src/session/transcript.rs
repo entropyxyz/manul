@@ -268,7 +268,7 @@ where
             let errors = self
                 .unprovable_errors
                 .iter()
-                .map(|(id, error)| format!("  {:?}: {}", id, error))
+                .map(|(id, error)| format!("  {id:?}: {error}"))
                 .collect::<Vec<_>>();
             format!("\nUnprovable errors:\n{}", errors.join("\n"))
         } else {
@@ -279,7 +279,7 @@ where
             let faulty_parties = self
                 .missing_messages
                 .iter()
-                .map(|(round_id, parties)| format!("  {}: {:?}", round_id, parties))
+                .map(|(round_id, parties)| format!("  {round_id}: {parties:?}"))
                 .collect::<Vec<_>>();
             format!("\nMissing messages:\n{}", faulty_parties.join("\n"))
         } else {

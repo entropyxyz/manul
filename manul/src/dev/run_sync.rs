@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, format, string::String, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, format, string::String, vec::Vec};
 
 use rand::Rng;
 use rand_core::CryptoRngCore;
@@ -15,7 +15,7 @@ use crate::{
 
 enum State<P: Protocol<SP::Verifier>, SP: SessionParameters> {
     InProgress {
-        session: Session<P, SP>,
+        session: Box<Session<P, SP>>,
         accum: RoundAccumulator<P, SP>,
     },
     Finished(SessionReport<P, SP>),
@@ -126,7 +126,7 @@ where
                         session: new_session,
                         cached_messages,
                     } => {
-                        session = new_session;
+                        session = *new_session;
                         accum = session.make_accumulator();
 
                         for message in cached_messages {
@@ -147,7 +147,10 @@ where
                     session.verifier(),
                     session.round_id()
                 );
-                break State::InProgress { session, accum };
+                break State::InProgress {
+                    session: Box::new(session),
+                    accum,
+                };
             }
             CanFinalize::Never => {
                 trace!(
@@ -209,17 +212,15 @@ where
         states.insert(verifier, state);
     }
 
-    let messages_len = messages.len();
     loop {
         // Pick a random message and deliver it
         let message = messages.pop(rng);
 
         debug!(
-            "Delivering message from {:?} to {:?} ({}/{})",
+            "Delivering message from {:?} to {:?} ({} more in the queue)",
             message.from,
             message.to,
-            messages_len - messages.len(),
-            messages_len
+            messages.len(),
         );
         let state = states.remove(&message.to);
         if state.is_none() {
@@ -239,7 +240,7 @@ where
                 session.add_processed_message(&mut accum, processed)?;
             }
 
-            let (new_state, new_messages) = propagate(rng, session, accum)?;
+            let (new_state, new_messages) = propagate(rng, *session, accum)?;
             messages.extend(new_messages);
             new_state
         } else {

@@ -7,9 +7,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use manul::{
     dev::{run_sync, BinaryFormat, TestSessionParams, TestSigner},
     protocol::{
-        Artifact, BoxedFormat, BoxedRound, CommunicationInfo, DirectMessage, EchoBroadcast, EntryPoint,
-        FinalizeOutcome, LocalError, MessageValidationError, NoProtocolErrors, NormalBroadcast, PartyId, Payload,
-        Protocol, ProtocolMessage, ProtocolMessagePart, ReceiveError, Round, RoundId, TransitionInfo,
+        BoxedRound, CommunicationInfo, EntryPoint, FinalizeOutcome, LocalError, NoMessage, NoProtocolErrors, PartyId,
+        Protocol, ProtocolMessage, ReceiveError, Round, RoundId, RoundInfo, TransitionInfo,
     },
     signature::Keypair,
 };
@@ -21,35 +20,20 @@ pub struct EmptyProtocol;
 
 impl<Id> Protocol<Id> for EmptyProtocol {
     type Result = ();
-    type ProtocolError = NoProtocolErrors;
-
-    fn verify_direct_message_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &DirectMessage,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_echo_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &EchoBroadcast,
-    ) -> Result<(), MessageValidationError> {
-        unimplemented!()
-    }
-
-    fn verify_normal_broadcast_is_invalid(
-        _format: &BoxedFormat,
-        _round_id: &RoundId,
-        _message: &NormalBroadcast,
-    ) -> Result<(), MessageValidationError> {
+    type SharedData = ();
+    fn round_info(_round_id: &RoundId) -> Option<RoundInfo<Id, Self>> {
         unimplemented!()
     }
 }
 
 #[derive(Debug)]
 struct EmptyRound<Id> {
+    round_counter: u8,
+    inputs: Inputs<Id>,
+}
+
+#[derive(Debug)]
+struct EmptyRoundWithEcho<Id> {
     round_counter: u8,
     inputs: Inputs<Id>,
 }
@@ -80,19 +64,33 @@ impl<Id: PartyId> EntryPoint<Id> for Inputs<Id> {
 
     fn make_round(
         self,
-        _rng: &mut dyn CryptoRngCore,
+        _rng: &mut impl CryptoRngCore,
         _shared_randomness: &[u8],
         _id: &Id,
     ) -> Result<BoxedRound<Id, Self::Protocol>, LocalError> {
-        Ok(BoxedRound::new_dynamic(EmptyRound {
-            round_counter: 1,
-            inputs: self,
-        }))
+        if self.echo {
+            Ok(BoxedRound::new(EmptyRoundWithEcho {
+                round_counter: 1,
+                inputs: self,
+            }))
+        } else {
+            Ok(BoxedRound::new(EmptyRound {
+                round_counter: 1,
+                inputs: self,
+            }))
+        }
     }
 }
 
 impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
     type Protocol = EmptyProtocol;
+
+    type ProtocolError = NoProtocolErrors<Self>;
+    type EchoBroadcast = Round1EchoBroadcast;
+    type NormalBroadcast = NoMessage;
+    type DirectMessage = Round1DirectMessage;
+    type Payload = Round1Payload;
+    type Artifact = Round1Artifact;
 
     fn transition_info(&self) -> TransitionInfo {
         if self.inputs.rounds_num == self.round_counter {
@@ -106,62 +104,92 @@ impl<Id: PartyId> Round<Id> for EmptyRound<Id> {
         CommunicationInfo::regular(&self.inputs.other_ids)
     }
 
-    fn make_echo_broadcast(
-        &self,
-        _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
-    ) -> Result<EchoBroadcast, LocalError> {
-        if self.inputs.echo {
-            EchoBroadcast::new(format, Round1EchoBroadcast)
-        } else {
-            Ok(EchoBroadcast::none())
-        }
-    }
-
     fn make_direct_message(
         &self,
-        _rng: &mut dyn CryptoRngCore,
-        format: &BoxedFormat,
+        _rng: &mut impl CryptoRngCore,
         _destination: &Id,
-    ) -> Result<(DirectMessage, Option<Artifact>), LocalError> {
-        let dm = DirectMessage::new(format, Round1DirectMessage)?;
-        let artifact = Artifact::new(Round1Artifact);
-        Ok((dm, Some(artifact)))
+    ) -> Result<(Self::DirectMessage, Self::Artifact), LocalError> {
+        Ok((Round1DirectMessage, Round1Artifact))
     }
 
     fn receive_message(
         &self,
-        format: &BoxedFormat,
         _from: &Id,
-        message: ProtocolMessage,
-    ) -> Result<Payload, ReceiveError<Id, Self::Protocol>> {
-        if self.inputs.echo {
-            let _echo_broadcast = message.echo_broadcast.deserialize::<Round1EchoBroadcast>(format)?;
-        } else {
-            message.echo_broadcast.assert_is_none()?;
-        }
-        message.normal_broadcast.assert_is_none()?;
-        let _direct_message = message.direct_message.deserialize::<Round1DirectMessage>(format)?;
-        Ok(Payload::new(Round1Payload))
+        _message: ProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self>> {
+        Ok(Round1Payload)
     }
 
     fn finalize(
-        self: Box<Self>,
-        _rng: &mut dyn CryptoRngCore,
-        payloads: BTreeMap<Id, Payload>,
-        artifacts: BTreeMap<Id, Artifact>,
+        self,
+        _rng: &mut impl CryptoRngCore,
+        _payloads: BTreeMap<Id, Self::Payload>,
+        _artifacts: BTreeMap<Id, Self::Artifact>,
     ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
-        for payload in payloads.into_values() {
-            let _payload = payload.downcast::<Round1Payload>()?;
-        }
-        for artifact in artifacts.into_values() {
-            let _artifact = artifact.downcast::<Round1Artifact>()?;
-        }
-
         if self.round_counter == self.inputs.rounds_num {
             Ok(FinalizeOutcome::Result(()))
         } else {
-            let round = BoxedRound::new_dynamic(EmptyRound {
+            let round = BoxedRound::new(EmptyRound {
+                round_counter: self.round_counter + 1,
+                inputs: self.inputs,
+            });
+            Ok(FinalizeOutcome::AnotherRound(round))
+        }
+    }
+}
+
+impl<Id: PartyId> Round<Id> for EmptyRoundWithEcho<Id> {
+    type Protocol = EmptyProtocol;
+
+    type ProtocolError = NoProtocolErrors<Self>;
+    type EchoBroadcast = Round1EchoBroadcast;
+    type NormalBroadcast = NoMessage;
+    type DirectMessage = Round1DirectMessage;
+    type Payload = Round1Payload;
+    type Artifact = Round1Artifact;
+
+    fn transition_info(&self) -> TransitionInfo {
+        if self.inputs.rounds_num == self.round_counter {
+            TransitionInfo::new_linear_terminating(self.round_counter)
+        } else {
+            TransitionInfo::new_linear(self.round_counter)
+        }
+    }
+
+    fn communication_info(&self) -> CommunicationInfo<Id> {
+        CommunicationInfo::regular(&self.inputs.other_ids)
+    }
+
+    fn make_echo_broadcast(&self, _rng: &mut impl CryptoRngCore) -> Result<Self::EchoBroadcast, LocalError> {
+        Ok(Round1EchoBroadcast)
+    }
+
+    fn make_direct_message(
+        &self,
+        _rng: &mut impl CryptoRngCore,
+        _destination: &Id,
+    ) -> Result<(Self::DirectMessage, Self::Artifact), LocalError> {
+        Ok((Round1DirectMessage, Round1Artifact))
+    }
+
+    fn receive_message(
+        &self,
+        _from: &Id,
+        _message: ProtocolMessage<Id, Self>,
+    ) -> Result<Self::Payload, ReceiveError<Id, Self>> {
+        Ok(Round1Payload)
+    }
+
+    fn finalize(
+        self,
+        _rng: &mut impl CryptoRngCore,
+        _payloads: BTreeMap<Id, Self::Payload>,
+        _artifacts: BTreeMap<Id, Self::Artifact>,
+    ) -> Result<FinalizeOutcome<Id, Self::Protocol>, LocalError> {
+        if self.round_counter == self.inputs.rounds_num {
+            Ok(FinalizeOutcome::Result(()))
+        } else {
+            let round = BoxedRound::new(EmptyRound {
                 round_counter: self.round_counter + 1,
                 inputs: self.inputs,
             });

@@ -83,7 +83,6 @@ where
     EP: EntryPoint<SP::Verifier>,
     SP: SessionParameters,
     SP::Signer: Send + Sync,
-    <EP::Protocol as Protocol<SP::Verifier>>::ProtocolError: Send + Sync,
     <EP::Protocol as Protocol<SP::Verifier>>::Result: Send,
 {
     let num_parties = entry_points.len();

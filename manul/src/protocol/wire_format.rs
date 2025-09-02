@@ -1,20 +1,37 @@
-use alloc::{boxed::Box, format};
+use alloc::{boxed::Box, format, string::String};
 use core::{fmt::Debug, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
 
-use super::errors::{DeserializationError, LocalError};
-use crate::session::WireFormat;
+use crate::{protocol::LocalError, session::WireFormat};
 
-trait ObjectSafeSerializer: Debug {
+/// An error that can be returned during deserialization.
+#[derive(displaydoc::Display, Debug, Clone)]
+#[displaydoc("Error deserializing into {target_type}: {message}")]
+pub(crate) struct DeserializationError {
+    target_type: String,
+    message: String,
+}
+
+impl DeserializationError {
+    /// Creates a new deserialization error.
+    pub fn new<T>(message: impl Into<String>) -> Self {
+        Self {
+            target_type: core::any::type_name::<T>().into(),
+            message: message.into(),
+        }
+    }
+}
+
+trait DynSerializer: Debug {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError>;
 }
 
 // `fn(F)` makes the type `Send` + `Sync` even if `F` isn't.
 #[derive(Debug)]
-struct SerializerWrapper<F: WireFormat>(PhantomData<fn(F)>);
+struct SerializerObject<F: WireFormat>(PhantomData<fn() -> F>);
 
-impl<F: WireFormat> ObjectSafeSerializer for SerializerWrapper<F> {
+impl<F: WireFormat> DynSerializer for SerializerObject<F> {
     fn serialize(&self, value: Box<dyn erased_serde::Serialize>) -> Result<Box<[u8]>, LocalError> {
         F::serialize(&value)
     }
@@ -22,13 +39,13 @@ impl<F: WireFormat> ObjectSafeSerializer for SerializerWrapper<F> {
 
 // `fn(F)` makes the type `Send` + `Sync` even if `F` isn't.
 #[derive(Debug)]
-struct DeserializerFactoryWrapper<F>(PhantomData<fn(F)>);
+struct DeserializerFactoryObject<F>(PhantomData<fn() -> F>);
 
-trait ObjectSafeDeserializerFactory: Debug {
+trait DynDeserializerFactory: Debug {
     fn make_erased_deserializer<'de>(&self, bytes: &'de [u8]) -> Box<dyn erased_serde::Deserializer<'de> + 'de>;
 }
 
-impl<F> ObjectSafeDeserializerFactory for DeserializerFactoryWrapper<F>
+impl<F> DynDeserializerFactory for DeserializerFactoryObject<F>
 where
     F: WireFormat,
 {
@@ -40,21 +57,21 @@ where
 
 /// A serializer/deserializer for protocol messages.
 #[derive(Debug)]
-pub struct BoxedFormat {
-    serializer: Box<dyn ObjectSafeSerializer + Send + Sync>,
-    deserializer_factory: Box<dyn ObjectSafeDeserializerFactory + Send + Sync>,
+pub(crate) struct BoxedFormat {
+    serializer: Box<dyn DynSerializer + Send + Sync>,
+    deserializer_factory: Box<dyn DynDeserializerFactory + Send + Sync>,
 }
 
 impl BoxedFormat {
-    pub(crate) fn new<F: WireFormat>() -> Self {
+    pub fn new<F: WireFormat>() -> Self {
         Self {
-            serializer: Box::new(SerializerWrapper::<F>(PhantomData)),
-            deserializer_factory: Box::new(DeserializerFactoryWrapper::<F>(PhantomData)),
+            serializer: Box::new(SerializerObject::<F>(PhantomData)),
+            deserializer_factory: Box::new(DeserializerFactoryObject::<F>(PhantomData)),
         }
     }
 
     /// Serializes a `serde`-serializable object.
-    pub(crate) fn serialize<T>(&self, value: T) -> Result<Box<[u8]>, LocalError>
+    pub fn serialize<T>(&self, value: T) -> Result<Box<[u8]>, LocalError>
     where
         T: 'static + Serialize,
     {
@@ -63,13 +80,13 @@ impl BoxedFormat {
     }
 
     /// Deserializes a `serde`-deserializable object.
-    pub(crate) fn deserialize<'de, T>(&self, bytes: &'de [u8]) -> Result<T, DeserializationError>
+    pub fn deserialize<'de, T>(&self, bytes: &'de [u8]) -> Result<T, DeserializationError>
     where
         T: Deserialize<'de>,
     {
         let mut deserializer = self.deserializer_factory.make_erased_deserializer(bytes);
         erased_serde::deserialize::<T>(&mut deserializer)
-            .map_err(|err| DeserializationError::new(format!("Deserialization error: {err:?}")))
+            .map_err(|err| DeserializationError::new::<T>(format!("{err:?}")))
     }
 }
 

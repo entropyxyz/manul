@@ -4,4 +4,4 @@ pub mod simple;
 pub mod simple_chain;
 
 #[cfg(test)]
-mod simple_malicious;
+mod simple_test;

@@ -6,22 +6,26 @@ use tinyvec::TinyVec;
 
 use super::errors::LocalError;
 
+/// Round number.
+pub type RoundNum = u8;
+
+pub(crate) type GroupNum = u8;
+
 /// A round identifier.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct RoundId {
-    round_nums: TinyVec<[u8; 4]>,
+    round: RoundNum,
+    groups: TinyVec<[GroupNum; 4]>,
     is_echo: bool,
 }
 
 impl Display for RoundId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "Round ")?;
-        for (i, round_num) in self.round_nums.iter().enumerate().rev() {
-            write!(f, "{}", round_num)?;
-            if i != 0 {
-                write!(f, "-")?;
-            }
+        for group_num in self.groups.iter().rev() {
+            write!(f, "{group_num}-")?;
         }
+        write!(f, "{}", self.round)?;
         if self.is_echo {
             write!(f, " (echo)")?;
         }
@@ -31,13 +35,16 @@ impl Display for RoundId {
 
 impl RoundId {
     /// Creates a new round identifier.
-    pub fn new(round_num: u8) -> Self {
-        let mut round_nums = TinyVec::new();
-        round_nums.push(round_num);
+    pub fn new(round_num: RoundNum) -> Self {
         Self {
-            round_nums,
+            round: round_num,
+            groups: TinyVec::new(),
             is_echo: false,
         }
+    }
+
+    pub(crate) fn round_num(&self) -> RoundNum {
+        self.round
     }
 
     /// Prefixes this round ID (possibly already nested) with a group number.
@@ -45,11 +52,12 @@ impl RoundId {
     /// This is supposed to be used internally, e.g. in the chain combinator,
     /// where we have several protocols joined up, and their round numbers may repeat.
     /// Grouping allows us to disambiguate them, assigning group 1 to one protocol and group 2 to the other.
-    pub(crate) fn group_under(&self, round_num: u8) -> Self {
-        let mut round_nums = self.round_nums.clone();
-        round_nums.push(round_num);
+    pub(crate) fn group_under(&self, group_num: GroupNum) -> Self {
+        let mut groups = self.groups.clone();
+        groups.push(group_num);
         Self {
-            round_nums,
+            round: self.round,
+            groups,
             is_echo: self.is_echo,
         }
     }
@@ -58,14 +66,15 @@ impl RoundId {
     /// and returns this prefix along with the resulting round ID.
     ///
     /// Returns the `Err` variant if the round ID is not nested.
-    pub(crate) fn split_group(&self) -> Result<(u8, Self), LocalError> {
-        if self.round_nums.len() == 1 {
+    pub(crate) fn split_group(&self) -> Result<(GroupNum, Self), LocalError> {
+        if self.groups.is_empty() {
             Err(LocalError::new("This round ID is not in a group"))
         } else {
-            let mut round_nums = self.round_nums.clone();
-            let group = round_nums.pop().expect("vector size greater than 1");
+            let mut groups = self.groups.clone();
+            let group = groups.pop().expect("vector size greater than 0");
             let round_id = Self {
-                round_nums,
+                round: self.round,
+                groups,
                 is_echo: self.is_echo,
             };
             Ok((group, round_id))
@@ -81,13 +90,12 @@ impl RoundId {
     ///
     /// Panics if `self` is already an echo round identifier.
     pub(crate) fn echo(&self) -> Result<Self, LocalError> {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
         if self.is_echo {
             Err(LocalError::new("This is already an echo round ID"))
         } else {
             Ok(Self {
-                round_nums: self.round_nums.clone(),
+                round: self.round,
+                groups: self.groups.clone(),
                 is_echo: true,
             })
         }
@@ -97,28 +105,33 @@ impl RoundId {
     ///
     /// Panics if `self` is already a non-echo round identifier.
     pub(crate) fn non_echo(&self) -> Result<Self, LocalError> {
-        // If this panic happens, there is something wrong with the internal logic
-        // of managing echo-broadcast rounds.
         if !self.is_echo {
             Err(LocalError::new("This is already an non-echo round ID"))
         } else {
             Ok(Self {
-                round_nums: self.round_nums.clone(),
+                round: self.round,
+                groups: self.groups.clone(),
                 is_echo: false,
             })
         }
     }
 }
 
-impl From<u8> for RoundId {
-    fn from(source: u8) -> Self {
+impl From<RoundNum> for RoundId {
+    fn from(source: RoundNum) -> Self {
         Self::new(source)
     }
 }
 
-impl PartialEq<u8> for RoundId {
-    fn eq(&self, rhs: &u8) -> bool {
+impl PartialEq<RoundNum> for RoundId {
+    fn eq(&self, rhs: &RoundNum) -> bool {
         self == &RoundId::new(*rhs)
+    }
+}
+
+impl PartialEq<RoundNum> for &RoundId {
+    fn eq(&self, rhs: &RoundNum) -> bool {
+        *self == &RoundId::new(*rhs)
     }
 }
 
@@ -152,7 +165,7 @@ pub struct TransitionInfo {
 
 impl TransitionInfo {
     /// Nest the round IDs under the given group. Used for combinators.
-    pub(crate) fn group_under(self, group: u8) -> Self {
+    pub(crate) fn group_under(self, group: GroupNum) -> Self {
         Self {
             id: self.id.group_under(group),
             parents: self.parents.into_iter().map(|r| r.group_under(group)).collect(),
@@ -199,7 +212,7 @@ impl TransitionInfo {
     ///
     /// That is, if there are rounds 1, 2, 3, ..., N, where the N-th one returns the result,
     /// this constructor can be used for rounds 1 to N-1.
-    pub fn new_linear(round_num: u8) -> Self {
+    pub fn new_linear(round_num: RoundNum) -> Self {
         Self {
             id: RoundId::new(round_num),
             parents: if round_num > 1 {
@@ -218,7 +231,7 @@ impl TransitionInfo {
     ///
     /// That is, if there are rounds 1, 2, 3, ..., N, where the N-th one returns the result,
     /// this constructor can be used for round N.
-    pub fn new_linear_terminating(round_num: u8) -> Self {
+    pub fn new_linear_terminating(round_num: RoundNum) -> Self {
         Self {
             id: RoundId::new(round_num),
             parents: if round_num > 1 {
@@ -233,7 +246,7 @@ impl TransitionInfo {
     }
 
     /// Returns a new [`TransitionInfo`] with `round_nums` added to the set of children.
-    pub fn with_children(self, round_nums: BTreeSet<u8>) -> Self {
+    pub fn with_children(self, round_nums: BTreeSet<RoundNum>) -> Self {
         let mut children = self.children;
         children.extend(round_nums.iter().map(|num| RoundId::new(*num)));
         Self {
@@ -246,7 +259,7 @@ impl TransitionInfo {
     }
 
     /// Returns a new [`TransitionInfo`] with `round_nums` added to the set of siblings.
-    pub fn with_siblings(self, round_nums: BTreeSet<u8>) -> Self {
+    pub fn with_siblings(self, round_nums: BTreeSet<RoundNum>) -> Self {
         let mut siblings = self.siblings;
         siblings.extend(round_nums.iter().map(|num| RoundId::new(*num)));
         Self {
