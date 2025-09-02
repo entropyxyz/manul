@@ -1,8 +1,8 @@
 use alloc::collections::BTreeSet;
 
 use manul::{
-    dev::{run_sync, BinaryFormat, ExtendableEntryPoint, RoundExtension, TestSessionParams, TestSigner},
-    protocol::{LocalError, PartyId},
+    dev::{check_evidence_with_extension, BinaryFormat, RoundExtension, TestSessionParams, TestSigner, TestVerifier},
+    protocol::{EntryPoint, LocalError, PartyId, Round},
     signature::Keypair,
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -10,128 +10,83 @@ use test_log::test;
 
 use crate::simple::{Round1, Round1Message, Round2, Round2Message, SimpleProtocolEntryPoint};
 
-#[derive(Debug, Clone)]
-struct Round1InvalidDirectMessage;
+type Id = TestVerifier;
+type SP = TestSessionParams<BinaryFormat>;
+type EP = SimpleProtocolEntryPoint<Id>;
 
-impl<Id> RoundExtension<Id> for Round1InvalidDirectMessage
-where
-    Id: PartyId,
-{
-    type Round = Round1<Id>;
-
-    fn make_direct_message(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        round: &Self::Round,
-        _destination: &Id,
-    ) -> Result<(Round1Message, ()), LocalError> {
-        Ok((
-            Round1Message {
-                my_position: round.context.ids_to_positions[&round.context.id],
-                your_position: round.context.ids_to_positions[&round.context.id],
-            },
-            (),
-        ))
-    }
-}
-
-#[test]
-fn round1_attributable_failure() {
+fn make_entry_points() -> Vec<(TestSigner, EP)> {
     let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
 
-    let entry_points = signers
-        .iter()
-        .enumerate()
-        .map(|(idx, signer)| {
-            let entry_point = SimpleProtocolEntryPoint::new(all_ids.clone());
-            let mut entry_point = ExtendableEntryPoint::new(entry_point);
-            if idx == 0 {
-                entry_point.extend(Round1InvalidDirectMessage);
-            }
-
-            (*signer, entry_point)
-        })
-        .collect::<Vec<_>>();
-
-    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
-        .unwrap()
-        .reports;
-
-    let v0 = signers[0].verifying_key();
-    let v1 = signers[1].verifying_key();
-    let v2 = signers[2].verifying_key();
-
-    let _report0 = reports.remove(&v0).unwrap();
-    let report1 = reports.remove(&v1).unwrap();
-    let report2 = reports.remove(&v2).unwrap();
-
-    assert!(report1.provable_errors[&v0].verify(&()).is_ok());
-    assert!(report2.provable_errors[&v0].verify(&()).is_ok());
+    signers
+        .into_iter()
+        .map(|signer| (signer, SimpleProtocolEntryPoint::new(all_ids.clone())))
+        .collect()
 }
 
-#[derive(Debug, Clone)]
-struct Round2InvalidDirectMessage;
-
-impl<Id> RoundExtension<Id> for Round2InvalidDirectMessage
+fn check_evidence<Ext>(extension: &Ext, expected_description: &str) -> Result<(), LocalError>
 where
-    Id: PartyId,
+    Ext: RoundExtension<Id>,
+    Ext::Round: Round<Id, Protocol = <EP as EntryPoint<Id>>::Protocol>,
 {
-    type Round = Round2<Id>;
-
-    fn make_direct_message(
-        &self,
-        _rng: &mut impl CryptoRngCore,
-        round: &Self::Round,
-        _destination: &Id,
-    ) -> Result<(Round2Message, ()), LocalError> {
-        Ok((
-            Round2Message {
-                my_position: round.context.ids_to_positions[&round.context.id],
-                your_position: round.context.ids_to_positions[&round.context.id],
-            },
-            (),
-        ))
-    }
+    check_evidence_with_extension::<SP, EP, _>(&mut OsRng, make_entry_points(), extension, &(), expected_description)
 }
 
 #[test]
-fn round2_attributable_failure() {
-    let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
-    let all_ids = signers
-        .iter()
-        .map(|signer| signer.verifying_key())
-        .collect::<BTreeSet<_>>();
+fn round1_attributable_failure() -> Result<(), LocalError> {
+    #[derive(Debug, Clone)]
+    struct Round1InvalidDirectMessage;
 
-    let entry_points = signers
-        .iter()
-        .enumerate()
-        .map(|(idx, signer)| {
-            let entry_point = SimpleProtocolEntryPoint::new(all_ids.clone());
-            let mut entry_point = ExtendableEntryPoint::new(entry_point);
-            if idx == 0 {
-                entry_point.extend(Round2InvalidDirectMessage);
-            }
+    impl<Id> RoundExtension<Id> for Round1InvalidDirectMessage
+    where
+        Id: PartyId,
+    {
+        type Round = Round1<Id>;
 
-            (*signer, entry_point)
-        })
-        .collect::<Vec<_>>();
+        fn make_direct_message(
+            &self,
+            _rng: &mut impl CryptoRngCore,
+            round: &Self::Round,
+            _destination: &Id,
+        ) -> Result<(Round1Message, ()), LocalError> {
+            let message = Round1Message {
+                my_position: round.context.ids_to_positions[&round.context.id],
+                your_position: round.context.ids_to_positions[&round.context.id],
+            };
+            Ok((message, ()))
+        }
+    }
 
-    let mut reports = run_sync::<_, TestSessionParams<BinaryFormat>>(&mut OsRng, entry_points)
-        .unwrap()
-        .reports;
+    check_evidence(&Round1InvalidDirectMessage, "(Round 1): Invalid position")
+}
 
-    let v0 = signers[0].verifying_key();
-    let v1 = signers[1].verifying_key();
-    let v2 = signers[2].verifying_key();
+#[test]
+fn round2_attributable_failure() -> Result<(), LocalError> {
+    #[derive(Debug, Clone)]
+    struct Round2InvalidDirectMessage;
 
-    let _report0 = reports.remove(&v0).unwrap();
-    let report1 = reports.remove(&v1).unwrap();
-    let report2 = reports.remove(&v2).unwrap();
+    impl<Id> RoundExtension<Id> for Round2InvalidDirectMessage
+    where
+        Id: PartyId,
+    {
+        type Round = Round2<Id>;
 
-    assert!(report1.provable_errors[&v0].verify(&()).is_ok());
-    assert!(report2.provable_errors[&v0].verify(&()).is_ok());
+        fn make_direct_message(
+            &self,
+            _rng: &mut impl CryptoRngCore,
+            round: &Self::Round,
+            _destination: &Id,
+        ) -> Result<(Round2Message, ()), LocalError> {
+            let message = Round2Message {
+                my_position: round.context.ids_to_positions[&round.context.id],
+                your_position: round.context.ids_to_positions[&round.context.id],
+            };
+            Ok((message, ()))
+        }
+    }
+
+    check_evidence(&Round2InvalidDirectMessage, "(Round 2): Invalid position")
 }
