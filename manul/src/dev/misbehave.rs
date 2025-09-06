@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeSet, format, vec::Vec};
+use alloc::{format, vec::Vec};
 
 use rand_core::CryptoRngCore;
 
@@ -17,31 +17,26 @@ use crate::{
 #[allow(clippy::type_complexity)]
 pub fn extend_one<SP, EP>(
     entry_points: Vec<(SP::Signer, EP)>,
-    extend: impl Fn(ExtendableEntryPoint<SP::Verifier, EP>) -> ExtendableEntryPoint<SP::Verifier, EP>,
+    extend: impl FnOnce(ExtendableEntryPoint<SP::Verifier, EP>) -> ExtendableEntryPoint<SP::Verifier, EP>,
 ) -> Result<(SP::Verifier, Vec<(SP::Signer, ExtendableEntryPoint<SP::Verifier, EP>)>), LocalError>
 where
     SP: SessionParameters,
     EP: EntryPoint<SP::Verifier>,
 {
-    let ids = entry_points
-        .iter()
-        .map(|(signer, _ep)| signer.verifying_key())
-        .collect::<BTreeSet<_>>();
-    let modified_id = ids
-        .first()
+    let mut entry_points = entry_points;
+    let (modified_signer, entry_point) = entry_points
+        .pop()
         .ok_or_else(|| LocalError::new("Entry points list cannot be empty"))?;
-    let modified_entry_points = entry_points
+    let modified_id = modified_signer.verifying_key();
+    let modified_entry_point = extend(ExtendableEntryPoint::new(entry_point));
+
+    let mut modified_entry_points = entry_points
         .into_iter()
-        .map(|(signer, entry_point)| {
-            let id = signer.verifying_key();
-            let mut entry_point = ExtendableEntryPoint::new(entry_point);
-            if &id == modified_id {
-                entry_point = extend(entry_point);
-            }
-            (signer, entry_point)
-        })
-        .collect();
-    Ok((modified_id.clone(), modified_entry_points))
+        .map(|(signer, entry_point)| (signer, ExtendableEntryPoint::new(entry_point)))
+        .collect::<Vec<_>>();
+    modified_entry_points.push((modified_signer, modified_entry_point));
+
+    Ok((modified_id, modified_entry_points))
 }
 
 /// Checks that the result for the node with the `target_id` is a provable error,
@@ -122,40 +117,42 @@ where
 #[allow(clippy::type_complexity)]
 pub fn check_evidence_with_extensions<SP, EP>(
     rng: &mut impl CryptoRngCore,
-    entry_points: Vec<(SP::Signer, EP)>,
-    extend: impl Fn(ExtendableEntryPoint<SP::Verifier, EP>) -> ExtendableEntryPoint<SP::Verifier, EP>,
-    shared_data: &<EP::Protocol as Protocol<SP::Verifier>>::SharedData,
+    entry_points_and_shared_data: (
+        Vec<(SP::Signer, EP)>,
+        <EP::Protocol as Protocol<SP::Verifier>>::SharedData,
+    ),
+    extend: impl FnOnce(ExtendableEntryPoint<SP::Verifier, EP>) -> ExtendableEntryPoint<SP::Verifier, EP>,
     expected_description: &str,
 ) -> Result<(), LocalError>
 where
     SP: SessionParameters,
     EP: EntryPoint<SP::Verifier>,
 {
+    let (entry_points, shared_data) = entry_points_and_shared_data;
     let (misbehaving_id, modified_entry_points) = extend_one::<SP, _>(entry_points, extend)?;
     let execution_result = run_sync::<_, SP>(rng, modified_entry_points)?;
-    check_evidence(&misbehaving_id, execution_result, shared_data, expected_description)
+    check_evidence(&misbehaving_id, execution_result, &shared_data, expected_description)
 }
 
 /// Same as [`check_evidence_with_extensions`], but with one extension only.
 #[allow(clippy::type_complexity)]
-pub fn check_evidence_with_extension<SP, EP, Ext>(
+pub fn check_evidence_with_extension<SP, EP>(
     rng: &mut impl CryptoRngCore,
-    entry_points: Vec<(SP::Signer, EP)>,
-    extension: &Ext,
-    shared_data: &<EP::Protocol as Protocol<SP::Verifier>>::SharedData,
+    entry_points_and_shared_data: (
+        Vec<(SP::Signer, EP)>,
+        <EP::Protocol as Protocol<SP::Verifier>>::SharedData,
+    ),
+    extension: impl RoundExtension<SP::Verifier, Round: Round<SP::Verifier, Protocol = EP::Protocol>>,
     expected_description: &str,
 ) -> Result<(), LocalError>
 where
     SP: SessionParameters,
     EP: EntryPoint<SP::Verifier>,
-    Ext: RoundExtension<SP::Verifier>,
-    Ext::Round: Round<SP::Verifier, Protocol = EP::Protocol>,
 {
     check_evidence_with_extensions::<SP, EP>(
         rng,
-        entry_points,
-        |entry_point| entry_point.with_extension(extension.clone()),
-        shared_data,
+        entry_points_and_shared_data,
+        |entry_point| entry_point.with_extension(extension),
         expected_description,
     )
 }

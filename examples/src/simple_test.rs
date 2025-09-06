@@ -2,7 +2,7 @@ use alloc::collections::BTreeSet;
 
 use manul::{
     dev::{check_evidence_with_extension, BinaryFormat, RoundExtension, TestSessionParams, TestSigner, TestVerifier},
-    protocol::{EntryPoint, LocalError, PartyId, Round},
+    protocol::{LocalError, PartyId},
     signature::Keypair,
 };
 use rand_core::{CryptoRngCore, OsRng};
@@ -14,25 +14,19 @@ type Id = TestVerifier;
 type SP = TestSessionParams<BinaryFormat>;
 type EP = SimpleProtocolEntryPoint<Id>;
 
-fn make_entry_points() -> Vec<(TestSigner, EP)> {
+fn make_entry_points() -> (Vec<(TestSigner, EP)>, ()) {
     let signers = (0..3).map(TestSigner::new).collect::<Vec<_>>();
     let all_ids = signers
         .iter()
         .map(|signer| signer.verifying_key())
         .collect::<BTreeSet<_>>();
 
-    signers
+    let entry_points = signers
         .into_iter()
         .map(|signer| (signer, SimpleProtocolEntryPoint::new(all_ids.clone())))
-        .collect()
-}
+        .collect();
 
-fn check_evidence<Ext>(extension: &Ext, expected_description: &str) -> Result<(), LocalError>
-where
-    Ext: RoundExtension<Id>,
-    Ext::Round: Round<Id, Protocol = <EP as EntryPoint<Id>>::Protocol>,
-{
-    check_evidence_with_extension::<SP, EP, _>(&mut OsRng, make_entry_points(), extension, &(), expected_description)
+    (entry_points, ())
 }
 
 #[test]
@@ -60,7 +54,12 @@ fn round1_attributable_failure() -> Result<(), LocalError> {
         }
     }
 
-    check_evidence(&Round1InvalidDirectMessage, "(Round 1): Invalid position")
+    check_evidence_with_extension::<SP, _>(
+        &mut OsRng,
+        make_entry_points(),
+        Round1InvalidDirectMessage,
+        "(Round 1): Invalid position",
+    )
 }
 
 #[test]
@@ -88,5 +87,10 @@ fn round2_attributable_failure() -> Result<(), LocalError> {
         }
     }
 
-    check_evidence(&Round2InvalidDirectMessage, "(Round 2): Invalid position")
+    check_evidence_with_extension::<SP, _>(
+        &mut OsRng,
+        make_entry_points(),
+        Round2InvalidDirectMessage,
+        "(Round 2): Invalid position",
+    )
 }
