@@ -12,6 +12,7 @@ use manul::{
         Protocol, ProtocolMessage, ReceiveError, Round, RoundId, RoundInfo, TransitionInfo,
     },
     signature::Keypair,
+    utils::Without,
 };
 use rand_core::{CryptoRngCore, OsRng};
 use serde::{Deserialize, Serialize};
@@ -241,11 +242,9 @@ fn bench_async_session(c: &mut Criterion) {
     let entry_points = signers
         .into_iter()
         .map(|signer| {
-            let mut other_ids = all_ids.clone();
-            other_ids.remove(&signer.verifying_key());
             let entry_point = Inputs {
                 rounds_num,
-                other_ids,
+                other_ids: all_ids.clone().without(&signer.verifying_key()),
                 echo: false,
             };
             (signer, entry_point)

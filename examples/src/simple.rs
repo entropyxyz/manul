@@ -11,10 +11,13 @@
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::fmt::Debug;
 
-use manul::protocol::{
-    BoxedRound, CommunicationInfo, EntryPoint, EvidenceError, EvidenceMessages, FinalizeOutcome, LocalError, NoMessage,
-    PartyId, Protocol, ProtocolError, ProtocolMessage, ReceiveError, RequiredMessageParts, RequiredMessages, Round,
-    RoundId, RoundInfo, TransitionInfo,
+use manul::{
+    protocol::{
+        BoxedRound, CommunicationInfo, EntryPoint, EvidenceError, EvidenceMessages, FinalizeOutcome, LocalError,
+        NoMessage, PartyId, Protocol, ProtocolError, ProtocolMessage, ReceiveError, RequiredMessageParts,
+        RequiredMessages, Round, RoundId, RoundInfo, TransitionInfo,
+    },
+    utils::Without,
 };
 use rand_core::CryptoRngCore;
 use serde::{Deserialize, Serialize};
@@ -162,13 +165,10 @@ impl<Id: PartyId> EntryPoint<Id> for SimpleProtocolEntryPoint<Id> {
             .map(|(idx, id)| (id.clone(), idx as u8))
             .collect::<BTreeMap<_, _>>();
 
-        let mut ids = self.all_ids;
-        ids.remove(id);
-
         Ok(BoxedRound::new(Round1 {
             context: Context {
                 id: id.clone(),
-                other_ids: ids,
+                other_ids: self.all_ids.clone().without(id),
                 ids_to_positions,
             },
         }))

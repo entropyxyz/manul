@@ -7,7 +7,10 @@ use alloc::{
 use core::fmt::Debug;
 
 use super::{evidence::Evidence, message::SignedMessagePart, session::SessionParameters, LocalError, RemoteError};
-use crate::protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId};
+use crate::{
+    protocol::{DirectMessage, EchoBroadcast, NormalBroadcast, Protocol, RoundId},
+    utils::Without,
+};
 
 #[derive(Debug)]
 pub(crate) struct Transcript<P: Protocol<SP::Verifier>, SP: SessionParameters> {
@@ -182,12 +185,12 @@ where
         round_id: &RoundId,
         except_for: &SP::Verifier,
     ) -> Result<BTreeMap<SP::Verifier, SignedMessagePart<EchoBroadcast>>, LocalError> {
-        let mut other_echo_broadcasts =
-            self.echo_broadcasts.get(round_id).cloned().ok_or_else(|| {
-                LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript"))
-            })?;
-        other_echo_broadcasts.remove(except_for);
-        Ok(other_echo_broadcasts)
+        Ok(self
+            .echo_broadcasts
+            .get(round_id)
+            .cloned()
+            .ok_or_else(|| LocalError::new(format!("Echo-broadcasts for {round_id:?} are not in the transcript")))?
+            .without(except_for))
     }
 }
 
