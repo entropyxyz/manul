@@ -30,6 +30,23 @@ jobs:
       - run: cargo build --target ${{ matrix.target }} --no-default-features
       - run: cargo build --target ${{ matrix.target }}
 
+  build-feature-powerset:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+        target:
+          - x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+      - uses: taiki-e/install-action@cargo-hack
+      - run: env RUSTFLAGS="-D warnings" cargo hack build --target ${{ matrix.target }} --feature-powerset
+
   test-and-coverage:
     runs-on: ubuntu-latest
     steps:
