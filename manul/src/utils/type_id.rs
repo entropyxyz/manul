@@ -1,8 +1,10 @@
+#[cfg(any(test, feature = "dev"))]
 use core::any::TypeId;
 
 /// A dyn safe trait to get the type's ID.
 pub(crate) trait DynTypeId: 'static {
     /// Returns the type ID of the implementing type.
+    #[cfg(any(test, feature = "dev"))]
     fn get_type_id(&self) -> TypeId {
         TypeId::of::<Self>()
     }

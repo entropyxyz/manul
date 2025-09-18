@@ -42,6 +42,7 @@ impl<Id, R> ReceiveError<Id, R>
 where
     R: Round<Id>,
 {
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn map<NR, F>(self, f: F) -> ReceiveError<Id, NR>
     where
         F: Fn(R::ProtocolError) -> NR::ProtocolError,

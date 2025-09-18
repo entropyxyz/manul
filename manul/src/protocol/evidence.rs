@@ -227,6 +227,7 @@ where
             .map_err(|err| EvidenceError::InvalidEvidence(format!("Error deserializing normal broadcast: {err}")))
     }
 
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn into_round<NR>(self) -> EvidenceMessages<'a, Id, NR>
     where
         NR: Round<
