@@ -1,8 +1,8 @@
 use alloc::{boxed::Box, collections::BTreeMap, format};
-use core::{
-    any::{Any, TypeId},
-    fmt::Debug,
-};
+use core::{any::Any, fmt::Debug};
+
+#[cfg(any(test, feature = "dev"))]
+use core::any::TypeId;
 
 use rand_core::CryptoRngCore;
 
@@ -118,6 +118,7 @@ impl<R> RoundWrapper<R> {
         Self { round }
     }
 
+    #[cfg(any(test, feature = "dev"))]
     pub fn into_inner(self) -> R {
         self.round
     }
@@ -262,6 +263,7 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
         }
     }
 
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn as_typed(&self) -> Result<&BoxedTypedRound<Id, P>, LocalError> {
         match &self.0 {
             BoxedRoundEnum::Dynamic(_boxed) => {
@@ -271,6 +273,7 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedRound<Id, P> {
         }
     }
 
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn into_typed(self) -> Result<BoxedTypedRound<Id, P>, LocalError> {
         match self.0 {
             BoxedRoundEnum::Dynamic(_boxed) => {
@@ -298,17 +301,20 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedTypedRound<Id, P> {
     }
 
     /// Returns the type ID of the encapsulated `Round` implementor.
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn type_id(&self) -> TypeId {
         self.0.as_ref().get_type_id()
     }
 
     /// Returns the type ID that [`type_id`] would return for an object created with [`new()`]
     /// given a round of type `R`.
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn type_id_for<R: 'static + Round<Id, Protocol = P>>() -> TypeId {
         TypeId::of::<RoundWrapper<R>>()
     }
 
     /// Attempts to extract an object of a concrete type, preserving the original on failure.
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn try_downcast<T: Round<Id>>(self) -> Result<T, Self> {
         if self.type_id() == TypeId::of::<RoundWrapper<T>>() {
             // Safety: This is safe since we just checked that we are casting to the correct type.
@@ -323,6 +329,7 @@ impl<Id: PartyId, P: Protocol<Id>> BoxedTypedRound<Id, P> {
     /// Attempts to extract an object of a concrete type.
     ///
     /// Fails if the wrapped type is not `T`.
+    #[cfg(any(test, feature = "dev"))]
     pub(crate) fn downcast<T: Round<Id>>(self) -> Result<T, LocalError> {
         self.try_downcast()
             .map_err(|_| LocalError::new(format!("Failed to downcast into type {}", core::any::type_name::<T>())))

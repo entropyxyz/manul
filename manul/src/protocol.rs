@@ -35,7 +35,7 @@ pub use round_id::{RoundId, RoundNum, TransitionInfo};
 pub use round_info::RoundInfo;
 
 pub(crate) use dyn_evidence::{BoxedProtocolError, SerializedProtocolError};
-pub(crate) use dyn_round::{Artifact, BoxedReceiveError, BoxedTypedRound, DynRound, Payload};
+pub(crate) use dyn_round::{Artifact, BoxedReceiveError, DynRound, Payload};
 pub(crate) use evidence::EvidenceProtocolMessage;
 pub(crate) use message::{
     DirectMessage, DirectMessageError, DynProtocolMessage, EchoBroadcast, EchoBroadcastError, NormalBroadcast,
@@ -46,3 +46,6 @@ pub(crate) use round::NoType;
 pub(crate) use round_id::GroupNum;
 pub(crate) use round_info::DynRoundInfo;
 pub(crate) use wire_format::BoxedFormat;
+
+#[cfg(any(test, feature = "dev"))]
+pub(crate) use dyn_round::BoxedTypedRound;
